@@ -131,6 +131,21 @@ export function reassignSupplierResponse(token, subOrderId, items) {
 export function markResponseHandled(token, subOrderId, note) {
   return authedMutate("POST", `/supplier-responses/${subOrderId}/handled`, token, { note });
 }
+// An order a supplier did not answer in 24 hours: the shop's rules, the order's history, the other suppliers that can take it, send again, move.
+export function fetchNoAnswerRules(token) { return authedGet("/supplier-responses/no-answer-rules", token); }
+export function saveNoAnswerRules(token, rules) { return authedMutate("PUT", "/supplier-responses/no-answer-rules", token, rules); }
+// The orders waiting for their supplier's first answer right now (Orders > Rules > step 1 preview).
+export function fetchWaitingOrders(token) { return authedGet("/supplier-responses/waiting-orders", token); }
+export function fetchResponseHistory(token, subOrderId) { return authedGet(`/supplier-responses/${subOrderId}/history`, token); }
+export function fetchResponseCandidates(token, subOrderId) { return authedGet(`/supplier-responses/${subOrderId}/candidates`, token); }
+export function resendSupplierResponse(token, subOrderId) { return authedMutate("POST", `/supplier-responses/${subOrderId}/resend`, token, {}); }
+export function moveSupplierResponse(token, subOrderId, items) { return authedMutate("POST", `/supplier-responses/${subOrderId}/move`, token, { items }); }
+export function markResponseRefunded(token, subOrderId, reference) { return authedMutate("POST", `/supplier-responses/${subOrderId}/refunded`, token, { reference }); }
+// Cancellations (migration 145): every cancelled part with who / when / why and its refund; Leap cancelling an order or some of its parts.
+export function fetchCancellations(token) { return authedGet("/order-cancellations", token); }
+export function markCancellationRefunded(token, subOrderId, reference) { return authedMutate("POST", `/order-cancellations/${subOrderId}/refunded`, token, { reference }); }
+export function retryCancellationRefund(token, subOrderId) { return authedMutate("POST", `/order-cancellations/${subOrderId}/retry`, token, {}); }
+export function adminCancelOrder(token, orderId, { subOrderIds, reason, note }) { return authedMutate("POST", `/order/${encodeURIComponent(orderId)}/admin-cancel`, token, { subOrderIds, reason, note }); }
 
 export function fetchTicketById(token, ticketId) {
   return authedGet(`/support/tickets/${ticketId}`, token);
@@ -176,8 +191,31 @@ export function replyToReturnCaseBuyer(token, caseId, message) {
   return authedMutate("POST", `/returns/${caseId}/buyer-messages`, token, { message });
 }
 
+// patch-returns-conversations (migration 149): the conversation with the hub that found the problem
+export function replyToReturnCaseHub(token, caseId, message) {
+  return authedMutate("POST", `/returns/${caseId}/hub-messages`, token, { message });
+}
+
 export function replyToReturnCaseSupplier(token, caseId, message) {
   return authedMutate("POST", `/returns/${caseId}/supplier-messages`, token, { message });
+}
+
+// patch-returns-flow (migration 146): approve with the refund and where the part goes; the part received (back to stock); the refund by hand / again
+export function approveReturnCase(token, caseId, { amount, sendBack, hubId, refundWhen, note, costBearer, overruleReason }) {
+  return authedMutate("POST", `/returns/${caseId}/approve`, token, { amount, sendBack, hubId, refundWhen, note, costBearer, overruleReason });
+}
+// patch-returns-supplier-followup (migration 150): after a refusal, ask the supplier to look again
+export function askSupplierAgain(token, caseId, note) {
+  return authedMutate("POST", `/returns/${caseId}/ask-supplier-again`, token, { note });
+}
+export function markReturnReceived(token, caseId, condition) {
+  return authedMutate("POST", `/returns/${caseId}/received`, token, { condition });
+}
+export function markReturnRefunded(token, caseId, reference) {
+  return authedMutate("POST", `/returns/${caseId}/refunded`, token, { reference });
+}
+export function retryReturnRefund(token, caseId) {
+  return authedMutate("POST", `/returns/${caseId}/retry-refund`, token, {});
 }
 
 export function createTicketForOrder(token, orderId) {
@@ -233,6 +271,9 @@ async function deliveryRulesMutate(method, path, token, body) {
 }
 
 export const fetchCountriesList = (token) => deliveryRulesGet("/countries", token);
+export const fetchDeliverySettings = (token) => deliveryRulesGet("/settings", token);
+export const saveDeliverySettings = (token, settings) => deliveryRulesMutate("PUT", "/settings", token, settings);
+export const previewDelivery = (token, input) => deliveryRulesMutate("POST", "/preview", token, input);
 export const fetchWarehouseCountries = (token) => deliveryRulesGet("/warehouse-countries", token);
 export const fetchCountryGroups = (token) => deliveryRulesGet("/country-groups", token);
 export const createCountryGroup = (token, name, nameAr) => deliveryRulesMutate("POST", "/country-groups", token, { name, nameAr });
@@ -421,6 +462,10 @@ export async function fetchDiscountRules(token) {
   return response.json();
 }
 export const createDiscountRule = (token, rule) => fitmentMutate("POST", "/catalog/admin/discount-rules", token, rule);
+// Pricing > Discount rules > Rules: how a discount price is held in the basket and at checkout (migration 143).
+export function fetchDiscountHoldRules(token) { return authedGet("/admin/discount-hold/rules", token); }
+export function saveDiscountHoldRules(token, rules) { return authedMutate("PUT", "/admin/discount-hold/rules", token, rules); }
+export function fetchDiscountHoldEvents(token, limit = 30) { return authedGet(`/admin/discount-hold/events?limit=${limit}`, token); }
 export const updateDiscountRule = (token, id, rule) => fitmentMutate("PATCH", `/catalog/admin/discount-rules/${id}`, token, rule);
 export const deleteDiscountRule = (token, id) => fitmentMutate("DELETE", `/catalog/admin/discount-rules/${id}`, token);
 export async function fetchLoyaltyTiers(token) {
@@ -452,11 +497,11 @@ export async function fetchFxRateMode(token) {
 
 export const updateFxRateMode = (token, mode) => fitmentMutate("PATCH", "/pricing/fx-rate-mode", token, { mode });
 
-export async function previewPricing(token, { supplierCostCny, weightKg, lengthCm, widthCm, heightCm }) {
+export async function previewPricing(token, { supplierCostCny, weightKg, lengthCm, widthCm, heightCm, destinationIsoCode, warehouseCountry }) {
   const response = await fetch(`${API_BASE_URL}/pricing/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm }),
+    body: JSON.stringify({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm, destinationIsoCode, warehouseCountry }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
@@ -1151,7 +1196,7 @@ async function faultCaseRequest(path, token, body) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
-export const openFaultCase = (token, { shipmentId, items, costBearer, notes }) => faultCaseRequest("", token, { shipmentId, items, costBearer, notes });
+export const openFaultCase = (token, { shipmentId, items, costBearer, notes, overruleReason }) => faultCaseRequest("", token, overruleReason ? { shipmentId, items, costBearer, notes, overruleReason } : { shipmentId, items, costBearer, notes });
 export const confirmFaultRefund = (token, caseId, amount) => faultCaseRequest(`/${caseId}/confirm-refund`, token, { amount });
 export const markFaultRefunded = (token, caseId, reference) => faultCaseRequest(`/${caseId}/mark-refunded`, token, { reference });
 // Closes a stuck case by hand, with a written reason that is kept on the record (migration 098).
@@ -1175,6 +1220,16 @@ export async function resolveFlaggedShipment(token, id, { resolution, resolution
 
 // A supplier's return address (migration 092): where the inspection hub sends a faulty unit back to. null until entered.
 // The supplier maintains their own; an admin can read and correct any supplier's.
+// patch-supplier-verification (migration 152): what the supplier sent to be trusted, Leap's checklist and private notes
+export function fetchSupplierVerification(token, supplierId) {
+  return authedGet(`/supplier/${encodeURIComponent(supplierId)}/verification`, token);
+}
+export function setSupplierVerificationCheck(token, supplierId, item, checked) {
+  return authedMutate("PUT", `/supplier/${encodeURIComponent(supplierId)}/verification/checks`, token, { item, checked });
+}
+export function saveSupplierVerificationNotes(token, supplierId, notes) {
+  return authedMutate("PUT", `/supplier/${encodeURIComponent(supplierId)}/verification/notes`, token, { notes });
+}
 export function fetchSupplierReturnAddress(token, supplierId) {
   return authedGet(`/supplier/${supplierId}/return-address`, token);
 }

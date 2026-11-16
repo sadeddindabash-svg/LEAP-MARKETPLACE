@@ -97,7 +97,14 @@ export default function OrdersPage() {
                       </div>
                       <div className="flex items-center gap-4">
                         <Price usd={o.total} className="text-lg font-extrabold text-navy" />
+                        {o.faultEnding ? (
+                          <span className="rounded-full bg-[#e3f2ea] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-[#0f6b49]">
+                            {lang === "ar" ? { replaced: "تم الاستبدال", refunded: "تم الاسترداد", closed: "مغلق" }[o.faultEnding] : { replaced: "Replaced", refunded: "Refunded", closed: "Closed" }[o.faultEnding]}
+                            {o.faultEnding === "replaced" && o.replacementOrderIds?.length ? <span className="ms-1 font-plate normal-case" dir="ltr">→ {o.replacementOrderIds.join(", ")}</span> : null}
+                          </span>
+                        ) : (
                         <span className={`rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide ${shown === "delivered" ? "bg-[#e3f2ea] text-[#0f6b49]" : "bg-[#fdf1d6] text-[#7a4e00]"}`}>{statusLabel(lang, shown)}</span>
+                        )}
                       </div>
                     </Link>
                   </li>

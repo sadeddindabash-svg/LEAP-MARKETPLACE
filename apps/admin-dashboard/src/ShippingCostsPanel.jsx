@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { C, disp, body } from "./theme";
 import { Card } from "./components/ui";
@@ -13,7 +14,7 @@ const PERIODS = [["day", "Daily"], ["week", "Weekly"], ["month", "Monthly"], ["q
 const num = { ...body, fontVariantNumeric: "tabular-nums" };
 const small = { ...body, fontSize: 12.5, color: C.muted };
 const button = { ...body, display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, color: C.ink, cursor: "pointer" };
-const dark = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const dark = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 const photoSrc = (url) => (!url ? null : /^https?:\/\//.test(url) ? url : `${API_BASE_URL}${url}`);
 const local = (amount, currency) => `${currency} ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const signed = (n) => (n === null || n === undefined ? "—" : `${n > 0 ? "+" : n < 0 ? "−" : ""}$${Math.abs(n).toFixed(2)}`);
@@ -126,10 +127,10 @@ export default function ShippingCostsPanel({ onSessionExpired }) {
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <div role="group" aria-label="Period" style={{ display: "inline-flex", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 3 }}>
+        <div role="group" aria-label="Period" data-leap-segments="" style={{ display: "inline-flex", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 3 }}>
           {PERIODS.map(([id, name]) => (
             <button key={id} type="button" aria-pressed={period === id} onClick={() => { setPeriod(id); setDate(report?.running ? null : report?.start || null); }}
-              style={{ ...body, border: "none", cursor: "pointer", padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: period === id ? C.ink : "transparent", color: period === id ? "#fff" : C.muted }}>{name}</button>
+              style={{ ...body, border: "none", cursor: "pointer", padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: period === id ? C.navy : "transparent", color: period === id ? "#fff" : C.muted }}>{name}</button>
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

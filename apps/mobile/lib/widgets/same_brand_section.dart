@@ -17,6 +17,7 @@ class SameBrandSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LazyProductGrid(
+      evenOnly: true,      // only full lines of 2 (confirmed with the person via mockup)
       fetchPage: (page) async {
         final items = await ApiClient().fetchSameBrandProducts(productId, lang: isAr ? 'ar' : 'en', page: page);
         return (items: items, hasMore: items.length >= 10);

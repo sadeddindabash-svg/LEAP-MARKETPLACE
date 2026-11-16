@@ -219,6 +219,10 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
           // `kind` is the step's own name, the same in every language: the app picks the icon from it instead of reading English words.
           hubMilestones.push({ time: e.created_at, description: label[language], kind: e.step, location: null, source: 'hub' });
         }
+      // patch-buyer-fault-tracking: checking -> problem found -> replaced / refunded / closed, in plain words (never the return to the supplier)
+      const story = await require('./faultStory').faultStory(db, so.id, shipment, language);
+      hubMilestones.push(...story.milestones);
+      so.faultOutcome = story.outcome;
       if (shipment.delivered_at) {
         hubMilestones.push({
           time: shipment.delivered_at,
@@ -262,7 +266,7 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
     // hub genuinely confirms delivery. This condition was always
     // true, so an already-delivered real order could still get
     // falsely flagged as delayed. Checks the real hub status instead.
-    const isDelayed = shipment?.status !== 'delivered' && daysSinceLastUpdate !== null && daysSinceLastUpdate >= 5;
+    const isDelayed = !so.faultOutcome && shipment?.status !== 'delivered' && daysSinceLastUpdate !== null && daysSinceLastUpdate >= 5;      // a part being checked, replaced or refunded is not "delayed"
 
     const stage = trackingStage(so.supplier_status, refused, shipment);
     results.push({
@@ -275,6 +279,7 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
       deliveryProof: shipment ? await require('../deliveryProof/helpers').loadProofForShipment(shipment.id, { forAdmin: false }) : null,
       supplierTrackingNumber: so.supplier_tracking_number,
       hubTrackingNumber: hubTrackingNumber || null,
+      faultOutcome: so.faultOutcome || null,      // checking / problem / replaced (replacementOrderId) / refunding / refunded (refundAmount) / closed
       timeline,
       isDelayed,
     });

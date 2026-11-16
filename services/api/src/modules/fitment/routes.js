@@ -61,11 +61,11 @@ router.get('/vehicles', async (req, res, next) => {
 
 router.get('/brands', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_brands ORDER BY sort_order ASC');
+    const { rows } = await db.query('SELECT b.*, (SELECT COUNT(*)::int FROM vehicle_models m WHERE m.brand_id = b.id) AS model_count FROM vehicle_brands b ORDER BY b.sort_order ASC');      // patch-vehicle-data-redesign: + model_count
     // nameAr/photoUrl (new, migration 046) -- may be null for a brand
     // created before this requirement existed; a real, honest gap for
     // old data, not hidden.
-    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, nameZh: r.name_zh || null, photoUrl: r.photo_url, sortOrder: r.sort_order })));
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, nameZh: r.name_zh || null, photoUrl: r.photo_url, sortOrder: r.sort_order, modelCount: r.model_count })));
   } catch (err) {
     next(err);
   }
@@ -73,8 +73,8 @@ router.get('/brands', async (req, res, next) => {
 
 router.get('/brands/:brandId/models', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY sort_order ASC', [req.params.brandId]);
-    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, nameAr: r.name_ar, nameZh: r.name_zh || null, photoUrl: r.photo_url, sortOrder: r.sort_order })));
+    const { rows } = await db.query('SELECT m.*, (SELECT COUNT(*)::int FROM vehicle_generations g WHERE g.model_id = m.id) AS year_count FROM vehicle_models m WHERE m.brand_id = $1 ORDER BY m.sort_order ASC', [req.params.brandId]);      // patch-vehicle-data-redesign: + year_count
+    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, nameAr: r.name_ar, nameZh: r.name_zh || null, photoUrl: r.photo_url, sortOrder: r.sort_order, yearCount: r.year_count })));
   } catch (err) {
     next(err);
   }
@@ -89,9 +89,11 @@ router.get('/models/:modelId/generations', async (req, res, next) => {
   try {
     // a year without its own photo shows the photo of its first version that has one (years are added without a photo now)
     const { rows } = await db.query(
-      `SELECT g.*, COALESCE(g.photo_url, (SELECT v.photo_url FROM vehicle_versions v WHERE v.generation_id = g.id AND v.photo_url IS NOT NULL ORDER BY v.sort_order, v.id LIMIT 1)) AS photo_url
+      `SELECT g.*, COALESCE(g.photo_url, (SELECT v.photo_url FROM vehicle_versions v WHERE v.generation_id = g.id AND v.photo_url IS NOT NULL ORDER BY v.sort_order, v.id LIMIT 1)) AS photo_url,
+              (SELECT COUNT(*)::int FROM vehicle_versions v WHERE v.generation_id = g.id) AS version_count,
+              (SELECT COUNT(*)::int FROM vehicle_versions v WHERE v.generation_id = g.id AND v.photo_url IS NULL) AS versions_without_photo
        FROM vehicle_generations g WHERE g.model_id = $1 ORDER BY g.year_start DESC, g.sort_order ASC`, [req.params.modelId]);
-    res.json(rows.map(toGenerationDto));
+    res.json(rows.map((r) => ({ ...toGenerationDto(r), versionCount: r.version_count, versionsWithoutPhoto: r.versions_without_photo })));      // patch-vehicle-data-redesign: + the counts
   } catch (err) {
     next(err);
   }

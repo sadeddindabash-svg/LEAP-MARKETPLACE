@@ -14,6 +14,7 @@ const { getSupplierFinance } = require('../supplierFinance/queries');
 const { validateReturnAddress, getReturnAddress, saveReturnAddress } = require('../supplierReturnAddress/helpers');
 const messages = require('../notifications/messages');
 const { notifyRestock } = require('../restockAlerts/notify');
+const verification = require('../supplierVerification/helpers');      // patch-supplier-verification (migration 152)
 
 /**
  * Supplier module — SUP-001–003 (onboarding/verification) from the
@@ -36,6 +37,8 @@ function toSupplierDto(row) {
     verificationStatus: row.verification_status,
     listingCount: Number(row.listing_count) || 0,
     createdAt: row.created_at,
+    // the admin's verification card: has the supplier entered where to be paid (only on the list, which asks for it)
+    ...(row.has_payout_method === undefined ? {} : { hasPayoutMethod: Boolean(row.has_payout_method) }),
     // migration 122: when this supplier is paid
     paymentTerm: row.payment_term || null,
     paymentTermDays: row.payment_term_days || null,
@@ -57,13 +60,15 @@ function toPayoutMethodDto(row) {
 router.get('/', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
   try {
     const { rows } = await db.query(`
-      SELECT s.*, COUNT(p.id) AS listing_count
+      SELECT s.*, COUNT(p.id) AS listing_count,
+        EXISTS (SELECT 1 FROM supplier_payout_methods m WHERE m.supplier_id = s.id) AS has_payout_method
       FROM suppliers s
       LEFT JOIN products p ON p.supplier_id = s.id
       GROUP BY s.id
       ORDER BY s.created_at DESC
     `);
-    res.json(rows.map(toSupplierDto));
+    const summaries = await verification.summaries();      // patch-supplier-verification
+    res.json(rows.map((r) => ({ ...toSupplierDto(r), verification: summaries.get(r.id) || null })));
   } catch (err) {
     next(err);
   }
@@ -323,6 +328,63 @@ router.put('/me/payout-method', requireAuth, requireRole('supplier'), async (req
 
 // GET/PUT /supplier/me/return-address (migration 092): where the inspection hub sends a faulty unit back to. The
 // supplier maintains their own; saving replaces it. Declared before '/:id/return-address' so "me" is never read as an id.
+// patch-supplier-verification (migration 152): the supplier's verification documents -- license, premises photos, location, contact, business
+// details -- and Leap's checklist and notes on them. The /me routes are registered BEFORE the /:id ones on purpose (/:id would catch "me").
+router.get('/me/verification', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    res.json(await verification.getForSupplier(req.user.supplierId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/me/verification', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const value = verification.validate(req.body);
+    res.json(await verification.saveForSupplier(req.user.supplierId, value));
+  } catch (err) {
+    if (err instanceof verification.VerificationError) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get('/:id/verification', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json(await verification.getForAdmin(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /supplier/:id/verification/checks  { item, checked }  -- one item of Leap's checklist ticked or unticked
+router.put('/:id/verification/checks', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    const { item, checked } = req.body || {};
+    const result = await verification.setCheck(req.params.id, item, Boolean(checked), req.user.sub);
+    await logAdminAction(req, checked ? 'supplier_verification_checked' : 'supplier_verification_unchecked', 'supplier', req.params.id, { item });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof verification.VerificationError) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+// PUT /supplier/:id/verification/notes  { notes }  -- Leap's private notes (the supplier never sees them)
+router.put('/:id/verification/notes', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json(await verification.saveNotes(req.params.id, (req.body || {}).notes, req.user.sub));
+  } catch (err) {
+    if (err instanceof verification.VerificationError) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
 router.get('/me/return-address', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     res.json(await getReturnAddress(req.user.supplierId));
@@ -1133,7 +1195,7 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
 router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id, hs.status AS hub_shipment_status, so.respond_by, so.accepted_at, so.refused_at, so.refusal_reason, so.refusal_note
+      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id, hs.status AS hub_shipment_status, so.respond_by, so.accepted_at, so.refused_at, so.refusal_reason, so.refusal_note, so.resend_count
        FROM supplier_sub_orders so
        JOIN orders o ON o.id = so.order_id
        LEFT JOIN hubs h ON h.id = so.hub_id
@@ -1143,6 +1205,9 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
       [req.user.supplierId]
     );
 
+    // the answer time from admin > Orders > Rules, for the portal's countdown (24 hours when the rules are not there yet)
+    let answerWindowHours = 24;
+    try { answerWindowHours = (await require('../orderResponse/noAnswer').getRules()).waitHours || 24; } catch (err) { /* rules not installed: 24 h */ }
     const result = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
@@ -1163,6 +1228,8 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         hubShipmentId: so.hub_shipment_id,
         placedAt: so.placed_at,
         respondBy: so.respond_by,
+        answerWindowHours,
+        timesSent: (so.resend_count || 0) + 1,
         acceptedAt: so.accepted_at,
         refusedAt: so.refused_at,
         refusalReason: so.refusal_reason,

@@ -1,0 +1,224 @@
+const db = require('../../../db/pool');
+const { createNotification } = require('../notifications/helpers');
+const { supplierUnitPriceCny } = require('../shared/supplierMoney');
+
+/**
+ * A supplier did not answer a new order within 24 hours (confirmed with the person via mockup, option C: automatic, with the admin's rules).
+ * The rules (one row, set in admin > Orders > Refused / no answer):
+ *   then_action             'move' (give it to another supplier with the same OEM number) | 'resend' (24 more hours for the same supplier) | 'ask' (tell the admin, as before)
+ *   pick_by                 how the new supplier is chosen: 'price' (lowest supplier price) | 'stock' (most stock)
+ *   max_price_increase_pct  the new supplier's price may be at most this much above the first one's; otherwise the admin is asked
+ *   if_none                 when no other supplier can take it: 'resend' | 'ask'
+ *   max_resends             how many times it may be sent again to the same supplier before the admin is asked
+ * The buyer always keeps the price they paid. The new supplier gets 24 hours, with the usual reminders. Every step is written to sub_order_events.
+ */
+const DEFAULT_RULES = { thenAction: 'move', pickBy: 'price', maxPriceIncreasePct: 10, ifNone: 'resend', maxResends: 1 };
+const ANSWER_HOURS = 24;
+
+class NoAnswerError extends Error { constructor(message, status = 400) { super(message); this.status = status; } }
+
+function rulesFromRow(r) {
+  if (!r) return { ...DEFAULT_RULES };
+  return { thenAction: r.then_action, pickBy: r.pick_by, maxPriceIncreasePct: Number(r.max_price_increase_pct), ifNone: r.if_none, maxResends: Number(r.max_resends), updatedAt: r.updated_at };
+}
+async function getRules(client = db) {
+  const { rows } = await client.query('SELECT * FROM order_no_answer_rules WHERE id = 1');
+  return rulesFromRow(rows[0]);
+}
+async function saveRules(input, adminId) {
+  const r = { ...DEFAULT_RULES, ...(input || {}) };
+  if (!['move', 'resend', 'ask'].includes(r.thenAction)) throw new NoAnswerError("thenAction must be 'move', 'resend' or 'ask'");
+  if (!['price', 'stock'].includes(r.pickBy)) throw new NoAnswerError("pickBy must be 'price' or 'stock'");
+  if (!['resend', 'ask'].includes(r.ifNone)) throw new NoAnswerError("ifNone must be 'resend' or 'ask'");
+  const pct = Number(r.maxPriceIncreasePct); const resends = Number(r.maxResends);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new NoAnswerError('maxPriceIncreasePct must be between 0 and 100');
+  if (!Number.isInteger(resends) || resends < 0 || resends > 5) throw new NoAnswerError('maxResends must be a whole number from 0 to 5');
+  const { rows } = await db.query(
+    `INSERT INTO order_no_answer_rules (id, then_action, pick_by, max_price_increase_pct, if_none, max_resends, updated_at, updated_by)
+     VALUES (1, $1, $2, $3, $4, $5, now(), $6)
+     ON CONFLICT (id) DO UPDATE SET then_action = $1, pick_by = $2, max_price_increase_pct = $3, if_none = $4, max_resends = $5, updated_at = now(), updated_by = $6
+     RETURNING *`,
+    [r.thenAction, r.pickBy, pct, r.ifNone, resends, adminId || null]
+  );
+  return rulesFromRow(rows[0]);
+}
+
+async function recordEvent(client, { subOrderId, orderId, kind, detail = null, byAdmin = null }) {
+  await client.query('INSERT INTO sub_order_events (sub_order_id, order_id, kind, detail, by_admin) VALUES ($1, $2, $3, $4, $5)', [subOrderId, orderId, kind, detail, byAdmin]);
+}
+async function historyFor(subOrderId) {
+  const { rows: so } = await db.query('SELECT order_id FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
+  if (so.length === 0) throw new NoAnswerError('Sub-order not found', 404);
+  const { rows } = await db.query('SELECT e.*, s.name AS supplier_name FROM sub_order_events e JOIN supplier_sub_orders so ON so.id = e.sub_order_id JOIN suppliers s ON s.id = so.supplier_id WHERE e.order_id = $1 ORDER BY e.created_at, e.id', [so[0].order_id]);
+  return rows.map((r) => ({ at: r.created_at, kind: r.kind, detail: r.detail, byAdmin: r.by_admin, subOrderId: r.sub_order_id, supplierName: r.supplier_name }));
+}
+
+// ---- the words (English and Arabic, like the other order notifications)
+const words = {
+  buyerMoved: (orderId) => ({ title: 'We found another supplier for your part', body: `Order ${orderId}: the part will now come from another supplier, at the same price. Delivery may change by a day or two.`, titleAr: 'وجدنا مورّدًا آخر لقطعتك', bodyAr: `الطلب ${orderId}: ستصلك القطعة من مورّد آخر وبنفس السعر. قد يتغيّر موعد التوصيل يومًا أو يومين.` }),
+  oldSupplierMoved: (orderId) => ({ title: `Order ${orderId} was given to another supplier`, body: `You did not accept or refuse order ${orderId} within 24 hours, so it was given to another supplier.`, titleAr: `تم إسناد الطلب ${orderId} إلى مورّد آخر`, bodyAr: `لم تقبل الطلب ${orderId} ولم ترفضه خلال 24 ساعة، لذلك أُسند إلى مورّد آخر.` }),
+  newSupplier: (orderId) => ({ title: `A new order for you: ${orderId}`, body: `Leap assigned order ${orderId} to you. Please accept or refuse it within 24 hours.`, titleAr: `طلب جديد لك: ${orderId}`, bodyAr: `أسند ليب الطلب ${orderId} إليك. يرجى قبوله أو رفضه خلال 24 ساعة.` }),
+  resent: (orderId, n) => ({ title: `Please answer order ${orderId} (${n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`} time)`, body: `Order ${orderId} was sent to you again. Accept or refuse it within 24 hours.`, titleAr: `يرجى الرد على الطلب ${orderId} (المرة ${n})`, bodyAr: `أُرسل إليك الطلب ${orderId} مرة أخرى. اقبله أو ارفضه خلال 24 ساعة.` }),
+  adminAsked: (orderId, supplierName, why) => ({ title: `No answer from ${supplierName} for order ${orderId}`, body: `${why} It has NOT been cancelled. Open Orders > Refused / no answer to send it again or give it to another supplier.`, titleAr: `لا رد من ${supplierName} على الطلب ${orderId}`, bodyAr: 'لم يتم إلغاؤه. افتح الطلبات > المرفوضة / بلا رد لإرساله مرة أخرى أو إسناده إلى مورّد آخر.' }),
+  adminMoved: (orderId, from, to) => ({ title: `Order ${orderId} moved automatically`, body: `${from} did not answer in 24 hours, so the order was given to ${to} (same OEM number).`, titleAr: `نُقل الطلب ${orderId} تلقائيًا`, bodyAr: `لم يرد ${from} خلال 24 ساعة، فأُسند الطلب إلى ${to} (نفس رقم القطعة).` }),
+};
+async function notifySupplier(supplierId, msg, orderId, client = db) {
+  const { rows } = await client.query("SELECT id FROM users WHERE supplier_id = $1 AND role = 'supplier'", [supplierId]);
+  for (const u of rows) await createNotification({ userId: u.id, type: 'supplier_message', ...msg, linkType: 'order', linkId: orderId }, client);
+}
+async function notifyAdmins(msg, orderId, client = db) {
+  const { rows } = await client.query("SELECT id FROM users WHERE role = 'admin'");
+  for (const u of rows) await createNotification({ userId: u.id, type: 'supplier_message', ...msg, linkType: 'order', linkId: orderId }, client);
+}
+
+// ---- choosing the new supplier
+// Every other supplier that can take the WHOLE part of the order: each item has a live part with the same OEM number and enough stock.
+// Sorted by the rule (lowest total supplier price, or most stock); each with whether its price stays inside the allowed increase.
+async function candidatesFor(subOrderId, rules, client = db) {
+  const { rows: so } = await client.query('SELECT * FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
+  if (so.length === 0) throw new NoAnswerError('Sub-order not found', 404);
+  const { rows: lines } = await client.query('SELECT oli.*, p.oem_number FROM order_line_items oli JOIN products p ON p.id = oli.product_id WHERE oli.sub_order_id = $1 ORDER BY oli.id', [subOrderId]);
+  if (lines.length === 0 || lines.some((l) => !l.oem_number || String(l.oem_number).trim() === '')) return [];
+  const bySupplier = new Map();
+  for (const line of lines) {
+    const { rows } = await client.query(
+      `SELECT p.*, s.name AS supplier_name FROM products p JOIN suppliers s ON s.id = p.supplier_id
+       WHERE p.oem_number = $1 AND p.supplier_id <> $2 AND p.status = 'active' AND p.stock_quantity >= $3
+         AND p.supplier_id NOT IN (SELECT x.supplier_id FROM supplier_sub_orders x WHERE x.order_id = $4 AND (x.no_answer_closed_at IS NOT NULL OR x.refused_at IS NOT NULL))`,      // never back to a supplier that already left or refused this order
+      [line.oem_number, so[0].supplier_id, line.quantity, so[0].order_id]
+    );
+    for (const p of rows) {
+      const cost = supplierUnitPriceCny(p);
+      const entry = bySupplier.get(p.supplier_id) || { supplierId: p.supplier_id, supplierName: p.supplier_name, picks: new Map() };
+      const prev = entry.picks.get(line.product_id);
+      // for one item, the supplier's cheapest live part with that number
+      if (!prev || (cost ?? Infinity) < (prev.cost ?? Infinity)) entry.picks.set(line.product_id, { productId: line.product_id, alternativeProductId: p.id, name: p.name, cost, stock: p.stock_quantity, quantity: line.quantity, oldCost: line.supplier_unit_price_cny == null ? null : Number(line.supplier_unit_price_cny) });
+      bySupplier.set(p.supplier_id, entry);
+    }
+  }
+  const out = [];
+  for (const e of bySupplier.values()) {
+    if (e.picks.size !== lines.length) continue;      // this supplier cannot take every item
+    const picks = [...e.picks.values()];
+    const total = picks.every((x) => x.cost != null) ? picks.reduce((s, x) => s + x.cost * x.quantity, 0) : null;
+    const oldTotal = picks.every((x) => x.oldCost != null) ? picks.reduce((s, x) => s + x.oldCost * x.quantity, 0) : null;
+    const increasePct = total != null && oldTotal ? ((total - oldTotal) / oldTotal) * 100 : null;
+    const withinPrice = increasePct == null ? true : increasePct <= rules.maxPriceIncreasePct + 1e-9;
+    out.push({ supplierId: e.supplierId, supplierName: e.supplierName, totalCny: total == null ? null : Number(total.toFixed(2)), oldTotalCny: oldTotal == null ? null : Number(oldTotal.toFixed(2)), increasePct: increasePct == null ? null : Number(increasePct.toFixed(1)), withinPrice, minStock: Math.min(...picks.map((x) => x.stock)), items: picks.map((x) => ({ productId: x.productId, alternativeProductId: x.alternativeProductId, name: x.name, stock: x.stock, costCny: x.cost })) });
+  }
+  out.sort((a, b) => (rules.pickBy === 'stock' ? b.minStock - a.minStock || (a.totalCny ?? Infinity) - (b.totalCny ?? Infinity) : (a.totalCny ?? Infinity) - (b.totalCny ?? Infinity) || b.minStock - a.minStock));
+  return out;
+}
+
+// ---- the two actions (each inside the caller's transaction)
+// Send it again to the SAME supplier: 24 more hours, reminders start again, it leaves "needs attention".
+async function resendSubOrder(client, { subOrderId, byAdmin = null }) {
+  const { rows } = await client.query('SELECT * FROM supplier_sub_orders WHERE id = $1 FOR UPDATE', [subOrderId]);
+  if (rows.length === 0) throw new NoAnswerError('Sub-order not found', 404);
+  const so = rows[0];
+  if (so.status !== 'pending' || so.accepted_at) throw new NoAnswerError('Only an order the supplier has not answered can be sent again.', 409);
+  const { rows: hub } = await client.query('SELECT 1 FROM hub_shipments WHERE sub_order_id = $1', [subOrderId]);
+  if (hub.length) throw new NoAnswerError('This order is already on its way to the hub.', 409);
+  const { rows: updated } = await client.query(
+    `UPDATE supplier_sub_orders SET respond_by = now() + make_interval(hours => $2), reminders_sent = 0, last_reminder_at = NULL, escalated_at = NULL,
+       resend_count = resend_count + 1, refusal_handled_at = NULL, refusal_handled_by = NULL, refusal_handled_note = NULL WHERE id = $1 RETURNING *`,
+    [subOrderId, ANSWER_HOURS]
+  );
+  const n = updated[0].resend_count + 1;      // the 2nd time it is sent, the 3rd...
+  await recordEvent(client, { subOrderId, orderId: so.order_id, kind: 'resent', detail: `sent again (${n === 2 ? '2nd' : `${n}th`} time), 24 hours to answer`, byAdmin });
+  return { subOrder: updated[0], timesSent: n };
+}
+
+// Give it to ANOTHER supplier: the old part is closed ("no answer", its units go back on the shelf), a new part is made for the new supplier
+// at the buyer's same price, the new supplier has 24 hours. mapping: [{ productId, alternativeProductId }] for every item, all from ONE supplier.
+async function moveSubOrder(client, { subOrderId, mapping, byAdmin = null, automatic = false }) {
+  const { rows } = await client.query('SELECT * FROM supplier_sub_orders WHERE id = $1 FOR UPDATE', [subOrderId]);
+  if (rows.length === 0) throw new NoAnswerError('Sub-order not found', 404);
+  const old = rows[0];
+  if (old.status !== 'pending' || old.accepted_at) throw new NoAnswerError('Only an order the supplier has not answered can be moved here.', 409);
+  const { rows: hub } = await client.query('SELECT 1 FROM hub_shipments WHERE sub_order_id = $1', [subOrderId]);
+  if (hub.length) throw new NoAnswerError('This order is already on its way to the hub.', 409);
+  const { rows: lines } = await client.query('SELECT * FROM order_line_items WHERE sub_order_id = $1 ORDER BY id', [subOrderId]);
+  if (!Array.isArray(mapping) || mapping.length !== lines.length) throw new NoAnswerError('Choose another supplier for every item of the order.');
+  const picks = []; let newSupplier = null;
+  for (const line of lines) {
+    const m = mapping.find((x) => x && x.productId === line.product_id);
+    if (!m || !m.alternativeProductId) throw new NoAnswerError('Choose another supplier for every item of the order.');
+    const { rows: orig } = await client.query('SELECT oem_number FROM products WHERE id = $1', [line.product_id]);
+    const { rows: alt } = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [m.alternativeProductId]);
+    if (alt.length === 0 || alt[0].status !== 'active') throw new NoAnswerError('That part is not available.');
+    if (alt[0].supplier_id === old.supplier_id) throw new NoAnswerError('The new part must come from a different supplier.');
+    if (!orig[0].oem_number || alt[0].oem_number !== orig[0].oem_number) throw new NoAnswerError('The new part must have the same OEM number.');
+    if (alt[0].stock_quantity < line.quantity) throw new NoAnswerError(`Not enough stock of ${alt[0].name}.`, 409);
+    if (newSupplier && newSupplier !== alt[0].supplier_id) throw new NoAnswerError('Choose parts from ONE supplier (one new order).');
+    newSupplier = alt[0].supplier_id; picks.push({ line, alt: alt[0] });
+  }
+  const { rows: created } = await client.query("INSERT INTO supplier_sub_orders (order_id, supplier_id, status, hub_id) VALUES ($1, $2, 'pending', $3) RETURNING id", [old.order_id, newSupplier, old.hub_id]);
+  for (const { line, alt } of picks) {
+    await client.query('INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny) VALUES ($1, $2, $3, $4, $5)', [created[0].id, alt.id, line.quantity, line.unit_price, supplierUnitPriceCny(alt)]);
+    await client.query('UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2', [line.quantity, alt.id]);
+    await client.query('UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2', [line.quantity, line.product_id]);      // the first supplier never confirmed: its units go back on the shelf
+  }
+  await client.query(
+    `UPDATE supplier_sub_orders SET status = 'cancelled', no_answer_closed_at = now(), reassigned_to_sub_order_id = $2, refusal_handled_at = now(), refusal_handled_by = $3,
+       refusal_handled_note = COALESCE(refusal_handled_note, $4) WHERE id = $1`,
+    [subOrderId, created[0].id, byAdmin || 'automatic', automatic ? 'Moved automatically: no answer in 24 hours' : null]
+  );
+  const { rows: names } = await client.query('SELECT id, name FROM suppliers WHERE id = ANY($1)', [[old.supplier_id, newSupplier]]);
+  const nameOf = (id) => names.find((x) => x.id === id)?.name || id;
+  await recordEvent(client, { subOrderId, orderId: old.order_id, kind: automatic ? 'moved_auto' : 'moved_admin', detail: `given to ${nameOf(newSupplier)} (same OEM number)`, byAdmin });
+  await recordEvent(client, { subOrderId: created[0].id, orderId: old.order_id, kind: 'sent', detail: `sent to ${nameOf(newSupplier)}, 24 hours to answer`, byAdmin });
+  const { rows: orderRows } = await client.query('SELECT id, buyer_id FROM orders WHERE id = $1', [old.order_id]);
+  return { newSubOrderId: created[0].id, newSupplierId: newSupplier, oldSupplierId: old.supplier_id, fromName: nameOf(old.supplier_id), toName: nameOf(newSupplier), order: orderRows[0] };
+}
+
+async function announceMove(result, automatic) {
+  try {
+    if (result.order.buyer_id) await createNotification({ userId: result.order.buyer_id, type: 'order_status', ...words.buyerMoved(result.order.id), linkType: 'order', linkId: result.order.id });
+    await notifySupplier(result.oldSupplierId, words.oldSupplierMoved(result.order.id), result.order.id);
+    await notifySupplier(result.newSupplierId, words.newSupplier(result.order.id), result.order.id);
+    if (automatic) await notifyAdmins(words.adminMoved(result.order.id, result.fromName, result.toName), result.order.id);
+  } catch (err) { console.error('[no-answer] move notifications failed (non-fatal):', err.message); }
+}
+async function announceResend(subOrder, timesSent) {
+  try { await notifySupplier(subOrder.supplier_id, words.resent(subOrder.order_id, timesSent), subOrder.order_id); }
+  catch (err) { console.error('[no-answer] resend notification failed (non-fatal):', err.message); }
+}
+
+async function inTransaction(fn) {
+  const client = await db.getPool().connect();
+  try { await client.query('BEGIN'); const r = await fn(client); await client.query('COMMIT'); return r; }
+  catch (err) { await client.query('ROLLBACK'); throw err; }
+  finally { client.release(); }
+}
+
+// The 24 hours are over and nobody answered: follow the rules. Returns what was done: 'moved' | 'resent' | 'asked'.
+async function applyRules(row, rules) {
+  const tryResend = async () => {
+    if (row.resend_count >= rules.maxResends) return false;
+    const r = await inTransaction((c) => resendSubOrder(c, { subOrderId: row.id }));
+    await announceResend(r.subOrder, r.timesSent);
+    return true;
+  };
+  const tryMove = async () => {
+    const list = await candidatesFor(row.id, rules);
+    const best = list.find((x) => x.withinPrice);
+    if (!best) return { moved: false, why: list.length ? `Other suppliers have this part, but all cost more than ${rules.maxPriceIncreasePct}% above the first supplier's price.` : 'No other supplier has this OEM number with enough stock.' };
+    const result = await inTransaction((c) => moveSubOrder(c, { subOrderId: row.id, mapping: best.items, automatic: true }));
+    await announceMove(result, true);
+    return { moved: true };
+  };
+  if (rules.thenAction === 'move') {
+    const m = await tryMove();
+    if (m.moved) return 'moved';
+    if (rules.ifNone === 'resend' && (await tryResend())) return 'resent';
+    return { asked: m.why };
+  }
+  if (rules.thenAction === 'resend') {
+    if (await tryResend()) return 'resent';
+    return { asked: `It was already sent again ${row.resend_count} time${row.resend_count === 1 ? '' : 's'}.` };
+  }
+  return { asked: 'The supplier has not accepted or refused it within 24 hours.' };
+}
+
+module.exports = { DEFAULT_RULES, NoAnswerError, getRules, saveRules, recordEvent, historyFor, candidatesFor, resendSubOrder, moveSubOrder, announceMove, announceResend, applyRules, inTransaction, words, notifyAdmins };

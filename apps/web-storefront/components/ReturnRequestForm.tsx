@@ -3,7 +3,7 @@
 import { useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
-import { createReturnCase, resolveImageUrl, uploadReviewPhoto, type OrderWho } from "@/lib/api";
+import { createReturnCase, resolveImageUrl, uploadReviewPhoto, RETURN_REASON_CODES, type OrderWho, type ReturnReasonCode } from "@/lib/api";
 import { useT } from "./LangProvider";
 
 const MAX_PHOTOS = 3;
@@ -15,7 +15,7 @@ const input = "min-h-12 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] bg
  */
 export default function ReturnRequestForm({ subOrderId, who, onClose }: { subOrderId: number; who: OrderWho; onClose: () => void }) {
   const t = useT();
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<ReturnReasonCode | "">("");      // from the list (patch-returns-flow)
   const [message, setMessage] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -33,10 +33,10 @@ export default function ReturnRequestForm({ subOrderId, who, onClose }: { subOrd
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reason.trim() || !message.trim()) return setError(t("please_fill_both_fields"));
+    if (!reason || !message.trim()) return setError(t("please_fill_both_fields"));
     setBusy(true); setError(null);
     try {
-      const made = await createReturnCase({ subOrderId, reason: reason.trim(), message: message.trim(), photos: photos.filter(Boolean) }, who);
+      const made = await createReturnCase({ subOrderId, reasonCode: reason, message: message.trim(), photos: photos.filter(Boolean) }, who);
       setSent(made.id);
     } catch (err) { setError(err instanceof Error && err.message ? err.message : t("something_went_wrong")); }
     finally { setBusy(false); }
@@ -55,7 +55,10 @@ export default function ReturnRequestForm({ subOrderId, who, onClose }: { subOrd
       <p className="text-sm text-muted">{t("return_goes_to_team")}</p>
       <div>
         <label htmlFor={`rr-reason-${subOrderId}`} className="mb-1.5 block text-[13px] font-bold text-navy">{t("return_reason_label")}</label>
-        <input id={`rr-reason-${subOrderId}`} className={input} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
+        <select id={`rr-reason-${subOrderId}`} className={input} value={reason} onChange={(e) => setReason(e.target.value as ReturnReasonCode | "")} disabled={busy}>
+          <option value="">{t("return_reason_pick")}</option>
+          {RETURN_REASON_CODES.map((code) => <option key={code} value={code}>{t(`return_reason_${code}`)}</option>)}
+        </select>
       </div>
       <div>
         <label htmlFor={`rr-details-${subOrderId}`} className="mb-1.5 block text-[13px] font-bold text-navy">{t("details_label")}</label>

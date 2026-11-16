@@ -6,6 +6,13 @@ const fs = require('fs');
 const os = require('os');
 const { imageSize } = require('image-size');
 const { getVideoDurationInSeconds } = require('get-video-duration');
+// Photos are made smaller when they arrive (patch-photo-shrink): the longest side at most 1600 px, WebP, turned the right way up, and
+// the hidden details removed (camera, date, GPS location). About ten times less storage, and pages load much faster on phones.
+// Needs the "sharp" package (npm install sharp in services/api); without it photos are kept as uploaded, as before.
+let sharp = null;
+try { sharp = require('sharp'); } catch (e) { console.warn('[uploads] sharp is not installed: photos are kept as uploaded (run: npm install sharp in services/api)'); }
+const SHRINK_LONGEST_SIDE_PX = 1600;
+const SHRINK_WEBP_QUALITY = 82;
 const { requireAuth, requireRole } = require('../auth/middleware');
 const { isCloudStorageConfigured, uploadToCloud } = require('../storage/client');
 const db = require('../../../db/pool');
@@ -74,13 +81,27 @@ router.post('/product-image', requireAuth, requireRole('supplier', 'hub_staff', 
       });
     }
 
-    const ext = req.file.mimetype === 'image/png' ? '.png' : req.file.mimetype === 'image/webp' ? '.webp' : '.jpg';
+    // the photo as it will be kept: shrunk to WebP when sharp is there, else as uploaded
+    let body = req.file.buffer, mimetype = req.file.mimetype, width = dimensions.width, height = dimensions.height;
+    if (sharp) {
+      try {
+        const { data, info } = await sharp(req.file.buffer, { failOn: 'error' })
+          .rotate()                                                                   // the right way up (from the phone's orientation flag)
+          .resize({ width: SHRINK_LONGEST_SIDE_PX, height: SHRINK_LONGEST_SIDE_PX, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: SHRINK_WEBP_QUALITY })                                     // keeps transparency (logos, brand photos)
+          .toBuffer({ resolveWithObject: true });                                     // no metadata copied: camera, date and GPS are gone
+        body = data; mimetype = 'image/webp'; width = info.width; height = info.height;
+      } catch (shrinkErr) {
+        return res.status(400).json({ error: 'Could not read this image: the file may be damaged. Please try another photo.' });
+      }
+    }
+    const ext = mimetype === 'image/png' ? '.png' : mimetype === 'image/webp' ? '.webp' : '.jpg';
     const filename = `${crypto.randomBytes(16).toString('hex')}${ext}`;
 
     if (isCloudStorageConfigured()) {
       try {
-        const url = await uploadToCloud(req.file.buffer, filename, req.file.mimetype);
-        return res.status(201).json({ url, width: dimensions.width, height: dimensions.height, storage: 'cloud' });
+        const url = await uploadToCloud(body, filename, mimetype);
+        return res.status(201).json({ url, width, height, storage: 'cloud' });
       } catch (cloudErr) {
         // Real cloud upload failure (bad credentials, bucket doesn't
         // exist, network issue) -- honestly fall back to local disk
@@ -89,8 +110,8 @@ router.post('/product-image', requireAuth, requireRole('supplier', 'hub_staff', 
       }
     }
 
-    fs.writeFileSync(path.join(UPLOAD_DIR, filename), req.file.buffer);
-    res.status(201).json({ url: `/uploads/${filename}`, width: dimensions.width, height: dimensions.height, storage: 'local' });
+    fs.writeFileSync(path.join(UPLOAD_DIR, filename), body);
+    res.status(201).json({ url: `/uploads/${filename}`, width, height, storage: 'local' });
   });
 });
 

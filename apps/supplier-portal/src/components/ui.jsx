@@ -1,4 +1,5 @@
-import { C, disp, mono, useBodyFont } from "../theme";
+import { C, disp, mono, useBodyFont, SHADOW } from "../theme";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { CountUpText } from "./CountUp";      // the big numbers count up from 0
 
 // Real, second step toward splitting App.jsx (see theme.js's own
@@ -19,26 +20,32 @@ export const STATUS_COLOR = {
 
 export function PlateChip({ children, small }) {
   return (
-    <span style={{ ...mono, border: `1.5px solid ${C.ink}`, color: C.ink, display: "inline-flex", alignItems: "center", padding: small ? "2px 7px" : "4px 10px", borderRadius: 6, fontSize: small ? 10.5 : 12, fontWeight: 700, letterSpacing: "0.04em" }}>{children}</span>
+    <span style={{ ...mono, border: `1.5px solid ${C.navy}`, color: C.navy, background: C.card, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", padding: small ? "2px 7px" : "4px 10px", borderRadius: 6, fontSize: small ? 10.5 : 12, fontWeight: 700, letterSpacing: "0.04em" }}>{children}</span>
   );
 }
 
 export function Badge({ label, statusKey }) {
   const [color, bg] = STATUS_COLOR[statusKey] || [C.muted, "#EEEFF1"];
   const font = useBodyFont();
-  return <span style={{ ...font, background: bg, color, fontWeight: 700, fontSize: 11.5, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>{label}</span>;
+  const ink = { [C.amber]: C.amberInk, [C.gauge]: C.gaugeInk, [C.torque]: C.torqueInk, [C.red]: C.redInk }[color] || color;
+  return (
+    <span style={{ ...font, display: "inline-flex", alignItems: "center", gap: 6, background: bg, color: ink, fontWeight: 700, fontSize: 11.5, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
+      <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: ink, flexShrink: 0 }} />
+      {label}
+    </span>
+  );
 }
 
-export function KpiCard({ label, value, sub, icon: Icon, accent }) {
+export function KpiCard({ label, value, sub, icon: Icon, accent, navy = false }) {
   const font = useBodyFont();
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16, flex: 1, minWidth: 0 }}>
+    <div style={{ position: "relative", overflow: "hidden", background: navy ? `linear-gradient(135deg, ${C.navyDeep}, ${C.navy} 55%, ${C.navySoft})` : C.card, border: `1px solid ${navy ? C.navyDeep : C.line}`, borderRadius: 14, padding: 20, flex: 1, minWidth: 0, boxShadow: navy ? SHADOW.navyRaised : SHADOW.card }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ ...font, fontSize: 12, fontWeight: 700, color: C.muted }}>{label}</span>
-        <Icon size={16} color={accent || C.muted} />
+        <span style={{ ...font, fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", color: navy ? C.signal : C.muted }}>{label}</span>
+        <Icon size={16} color={navy ? C.signal : accent || C.muted} />
       </div>
-      <div style={{ ...disp, fontSize: 27, fontWeight: 700, color: C.ink, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{typeof value === "string" ? <CountUpText text={value} /> : value}</div>
-      <div style={{ ...font, fontSize: 11.5, color: C.muted }}>{sub}</div>
+      <div style={{ ...mono, fontSize: 27, fontWeight: 700, letterSpacing: "-0.02em", color: navy ? "#fff" : C.ink, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{typeof value === "string" ? <CountUpText text={value} /> : value}</div>
+      <div style={{ ...font, fontSize: 12, fontWeight: 600, color: navy ? C.onNavyMuted : C.muted }}>{sub}</div>
     </div>
   );
 }
@@ -46,10 +53,13 @@ export function KpiCard({ label, value, sub, icon: Icon, accent }) {
 export function Card({ title, action, children, style }) {
   const font = useBodyFont();
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", ...style }}>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "auto", boxShadow: SHADOW.card, ...style }}>
       {title && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: `1px solid ${C.line}` }}>
-          <span style={{ ...font, fontSize: 15.5, fontWeight: 700, color: C.ink }}>{title}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: `1px solid ${C.line}`, background: "linear-gradient(180deg, #FFFFFF, #FBFCFD)" }}>
+          <span style={{ ...font, display: "inline-flex", alignItems: "center", gap: 10, fontSize: 16, fontWeight: 800, color: C.ink }}>
+            <span aria-hidden="true" style={{ width: 4, height: 18, borderRadius: 4, background: C.signal, flexShrink: 0 }} />
+            {title}
+          </span>
           {action}
         </div>
       )}

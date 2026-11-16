@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { Camera, X } from "lucide-react";
 import { API_BASE_URL, SessionExpiredError, uploadEvidencePhoto } from "./auth";
 import { useLang } from "./langContext";
@@ -7,7 +8,7 @@ import { useLang } from "./langContext";
 // carrier, in its own currency. The hub never sees the planned cost, nor an amount after saving: only whether it may ship. A parcel dearer
 // than planned needs a photo of it with its size and weight written on it, then waits for Leap's approval. Same as the hub app's
 // lib/features/shipment/shipping_cost_card.dart.
-const C = { ink: "#14171C", line: "#E4E6EA", card: "#FFFFFF", muted: "#6B7280", signal: "#E8622C", gauge: "#1E9D6B", gaugeBg: "#E4F5EC", amber: "#B9791F", amberBg: "#FCEFD8", red: "#C0362C", redBg: "#FBE7E5" };
+const C = { ink: "#14171C", line: "#E4E6EA", card: "#FFFFFF", muted: "#6B7280", signal: "#F9B317", gauge: "#1E9D6B", gaugeBg: "#E4F5EC", amber: "#B9791F", amberBg: "#FCEFD8", red: "#C0362C", redBg: "#FBE7E5" };
 const body = { fontFamily: "'Inter', sans-serif" };
 const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
 
@@ -124,7 +125,7 @@ export default function ShippingCostCard({ shipmentId, token, onChange, onSessio
           <span style={label}>{x.parcelPhoto.toUpperCase()}</span>
           <OnePhoto photo={parcelPhoto} busy={busyPhoto === "parcel"} label={x.addPhoto} onPick={(f) => upload("parcel", f)} onRemove={() => setParcelPhoto(null)} />
           {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
-          <button type="button" onClick={sendPhoto} disabled={saving} style={{ ...body, width: "100%", marginTop: 14, padding: "12px 16px", borderRadius: 9, border: "none", background: saving ? "#D1D5DB" : C.ink, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{saving ? x.saving : x.sendPhoto}</button>
+          <button type="button" onClick={sendPhoto} disabled={saving} style={{ ...body, width: "100%", marginTop: 14, padding: "12px 16px", borderRadius: 9, border: "none", background: saving ? "#D1D5DB" : "#0B3146", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{saving ? x.saving : x.sendPhoto}</button>
         </>
       )}
 
@@ -140,7 +141,7 @@ export default function ShippingCostCard({ shipmentId, token, onChange, onSessio
           <span style={label}>{x.receipt.toUpperCase()}</span>
           <OnePhoto photo={receipt} busy={busyPhoto === "receipt"} label={x.addPhoto} onPick={(f) => upload("receipt", f)} onRemove={() => setReceipt(null)} />
           {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
-          <button type="button" onClick={save} disabled={saving} style={{ ...body, width: "100%", marginTop: 14, padding: "12px 16px", borderRadius: 9, border: "none", background: saving ? "#D1D5DB" : C.ink, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{saving ? x.saving : x.save}</button>
+          <button type="button" onClick={save} disabled={saving} style={{ ...body, width: "100%", marginTop: 14, padding: "12px 16px", borderRadius: 9, border: "none", background: saving ? "#D1D5DB" : "#0B3146", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{saving ? x.saving : x.save}</button>
           <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 8 }}>{x.only}</div>
         </>
       )}

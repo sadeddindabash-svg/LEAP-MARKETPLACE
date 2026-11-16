@@ -51,7 +51,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe('Admin sidebar groups and sub-tabs (real app, mocked server)', () => {
   it('CRITICAL: the sidebar shows Suppliers, Products, Support and Financial as ONE entry each, in the old places, and none of the old separate entries', async () => {
     mockServer(); await signIn();
-    expect(sidebarNames()).toEqual(['Overview', 'Orders', 'Products', 'Vehicle Data', 'Categories', 'Suppliers', 'Hubs', 'Delivery Rules', 'Returns', 'Flagged Shipments', 'Support', 'Financial', 'Settings']);
+    expect(sidebarNames()).toEqual(['Overview', 'Orders', 'Returns', 'Flagged Shipments', 'Products', 'Vehicle Data', 'Categories', 'Suppliers', 'Hubs', 'Delivery Rules', 'Financial', 'Support', 'Settings']);
     for (const gone of ['Supplier Messages', 'Moderation', 'All Products', 'Promo Codes', 'Pricing', 'Payment Methods', 'Payment Providers', 'Payouts', 'Reviews']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${gone}$`, 'i') }), gone).not.toBeInTheDocument();
     }

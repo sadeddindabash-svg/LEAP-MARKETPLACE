@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
 const { describeControls } = require('../supplier/orderRules');
+const noAnswer = require('./noAnswer');      // send again / move to another supplier (unanswered orders) and the rules for it
 const { REFUSAL_REASONS, ResponseError, acceptSubOrder, refuseSubOrder, announceRefusal, listForAdmin, alternativesFor, markHandled, reassignRefused, announceReassignment } = require('./helpers');
 
 // ---------------- the supplier's answer: mounted at /supplier/me/orders
@@ -14,7 +15,7 @@ async function inTransaction(fn) {
   catch (err) { await client.query('ROLLBACK'); throw err; }
   finally { client.release(); }
 }
-const fail = (res, err, next) => (err instanceof ResponseError ? res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) }) : next(err));
+const fail = (res, err, next) => (err instanceof ResponseError || err instanceof noAnswer.NoAnswerError ? res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) }) : next(err));
 
 // POST /:subOrderId/accept   the same steps as before (preparing, then ship to the hub); after this the order can no longer be refused here
 supplierRouter.post('/:subOrderId/accept', requireAuth, requireRole('supplier'), async (req, res, next) => {
@@ -30,7 +31,7 @@ supplierRouter.post('/:subOrderId/refuse', requireAuth, requireRole('supplier'),
     const { reason, note } = req.body || {};
     const result = await inTransaction((client) => refuseSubOrder(client, { subOrderId: req.params.subOrderId, supplierId: req.user.supplierId, reason, note }));
     res.json({ subOrderId: result.subOrder.id, orderId: result.subOrder.order_id, status: result.subOrder.status, refusalReason: result.subOrder.refusal_reason, orderCancelled: result.orderCancelled, ...describeControls({ status: 'cancelled', hubShipmentStatus: null }) });
-    announceRefusal(result);
+    noAnswer.afterRefusal(result, announceRefusal, reassignRefused, announceReassignment);      // Orders > Rules > step 2 "Refuses"
   } catch (err) { fail(res, err, next); }
 });
 
@@ -43,6 +44,53 @@ adminRouter.get('/', ...admin, async (req, res, next) => {
   try { res.json(await listForAdmin({ filter: req.query.filter || 'open' })); } catch (err) { fail(res, err, next); }
 });
 adminRouter.get('/reasons', ...admin, (req, res) => res.json(REFUSAL_REASONS));
+
+// The rules for an order nobody answered in 24 hours (one set for the shop). GET returns them; PUT { thenAction, pickBy, maxPriceIncreasePct, ifNone, maxResends } saves them.
+adminRouter.get('/no-answer-rules', ...admin, async (req, res, next) => {
+  try { res.json(await noAnswer.getRules()); } catch (err) { fail(res, err, next); }
+});
+adminRouter.put('/no-answer-rules', ...admin, async (req, res, next) => {
+  try { const saved = await noAnswer.saveRules(req.body, req.user.sub); await logAdminAction(req, 'order_no_answer_rules_saved', 'settings', 'order_no_answer_rules', saved); res.json(saved); } catch (err) { fail(res, err, next); }
+});
+// The orders waiting for their supplier's first answer (Rules page: what a new answer time does to them).
+adminRouter.get('/waiting-orders', ...admin, async (req, res, next) => {
+  try { res.json(await noAnswer.waitingOrders()); } catch (err) { fail(res, err, next); }
+});
+// The order's history of these steps (no answer, sent again, moved, passed to the admin).
+adminRouter.get('/:subOrderId/history', ...admin, async (req, res, next) => {
+  try { res.json(await noAnswer.historyFor(req.params.subOrderId)); } catch (err) { fail(res, err, next); }
+});
+// The other suppliers that can take this whole order (same OEM number, enough stock), sorted by the rules, each with its price compared to the first supplier's.
+adminRouter.get('/:subOrderId/candidates', ...admin, async (req, res, next) => {
+  try { res.json(await noAnswer.candidatesFor(req.params.subOrderId, await noAnswer.getRules())); } catch (err) { fail(res, err, next); }
+});
+// POST /:subOrderId/resend   24 more hours for the same supplier (an order it has not answered)
+adminRouter.post('/:subOrderId/resend', ...admin, async (req, res, next) => {
+  try {
+    const r = await inTransaction((client) => noAnswer.resendSubOrder(client, { subOrderId: req.params.subOrderId, byAdmin: req.user.sub }));
+    await logAdminAction(req, 'supplier_no_answer_resent', 'sub_order', req.params.subOrderId, { timesSent: r.timesSent });
+    res.json({ subOrderId: r.subOrder.id, timesSent: r.timesSent, respondBy: r.subOrder.respond_by });
+    noAnswer.announceResend(r.subOrder, r.timesSent, r.waitHours);
+  } catch (err) { fail(res, err, next); }
+});
+// POST /:subOrderId/refunded  { reference }   the buyer was refunded by hand (Stripe / PayPal) for a part nobody could take
+adminRouter.post('/:subOrderId/refunded', ...admin, async (req, res, next) => {
+  try {
+    const result = await inTransaction((client) => noAnswer.markRefunded(client, { subOrderId: req.params.subOrderId, reference: req.body?.reference, byAdmin: req.user.sub }));
+    await logAdminAction(req, 'supplier_no_answer_refunded', 'sub_order', req.params.subOrderId, { amount: result.amount, reference: result.reference });
+    res.json({ subOrderId: Number(req.params.subOrderId), refunded: true, amount: result.amount, reference: result.reference });
+    noAnswer.announceRefunded(result);
+  } catch (err) { fail(res, err, next); }
+});
+// POST /:subOrderId/move  { items: [{ productId, alternativeProductId }] }   give an unanswered order to another supplier with the same OEM number
+adminRouter.post('/:subOrderId/move', ...admin, async (req, res, next) => {
+  try {
+    const result = await inTransaction((client) => noAnswer.moveSubOrder(client, { subOrderId: req.params.subOrderId, mapping: req.body?.items, byAdmin: req.user.sub }));
+    await logAdminAction(req, 'supplier_no_answer_moved', 'sub_order', req.params.subOrderId, { newSubOrderId: result.newSubOrderId, newSupplierId: result.newSupplierId });
+    res.status(201).json({ subOrderId: Number(req.params.subOrderId), movedTo: { subOrderId: result.newSubOrderId, supplierId: result.newSupplierId } });
+    noAnswer.announceMove(result, false);
+  } catch (err) { fail(res, err, next); }
+});
 adminRouter.get('/:subOrderId/alternatives', ...admin, async (req, res, next) => {
   try { res.json(await alternativesFor(req.params.subOrderId)); } catch (err) { fail(res, err, next); }
 });

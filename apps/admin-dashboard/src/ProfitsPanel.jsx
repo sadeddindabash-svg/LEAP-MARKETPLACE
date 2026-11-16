@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { ChevronLeft, ChevronRight, Download, TrendingUp, TrendingDown } from "lucide-react";
 import { C, disp, body } from "./theme";
 
@@ -27,7 +28,7 @@ function Change({ value, unit = "%", invert = false, children }) {
 
 function Kpi({ label, value, dark, children }) {
   return (
-    <div data-testid={`profit-kpi-${label}`} style={{ flex: dark ? 1.3 : 1, minWidth: 0, background: dark ? C.ink : C.card, border: `1px solid ${dark ? C.ink : C.line}`, borderRadius: 12, padding: 16 }}>
+    <div data-testid={`profit-kpi-${label}`} style={{ flex: dark ? 1.3 : 1, minWidth: 0, background: dark ? C.ink : C.card, border: `1px solid ${dark ? C.navy : C.line}`, borderRadius: 12, padding: 16 }}>
       <div style={{ ...body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: dark ? C.signal : C.muted }}>{label}</div>
       <div style={{ ...disp, fontSize: 28, fontWeight: 800, color: dark ? "#fff" : C.ink, margin: "6px 0 4px" }}>{value}</div>
       {children}
@@ -134,10 +135,10 @@ export default function ProfitsPanel({ onSessionExpired }) {
   return (
     <div style={{ padding: 24, display: "grid", gap: 16 }}>
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <div role="group" aria-label="Period" style={{ display: "inline-flex", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 3 }}>
+        <div role="group" aria-label="Period" data-leap-segments="" style={{ display: "inline-flex", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 3 }}>
           {PERIODS.map(([id, name]) => (
             <button key={id} type="button" aria-pressed={period === id} onClick={() => { setPeriod(id); setDate(report?.running ? null : here || null); }}      // from the running period: the one containing today; else: the one containing its first day
-              style={{ ...body, border: "none", cursor: "pointer", padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: period === id ? C.ink : "transparent", color: period === id ? "#fff" : C.muted }}>{name}</button>
+              style={{ ...body, border: "none", cursor: "pointer", padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: period === id ? C.navy : "transparent", color: period === id ? "#fff" : C.muted }}>{name}</button>
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { X, Trash2 } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken, fetchCategoryInUse, removeCategoryWithProducts, fetchPartInUse, removePartWithProducts } from "./auth";
@@ -10,7 +11,7 @@ export const REMOVE_PHRASE = "DELETE CATEGORY";
 export const PART_REMOVE_PHRASE = "DELETE SUB-CATEGORY";
 const SHOWN = 8;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const button = (primary, danger) => ({ ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: danger ? "#B42318" : primary ? C.ink : C.line, background: danger ? "#B42318" : primary ? C.ink : "#fff", color: danger || primary ? "#fff" : C.ink });
+const button = (primary, danger) => ({ ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: danger ? "#B42318" : primary ? C.ink : C.line, background: danger ? "#B42318" : primary ? C.navy : "#fff", color: danger || primary ? "#fff" : C.ink });
 const list = (items) => (items.length <= SHOWN ? items : items.slice(0, SHOWN)).map((p) => p.name).join(", ") + (items.length > SHOWN ? ` and ${items.length - SHOWN} more` : "");
 
 export default function CategoryInUseDialog({ categoryId, categoryName, onClose, onChanged, onSessionExpired, kind = "category" }) {

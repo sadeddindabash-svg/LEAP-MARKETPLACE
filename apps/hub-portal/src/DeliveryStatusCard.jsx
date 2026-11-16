@@ -1,10 +1,11 @@
 import React from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { useLang } from "./langContext";
 
 // After "Shipped to buyer" the hub has nothing more to do: the parcel becomes Delivered by itself when the driver scans its QR code and enters the
 // code the buyer gives him face to face. While it is on its way this card says so; once delivered it shows how it was confirmed. The same as
 // the hub app (lib/features/shipment/delivery_status.dart).
-const C = { ink: "#14171C", line: "#E4E6EA", muted: "#6B7280", signal: "#E8622C", gauge: "#1E9D6B", gaugeBg: "#E4F5EC", amber: "#B9791F" };
+const C = { ink: "#14171C", line: "#E4E6EA", muted: "#6B7280", signal: "#F9B317", gauge: "#1E9D6B", gaugeBg: "#E4F5EC", amber: "#B9791F" };
 const body = { fontFamily: "'Inter', sans-serif" };
 const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
 const TEXT = {

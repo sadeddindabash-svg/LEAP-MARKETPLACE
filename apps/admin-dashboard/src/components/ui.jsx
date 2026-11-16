@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { Star, TrendingUp, TrendingDown } from "lucide-react";
-import { C, body, disp, mono } from "../theme";
+import { C, body, disp, mono, SHADOW } from "../theme";
 import { CountUpText } from "./CountUp";      // the big numbers count up from 0
 
 // Real, second step toward splitting App.jsx (see theme.js's own
@@ -16,15 +17,23 @@ import { CountUpText } from "./CountUp";      // the big numbers count up from 0
 export function PlateChip({ children, small }) {
   return (
     <span style={{
-      ...mono, border: `1.5px solid ${C.ink}`, color: C.ink, display: "inline-flex", alignItems: "center",
-      padding: small ? "2px 7px" : "4px 10px", borderRadius: 6, fontSize: small ? 10.5 : 12, fontWeight: 700,
+      ...mono, border: `1.5px solid ${C.navy}`, color: C.navy, background: C.card, display: "inline-flex", alignItems: "center",
+      whiteSpace: "nowrap", padding: small ? "2px 7px" : "4px 10px", borderRadius: 6, fontSize: small ? 10.5 : 12, fontWeight: 700,
       letterSpacing: "0.05em",
     }}>{children}</span>
   );
 }
 
+// the status colour's darker text, so the word reads well on its tint
+const BADGE_INK = { [C.amber]: C.amberInk, [C.gauge]: C.gaugeInk, [C.torque]: C.torqueInk, [C.red]: C.redInk };
 export function Badge({ label, color, bg }) {
-  return <span style={{ ...body, background: bg, color, fontWeight: 700, fontSize: 11, padding: "4px 10px", borderRadius: 999, textTransform: "uppercase", letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{label}</span>;
+  const ink = BADGE_INK[color] || color;
+  return (
+    <span style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, background: bg, color: ink, fontWeight: 700, fontSize: 11.5, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
+      <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: ink, flexShrink: 0 }} />
+      {label}
+    </span>
+  );
 }
 
 export function Stars({ rating }) {
@@ -37,14 +46,17 @@ export function Stars({ rating }) {
   );
 }
 
-export function KpiCard({ label, value, delta, positive, icon: Icon }) {
+export function KpiCard({ label, value, delta, positive, icon: Icon, navy = false, note = null, onClick = null }) {
+  // navy: the headline number of a row (one per row), raised like the app's navy cards
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16, flex: 1, minWidth: 0 }}>
+    <div role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick || undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      style={{ cursor: onClick ? "pointer" : "default", position: "relative", overflow: "hidden", background: navy ? `linear-gradient(135deg, ${C.navyDeep}, ${C.navy} 55%, ${C.navySoft})` : C.card, border: `1px solid ${navy ? C.navyDeep : C.line}`, borderRadius: 14, padding: 20, flex: 1, minWidth: 0, boxShadow: navy ? SHADOW.navyRaised : SHADOW.card }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</span>
-        <Icon size={16} color={C.muted} />
+        <span style={{ ...body, fontSize: 11, fontWeight: 700, color: navy ? C.signal : C.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
+        <Icon size={16} color={navy ? C.signal : C.muted} />
       </div>
-      <div style={{ ...disp, fontSize: 28, fontWeight: 700, color: C.ink, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{typeof value === "string" ? <CountUpText text={value} /> : value}</div>
+      <div style={{ ...mono, fontSize: 28, fontWeight: 700, color: navy ? "#fff" : C.ink, marginBottom: 4, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{typeof value === "string" ? <CountUpText text={value} /> : value}</div>
+      {note && <div style={{ ...body, fontSize: 12, fontWeight: 600, color: navy ? C.onNavyMuted : C.muted, marginTop: 2 }}>{note}</div>}
       {/* Only when a REAL change is given. Nothing used to pass one, so every card showed a red down-arrow and "vs last week" with no number, as if
           every figure had dropped. */}
       {delta !== undefined && delta !== null && delta !== "" && (
@@ -60,10 +72,13 @@ export function KpiCard({ label, value, delta, positive, icon: Icon }) {
 
 export function Card({ title, action, children, style }) {
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", ...style }}>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: "auto", boxShadow: SHADOW.card, ...style }}>
       {title && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: `1px solid ${C.line}` }}>
-          <span style={{ ...disp, fontSize: 16, fontWeight: 600, color: C.ink }}>{title}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: `1px solid ${C.line}`, background: "linear-gradient(180deg, #FFFFFF, #FBFCFD)" }}>
+          <span style={{ ...disp, display: "inline-flex", alignItems: "center", gap: 10, fontSize: 16.5, fontWeight: 800, letterSpacing: "-0.01em", color: C.ink }}>
+            <span aria-hidden="true" style={{ width: 4, height: 18, borderRadius: 4, background: C.signal, flexShrink: 0 }} />
+            {title}
+          </span>
           {action}
         </div>
       )}
@@ -73,11 +88,11 @@ export function Card({ title, action, children, style }) {
 }
 
 export function Th({ children, align }) {
-  return <th style={{ ...body, textAlign: align || "left", fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em", padding: "10px 16px", borderBottom: `1px solid ${C.line}`, whiteSpace: "nowrap" }}>{children}</th>;
+  return <th style={{ ...body, textAlign: align || "left", fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "12px 18px", background: C.surfaceHigh, borderBottom: `1px solid ${C.line}`, whiteSpace: "nowrap" }}>{children}</th>;
 }
 
 export function Td({ children, align, style }) {
-  return <td style={{ ...body, fontSize: 13, color: C.ink, padding: "13px 16px", borderBottom: `1px solid ${C.line}`, textAlign: align || "left", ...style }}>{children}</td>;
+  return <td style={{ ...body, fontSize: 13.5, color: C.ink, padding: "14px 18px", borderBottom: `1px solid ${C.line}`, textAlign: align || "left", verticalAlign: "middle", ...style }}>{children}</td>;
 }
 
 // Real, new, shared confirmation dialog -- used for every real delete
@@ -92,8 +107,8 @@ export function Td({ children, align, style }) {
 export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmLabel = "Delete", errorMessage, isSaving }) {
   if (!isOpen) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
-      <div style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 340, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
+      <div style={{ background: "#fff", borderRadius: 14, padding: 24, maxWidth: 380, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
         <p style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 6px" }}>{title}</p>
         <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 16px" }}>{message || "This can't be undone."}</p>
         {errorMessage && <p role="alert" style={{ ...body, fontSize: 12.5, color: C.red, margin: "-6px 0 14px" }}>{errorMessage}</p>}
@@ -134,8 +149,8 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessa
   if (!isOpen) return null;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
-      <div style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 340, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
+      <div style={{ background: "#fff", borderRadius: 14, padding: 24, maxWidth: 380, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
         <p style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 14px" }}>{title}</p>
         {(fields || []).map((f) => (
           <div key={f.key} style={{ marginBottom: 10 }}>
@@ -144,7 +159,7 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessa
               <select
                 value={values[f.key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 9px", fontSize: 13, background: "#fff" }}
+                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, background: "#fff" }}
               >
                 <option value="">{f.placeholder || "-- Not set --"}</option>
                 {f.options.map((opt) => (
@@ -157,7 +172,7 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessa
                 value={values[f.key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
                 dir={f.dir}
-                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 9px", fontSize: 13 }}
+                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13 }}
               />
             )}
           </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { Image as ImageIcon, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken, fetchCategories, fetchAdminProducts } from "./auth";
@@ -14,7 +15,7 @@ import BannerCropDialog from "./BannerCropDialog";
 const LANG_LABEL = { en: "English photo", ar: "Arabic photo" };
 const LINK_TYPES = [["none", "No link"], ["part", "A part"], ["category", "A category"], ["url", "A web page"]];
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 const field = { ...body, fontSize: 13, padding: "6px 9px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, boxSizing: "border-box" };
 const label = { ...body, fontSize: 12, fontWeight: 600, color: C.muted, display: "block", marginBottom: 4 };
 
@@ -136,7 +137,7 @@ function HomeBannerCard({ onSessionExpired }) {
   const slides = data ? data.slides : [];
   const anyPhoto = slides.some((x) => x.imageEn || x.imageAr);
   return (
-    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
       <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Home banner</h2>
       <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 14px", lineHeight: 1.5 }}>
         Beside the “Find parts for your car” box the home page shows <b>either</b> the headline and sub-headline <b>or</b> this banner, never both. The banner takes up to 10 photos; each has an English and an Arabic photo (the site and the app show the one for their language),
@@ -228,7 +229,7 @@ export class BannerCardBoundary extends React.Component {
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <div role="alert" style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+      <div role="alert" style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
         <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Home banner</h2>
         <div style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 8 }}>This card could not be shown. The rest of Settings is not affected. Reload the page; if it happens again, tell the Leap team.</div>
       </div>

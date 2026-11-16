@@ -7,6 +7,7 @@ import { getAuthToken } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { fetchOrderTracking, type OrderTracking } from "@/lib/api";
 import { formatDate } from "@/lib/orders";
+import FaultOutcomeBox from "@/components/FaultOutcome";      // patch-buyer-fault-tracking
 
 const POLL_MS = 5_000;                    // like the app: the page refreshes itself while it is open
 
@@ -44,6 +45,7 @@ function Tracking({ orderId }: { orderId: string }) {
           return (
             <section key={so.subOrderId} className="rounded-[14px] border border-line bg-white p-5" aria-label={`${t("order_word")} ${orderId} #${so.subOrderId}`}>
               {number && <p className="mb-3 text-sm"><span className="text-muted">{t("tracking_number")}: </span><span className="font-plate font-semibold" dir="ltr">{number}</span></p>}
+              {so.faultOutcome && <div className="mb-3 [&>div]:mt-0"><FaultOutcomeBox outcome={so.faultOutcome} query={guestEmail ? `?guestEmail=${encodeURIComponent(guestEmail)}` : ""} /></div>}
               {so.isDelayed && <p role="status" className="mb-3 rounded-lg bg-[#fdf1d6] px-3 py-2 text-sm font-semibold text-[#7a4e00]">{t("tracking_delayed")}</p>}
               {so.timeline.length === 0 ? (
                 <p className="text-sm text-muted">{t("no_tracking_updates")}</p>

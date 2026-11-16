@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
@@ -12,7 +13,7 @@ import CropDialog from "./CropDialog";
 const MAX_ITEMS = 8;
 const field = { ...body, width: "100%", boxSizing: "border-box", fontSize: 13, padding: "8px 10px", borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: C.line, color: C.ink, background: "#fff" };
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 let counter = 0;
 const fromServer = (list) => list.map((s) => ({ key: s.id, id: s.id, name: s.name, url: s.url || "", icon: s.icon || null }));
 const shape = (items) => JSON.stringify(items.map((i) => [i.id || null, i.name.trim(), i.url.trim()]));
@@ -55,7 +56,7 @@ export default function SocialLinksSection({ onSessionExpired }) {
   };
 
   return (
-    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
       <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Footer social media</h2>
       <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 14px", lineHeight: 1.5 }}>The icons under the footer's tagline: up to {MAX_ITEMS}. An icon shows on the website only when it has a link, and shows the Leap logo until you choose its picture (square, at least {ICON_MIN_PX} × {ICON_MIN_PX} px; saved at {ICON_PX} × {ICON_PX}).</p>
       {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}

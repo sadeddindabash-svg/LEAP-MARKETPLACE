@@ -5,9 +5,12 @@ const { withEffectiveShipping } = require('../shared/partShipping');
 const { readFreeShipping, computeShipping } = require('../shared/freeShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
+const { CAR_JOIN, CAR_COLUMNS, buyerName, withCar } = require('../shared/carName');      // buyer names: name + car brand + model
+const { fitTitleFor } = require('../shared/fitTitle');      // the title in parts (patch-name-car-part)
 const { validatePromoCode, calculateDiscountUsd } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
 const { optionalAuth } = require('../auth/middleware');
+const discountHold = require('../discountHold/rules');      // Pricing > Discount rules > Rules: how a discount price is held (migration 143)
 
 /**
  * Cart module — BUY-030–032. Cart holds items from multiple suppliers; the
@@ -52,6 +55,7 @@ async function computeLivePrice(r) {
     lengthCm: shipped.length_cm === null ? null : Number(shipped.length_cm),
     widthCm: shipped.width_cm === null ? null : Number(shipped.width_cm),
     heightCm: shipped.height_cm === null ? null : Number(shipped.height_cm),
+    supplierId: r.supplier_id,      // the warehouse country for the delivery rule; the buyer's country comes from the request (patch-delivery-prices)
   });
   const basePriceUsd = result.buyerPriceUsd;
   const price = discountPercentage !== null ? basePriceUsd * (1 - discountPercentage / 100) : basePriceUsd;
@@ -77,7 +81,7 @@ async function quotationFor(req, productId) {
   return rows.length > 0 ? id : null;
 }
 
-const CHECKOUT_LOCK_DURATION_MS = 60 * 60 * 1000; // confirmed with the person: 60 real minutes
+// The checkout hold's length is set in Pricing > Discount rules > Rules (15 to 180 minutes; 60 when the rules are not there yet).
 
 // `lang` ('ar' | anything else) picks which approved product name to return --
 // same rule as catalog's resolveLanguage(): Arabic name when requested AND one
@@ -104,13 +108,15 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
   // read (not trusted from a stale client-side timer) -- a lock is
   // only genuinely still active if checkout_locked_at is set AND
   // within the real last 60 minutes.
-  const lockActive = checkoutLockedAt !== null && (Date.now() - new Date(checkoutLockedAt).getTime()) < CHECKOUT_LOCK_DURATION_MS;
-  const lockExpiresAt = lockActive ? new Date(new Date(checkoutLockedAt).getTime() + CHECKOUT_LOCK_DURATION_MS).toISOString() : null;
+  const holdRules = await discountHold.getRules();
+  const lockActive = discountHold.isLockActive(checkoutLockedAt, holdRules);
+  const lockExpiresAt = lockActive ? new Date(new Date(checkoutLockedAt).getTime() + discountHold.holdMs(holdRules)).toISOString() : null;
 
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, ci.locked_price, ci.quotation_id, qt.party_name AS quotation_party, qt.vehicle AS quotation_vehicle, p.name, p.name_ar, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
+    `SELECT ci.product_id, ci.quantity, ci.locked_price, ci.held_quantity, ci.extra_locked_price, ci.drop_told_at, ci.quotation_id, qt.party_name AS quotation_party, qt.vehicle AS quotation_vehicle, p.name, p.name_ar, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id, ${CAR_COLUMNS}
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
+     ${CAR_JOIN}
      -- a part put in the basket from one of the buyer's quotations (migration 141): the basket groups it under that quotation
      LEFT JOIN quotations qt ON qt.id = ci.quotation_id
      WHERE ci.cart_id = $1
@@ -154,10 +160,24 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
     let price = live.price;
     let originalPrice = live.originalPrice;
     let priceChanged = false;
+    // The price lines of this part (Pricing > Discount rules > Rules): during a hold, the held units and the units added during the
+    // hold can be two lines at two prices; a lower live price lowers them. `price` is their average, so price x quantity is the line total.
+    const held = discountHold.priceLines(r, live, lockActive, holdRules);
     if (lockActive && r.locked_price !== null) {
-      const lockedPrice = Number(r.locked_price);
-      priceChanged = Math.abs(lockedPrice - live.price) > 0.001;
-      price = lockedPrice;
+      priceChanged = held.lines.some((l) => Math.abs(l.price - live.price) > 0.001);
+      price = held.price;
+      // the price before any discount for the whole part (its struck-through price and the "You save" of the summary): the lines' own prices before the discount
+      const beforeTotal = held.lines.reduce((s, l) => s + (l.originalPrice && l.originalPrice > l.price ? l.originalPrice : l.price) * l.quantity, 0);
+      originalPrice = beforeTotal > held.total + 0.004 ? beforeTotal / Number(r.quantity) : null;
+      const lowered = held.lines.find((l) => l.lowered);
+      if (lowered && (!r.drop_told_at || new Date(r.drop_told_at) < new Date(checkoutLockedAt))) {
+        // step 4: told once per hold
+        const { rowCount } = await db.query('UPDATE cart_items SET drop_told_at = now() WHERE cart_id = $1 AND product_id = $2 AND (drop_told_at IS NULL OR drop_told_at < $3) RETURNING cart_id', [cartId, r.product_id, checkoutLockedAt]);
+        if (rowCount) {
+          await discountHold.recordEvent({ cartId, productId: r.product_id, kind: 'lowered', detail: `price dropped to ${discountHold.usd(lowered.price)} during the hold` });
+          if (holdRules.tellDrop) await discountHold.tellBuyer(buyerId, discountHold.words.priceDropped(buyerName(r, 'en'), lowered.price), { type: 'product', id: r.product_id });
+        }
+      }
       // Confirmed simplest, most consistent interpretation: the real
       // locked amount is the single, final number that matters --
       // originalPrice (the struck-through discount display) stays
@@ -176,10 +196,14 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
     return {
       productId: r.product_id,
       quantity: r.quantity,
-      name: lang === 'ar' && r.name_ar ? r.name_ar : r.name,
+      name: buyerName(r, lang),
+      fitTitle: await fitTitleFor(db, r.product_id, lang),
       price,
       originalPrice,
       priceChanged,
+      // one line, or two during a hold (held units + units added later): [{ quantity, price, held, lowered, isNew, originalPrice }]
+      lines: held.lines,
+      lineTotal: held.total,
       currencyCode: live.currencyCode,
       imageUrl: imageRows[0]?.url || null,
       // Real stock quantity (new) -- lets the client warn/clamp a
@@ -250,6 +274,7 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
     promoDiscountUsd, loyaltyDiscountPercentage, loyaltyDiscountUsd,
     appliedDiscountSource, appliedDiscountUsd,
     lockActive, lockExpiresAt,
+    holdMinutes: holdRules.holdMinutes,
     shipping,
   };
 }
@@ -267,10 +292,10 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
 // names) so a client can show its OWN translated sentence instead of this English
 // one. `error` stays for older clients and for logs.
 async function checkStockAvailable(productId, requestedQuantity, lang) {
-  const { rows } = await db.query('SELECT stock_quantity, name, name_ar FROM products WHERE id = $1', [productId]);
+  const { rows } = await db.query(`SELECT p.stock_quantity, p.name, p.name_ar, ${CAR_COLUMNS} FROM products p ${CAR_JOIN} WHERE p.id = $1`, [productId]);
   if (rows.length === 0) return { ok: false, error: 'Product not found' };
   if (requestedQuantity > rows[0].stock_quantity) {
-    const productName = lang === 'ar' && rows[0].name_ar ? rows[0].name_ar : rows[0].name;
+    const productName = buyerName(rows[0], lang);
     return {
       ok: false,
       error: `Only ${rows[0].stock_quantity} of "${rows[0].name}" left in stock`,
@@ -308,11 +333,23 @@ router.get('/:cartId', optionalAuth, async (req, res, next) => {
 router.post('/:cartId/lock-prices', optionalAuth, async (req, res, next) => {
   try {
     await ensureCartExists(req.params.cartId);
-    const { rows: cartRows } = await db.query('SELECT checkout_locked_at FROM carts WHERE id = $1', [req.params.cartId]);
+    const holdRules = await discountHold.getRules();
+    const { rows: cartRows } = await db.query('SELECT checkout_locked_at, buyer_id FROM carts WHERE id = $1', [req.params.cartId]);
     const existingLockedAt = cartRows[0]?.checkout_locked_at || null;
-    const alreadyActive = existingLockedAt !== null && (Date.now() - new Date(existingLockedAt).getTime()) < CHECKOUT_LOCK_DURATION_MS;
+    const alreadyActive = discountHold.isLockActive(existingLockedAt, holdRules);
+    // Step 5: how many holds a day (the first one + the new ones allowed; -1 = no limit). A day in the admin's time zone.
+    let limitReached = false;
+    if (!alreadyActive && holdRules.maxHoldsPerDay >= 0) {
+      try {
+        const { rows: c } = await db.query(`SELECT holds_count, holds_day = (now() AT TIME ZONE $2)::date AS today FROM carts WHERE id = $1`, [req.params.cartId, holdRules.summaryTz]);
+        limitReached = Boolean(c[0] && c[0].today && Number(c[0].holds_count) >= 1 + holdRules.maxHoldsPerDay);
+      } catch (err) { limitReached = false; }
+    }
 
-    if (!alreadyActive) {
+    if (!alreadyActive && limitReached) {
+      await discountHold.recordEvent({ cartId: req.params.cartId, kind: 'hold_limit', detail: `no new hold today (${1 + holdRules.maxHoldsPerDay} a day)` });
+    }
+    if (!alreadyActive && !limitReached) {
       const { rows } = await db.query(
         `SELECT ci.product_id, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm
          FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1`,
@@ -321,11 +358,18 @@ router.post('/:cartId/lock-prices', optionalAuth, async (req, res, next) => {
       await Promise.all(rows.map(async (r) => {
         const live = await computeLivePrice(r).catch((err) => { if (err instanceof MissingShippingDataError) return null; throw err; });
         if (!live) return;      // cannot be priced: not locked (it is not shown in the cart either)
-        await db.query('UPDATE cart_items SET locked_price = $1 WHERE cart_id = $2 AND product_id = $3', [live.price, req.params.cartId, r.product_id]);
+        // every unit is on the held line again; nothing added later yet
+        await db.query('UPDATE cart_items SET locked_price = $1, held_quantity = quantity, extra_locked_price = NULL WHERE cart_id = $2 AND product_id = $3', [live.price, req.params.cartId, r.product_id]);
       }));
       await db.query('UPDATE carts SET checkout_locked_at = now() WHERE id = $1', [req.params.cartId]);
+      try {
+        await db.query(`UPDATE carts SET holds_count = CASE WHEN holds_day = (now() AT TIME ZONE $2)::date THEN holds_count + 1 ELSE 1 END, holds_day = (now() AT TIME ZONE $2)::date, hold_end_told_at = NULL WHERE id = $1`, [req.params.cartId, holdRules.summaryTz]);
+      } catch (err) { /* migration 143 not run yet */ }
+      await discountHold.recordEvent({ cartId: req.params.cartId, kind: 'hold_started', detail: `${rows.length} part(s) held for ${holdRules.holdMinutes} min` });
+      if (holdRules.tellHoldStart) await discountHold.tellBuyer(req.user?.sub || cartRows[0]?.buyer_id, discountHold.words.holdStarted(holdRules.holdMinutes));
+      if (holdRules.notifyMode === 'each') await discountHold.notifyAdmins({ title: 'A price hold started', body: `Basket ${req.params.cartId}: ${rows.length} part(s) held for ${holdRules.holdMinutes} minutes.` });
     }
-    res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
+    res.json({ ...(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang)), holdLimitReached: !alreadyActive && limitReached });
   } catch (err) {
     next(err);
   }
@@ -357,6 +401,57 @@ router.patch('/:cartId/promo-code', optionalAuth, async (req, res, next) => {
   }
 });
 
+// Steps 3 and 1 of the discount-hold rules, after a part's quantity went from `before` (its row, or null) to `quantity`:
+// during a hold, units added after the discount ended are a new line at the live price (held until the same hold ends); while the
+// discount is still on they join the held line or make a new line (addWhileOn). Fewer units: the later units go first.
+async function afterQuantityChange(req, productId, before, quantity) {
+  try {
+    const rules = await discountHold.getRules();
+    const cartId = req.params.cartId;
+    const { rows: c } = await db.query('SELECT checkout_locked_at, buyer_id FROM carts WHERE id = $1', [cartId]);
+    const lockedAt = c[0]?.checkout_locked_at || null;
+    const pct = await findMatchingDiscountRule(productId);
+    if (!before) await db.query('UPDATE cart_items SET discount_seen_pct = $3 WHERE cart_id = $1 AND product_id = $2', [cartId, productId, pct]);
+    if (!discountHold.isLockActive(lockedAt, rules)) return;
+    const { rows: pr } = await db.query(`SELECT p.id AS product_id, p.name, p.name_ar, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, ${CAR_COLUMNS} FROM products p ${CAR_JOIN} WHERE p.id = $1`, [productId]);
+    if (!pr[0]) return;
+    const live = await computeLivePrice(pr[0]);
+    if (!before || before.locked_price === null) {
+      // a part that was not in the basket when checkout was opened: held at the price it was added at
+      await db.query('UPDATE cart_items SET locked_price = $3, held_quantity = quantity, extra_locked_price = NULL WHERE cart_id = $1 AND product_id = $2', [cartId, productId, live.price]);
+      return;
+    }
+    const heldBefore = before.held_quantity === null ? Number(before.quantity) : Number(before.held_quantity);
+    const added = quantity - Number(before.quantity);
+    if (added < 0) {
+      await db.query('UPDATE cart_items SET held_quantity = LEAST(COALESCE(held_quantity, $3), quantity) WHERE cart_id = $1 AND product_id = $2', [cartId, productId, heldBefore]);
+      return;
+    }
+    if (added === 0) return;
+    const name = buyerName(pr[0], 'en');
+    if (pct !== null && rules.addWhileOn === 'join') {
+      await db.query('UPDATE cart_items SET held_quantity = $3 WHERE cart_id = $1 AND product_id = $2', [cartId, productId, heldBefore + added]);
+      await discountHold.recordEvent({ cartId, productId, kind: 'joined_hold', detail: `${added} more joined the held line` });
+      return;
+    }
+    const extraPrice = before.extra_locked_price === null ? live.price : Math.min(Number(before.extra_locked_price), live.price);
+    await db.query('UPDATE cart_items SET held_quantity = $3, extra_locked_price = $4 WHERE cart_id = $1 AND product_id = $2', [cartId, productId, heldBefore, extraPrice]);
+    await discountHold.recordEvent({ cartId, productId, kind: 'new_line', detail: `${added} added at ${discountHold.usd(extraPrice)} (held line ${discountHold.usd(before.locked_price)})` });
+    if (rules.tellNewLine && extraPrice > Number(before.locked_price) + 0.004) await discountHold.tellBuyer(req.user?.sub || c[0]?.buyer_id, discountHold.words.newLine(name, extraPrice, Number(before.locked_price)), { type: 'product', id: productId });
+  } catch (err) {
+    console.error('[discount-hold] basket line not updated (non-fatal):', err.message);
+  }
+}
+const rowBefore = async (cartId, productId) => {
+  try {
+    const { rows } = await db.query('SELECT quantity, locked_price, held_quantity, extra_locked_price FROM cart_items WHERE cart_id = $1 AND product_id = $2', [cartId, productId]);
+    return rows[0] || null;
+  } catch (err) {
+    const { rows } = await db.query('SELECT quantity, locked_price FROM cart_items WHERE cart_id = $1 AND product_id = $2', [cartId, productId]);
+    return rows[0] ? { ...rows[0], held_quantity: null, extra_locked_price: null } : null;
+  }
+};
+
 router.post('/:cartId/items', optionalAuth, async (req, res, next) => {
   try {
     const { productId, quantity } = req.body || {};
@@ -373,11 +468,13 @@ router.post('/:cartId/items', optionalAuth, async (req, res, next) => {
     if (!stockCheck.ok) return res.status(400).json(stockErrorBody(stockCheck));
 
     await ensureCartExists(req.params.cartId);
+    const before = await rowBefore(req.params.cartId, productId);
     await db.query(
       `INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)
        ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity`,
       [req.params.cartId, productId, quantity]
     );
+    await afterQuantityChange(req, productId, before, (before ? Number(before.quantity) : 0) + Number(quantity));
     res.status(201).json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
@@ -406,11 +503,13 @@ router.patch('/:cartId/items/:productId', optionalAuth, async (req, res, next) =
       await ensureCartExists(req.params.cartId);
       // { quotationId } (optional): the part comes from that quotation of the buyer's; a later change of quantity keeps the mark.
       const quotationId = await quotationFor(req, req.params.productId);
+      const before = await rowBefore(req.params.cartId, req.params.productId);
       await db.query(
         `INSERT INTO cart_items (cart_id, product_id, quantity, quotation_id) VALUES ($1, $2, $3, $4)
          ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity, quotation_id = COALESCE(EXCLUDED.quotation_id, cart_items.quotation_id)`,
         [req.params.cartId, req.params.productId, quantity, quotationId]
       );
+      await afterQuantityChange(req, req.params.productId, before, quantity);
     }
     res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {

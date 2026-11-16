@@ -70,6 +70,8 @@ router.get('/supplier/me', ...supplierOnly, async (req, res, next) => {
         evidence: dto.evidence,
         // the replacement order the supplier has to ship (migration 095)
         replacementOrderId: dto.replacement ? dto.replacement.orderId : null,
+        // why Leap confirmed the fault although the supplier did not accept the return (migration 151)
+        overruleReason: r.overrule_reason || null,
       };
     })));
   } catch (err) {
@@ -91,7 +93,26 @@ router.post('/supplier/me/:id/answer', ...supplierOnly, async (req, res, next) =
 
 router.post('/', ...adminOnly, async (req, res, next) => {
   const { shipmentId, items, costBearer, notes } = req.body || {};
-  const outcome = await inTransaction(res, next, (client) => helpers.createFaultCase(client, { shipmentId: Number(shipmentId), items, costBearer, notes, adminId: req.user.sub }));
+  const overruleReason = typeof req.body?.overruleReason === 'string' ? req.body.overruleReason.trim().slice(0, 1000) : '';
+  const outcome = await inTransaction(res, next, async (client) => {
+    // patch-fault-overrule-reason (migration 151): the supplier did not accept the return the hub opened -> Leap says why it confirms the fault anyway
+    const { rows: [rc] } = await client.query(
+      `SELECT rc.id, rc.supplier_answer, rc.supplier_answer_note FROM return_cases rc JOIN hub_shipments hs ON hs.sub_order_id = rc.sub_order_id
+       WHERE hs.id = $1 ORDER BY rc.created_at DESC LIMIT 1`, [Number(shipmentId)]);
+    const overruled = rc && rc.supplier_answer === 'decline';
+    if (overruled && overruleReason.length < 3) throw new FaultCaseError('The supplier did not accept this return: write the reason for confirming the fault anyway. It is sent to the supplier.');
+    const made = await helpers.createFaultCase(client, { shipmentId: Number(shipmentId), items, costBearer, notes, adminId: req.user.sub });
+    if (overruled) {
+      await client.query('UPDATE fault_cases SET overrule_reason = $2 WHERE id = $1', [made.faultCase.id, overruleReason]);
+      made.faultCase.overrule_reason = overruleReason;
+      await client.query("INSERT INTO return_case_supplier_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)", [rc.id,
+        `平台已确认这是质量问题（尽管您不同意退货）。理由：${overruleReason}\n请在“更换请求”中回答能否更换。\nLeap confirmed the fault although you did not accept the return. Reason: ${overruleReason}\nPlease say under Replacement requests whether you can replace it.`]);
+      for (const n of made.notifications || []) {
+        if (n.type === 'supplier_message' && /^Can you replace\?/.test(n.title || '')) n.body = `Leap confirmed the fault although you did not accept the return. Reason: ${overruleReason}\n${n.body}`;
+      }
+    }
+    return made;
+  });
   if (!outcome) return;
   await logAdminAction(req, 'fault_case_created', 'fault_case', String(outcome.faultCase.id), {
     shipmentId: outcome.faultCase.shipment_id, orderId: outcome.orderId, items, costBearer, returnCaseId: outcome.returnCase ? outcome.returnCase.id : null,

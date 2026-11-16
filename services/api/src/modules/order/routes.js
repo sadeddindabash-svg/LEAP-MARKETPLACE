@@ -18,12 +18,16 @@ async function calculateBuyerPriceUsd(input) {
   }
 }
 const { withEffectiveShipping } = require('../shared/partShipping');
+const { CAR_JOIN, CAR_COLUMNS, buyerName, withCar } = require('../shared/carName');      // buyer names: name + car brand + model
 const { readFreeShipping, computeShipping } = require('../shared/freeShipping');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
+const { findMatchingDiscountRule } = require('../pricing/discountRules');
+const discountHold = require('../discountHold/rules');      // Pricing > Discount rules > Rules, step 6: the order keeps the checkout prices
 const { sendTransactionalEmail } = require('../email/client');
 const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
+const cancellation = require('./cancellation');      // buyer / admin cancellations and their refund (migration 145)
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { logAdminAction } = require('../audit/helpers');
@@ -173,11 +177,11 @@ router.post('/', async (req, res, next) => {
         [item.quantity, item.productId]
       );
       if (stockRows.length === 0) {
-        const { rows: currentRows } = await client.query('SELECT stock_quantity, name, name_ar FROM products WHERE id = $1', [item.productId]);
+        const { rows: currentRows } = await client.query(`SELECT p.stock_quantity, p.name, p.name_ar, ${CAR_COLUMNS} FROM products p ${CAR_JOIN} WHERE p.id = $1`, [item.productId]);
         const available = currentRows[0]?.stock_quantity ?? 0;
         // apiCode/apiDetails (not `code`, which pg uses for its own error codes) are sent to the
         // client alongside the English message, so an Arabic-mode client can show its own sentence.
-        const productName = req.query.lang === 'ar' && currentRows[0]?.name_ar ? currentRows[0].name_ar : (currentRows[0]?.name || item.productId);
+        const productName = currentRows[0] ? buyerName(currentRows[0], req.query.lang) : item.productId;
         throw Object.assign(
           new Error(`Only ${available} left in stock for ${currentRows[0]?.name || item.productId} — reduce the quantity and try again.`),
           { status: 400, apiCode: 'insufficient_stock', apiDetails: { available, productName } }
@@ -202,6 +206,19 @@ router.post('/', async (req, res, next) => {
     // services/api/src/modules/pricing/engine.js for the full design —
     // browsing/cart show a LIVE price that can change; a placed order's
     // price does not, the same way any real checkout works.
+    // the country the order is delivered to decides the shipping inside its prices (patch-delivery-prices); unknown -> the buyer's usual country
+    let orderDestinationIso;
+    try {
+      const { isoCodeForName } = require('../shared/countries');
+      const raw = address && address.country ? String(address.country) : null;
+      if (raw) orderDestinationIso = isoCodeForName(raw) || (raw.length === 2 ? raw.toUpperCase() : undefined);
+      else if (addressId && userId) {
+        const { rows: addrRows } = await client.query('SELECT country FROM buyer_addresses WHERE id = $1 AND buyer_id = $2', [addressId, userId]);
+        if (addrRows[0]) orderDestinationIso = isoCodeForName(addrRows[0].country) || undefined;
+      }
+    } catch (err) {
+      orderDestinationIso = undefined;
+    }
     const buyerUnitPrices = {};
     const shippingPlannedUnitUsd = {};   // the shipping inside ONE unit's price (migration 127): compared later with what the hub really pays
     let totalShippingPortionUsd = 0; // real, summed from the pricing engine's own breakdown -- see promotions/helpers.js's calculateDiscountUsd for why free_shipping refunds exactly this, not an estimate
@@ -221,6 +238,8 @@ router.post('/', async (req, res, next) => {
           lengthCm: shipped.length_cm === null ? null : Number(shipped.length_cm),
           widthCm: shipped.width_cm === null ? null : Number(shipped.width_cm),
           heightCm: shipped.height_cm === null ? null : Number(shipped.height_cm),
+          destinationIsoCode: orderDestinationIso,
+          supplierId: product.supplier_id,
         });
         buyerUnitPrices[productId] = result.buyerPriceUsd;
         const shippingCny = result.breakdown
@@ -230,6 +249,18 @@ router.post('/', async (req, res, next) => {
         shippingPlannedUnitUsd[productId] = shippingCny * result.fxRate;
       }
     }
+
+    // Step 6 of Pricing > Discount rules > Rules (confirmed with the person via mockup): the order is saved at exactly the prices the
+    // checkout page showed. Before this, the discount rule was not applied here at all, so an order could be saved at the full price.
+    // The live price includes the discount rule on now; a price held at checkout (the buyer's basket, `cartId`) replaces it.
+    const liveUnitPrices = {};
+    for (const productId of Object.keys(buyerUnitPrices)) {
+      const pct = await findMatchingDiscountRule(productId);
+      if (pct !== null) buyerUnitPrices[productId] = buyerUnitPrices[productId] * (1 - pct / 100);
+      liveUnitPrices[productId] = buyerUnitPrices[productId];
+    }
+    const heldPrices = await discountHold.heldPricesForOrder(client, { cartId: req.body?.cartId, userId, items, liveUnitPrices });
+    for (const [productId, h] of Object.entries(heldPrices.byProduct)) buyerUnitPrices[productId] = h.unitPrice;
 
     const currencyCode = 'USD'; // confirmed: buyer-facing currency is always USD for now
     const subtotal = items.reduce((sum, item) => sum + buyerUnitPrices[item.productId] * item.quantity, 0);
@@ -347,6 +378,8 @@ router.post('/', async (req, res, next) => {
     await recordOrderVehicles(client, { orderId, userId: userId || null });
 
     await client.query('COMMIT');
+    // the held prices: the event, the buyer's "you saved" message (best-effort, never blocks the order)
+    discountHold.afterOrder({ orderId, held: heldPrices }).catch((err) => console.error('[discount-hold] after-order step failed (non-fatal):', err.message));
 
     // REAL BUG FOUND AND FIXED HERE: this used to run AFTER the
     // response below, as a fire-and-forget follow-up alongside email/
@@ -552,8 +585,11 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    const answerWindowHours = isAdmin ? await adminAnswerWindowHours() : null;      // admin countdown: the supplier's time to answer (Orders > Rules)
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.supplier_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, s.name AS supplier_name
+      `SELECT so.id, so.supplier_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, s.name AS supplier_name,
+              so.respond_by, so.accepted_at, so.escalated_at, so.refused_at, so.resend_count,
+              so.no_answer_closed_at, so.cancelled_at, so.cancelled_by, so.cancel_reason, so.refund_needed_amount, so.refund_status, so.refund_issued_at
        FROM supplier_sub_orders so
        LEFT JOIN suppliers s ON s.id = so.supplier_id
        LEFT JOIN hubs h ON h.id = so.hub_id
@@ -575,8 +611,9 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
     const supplierSubOrders = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
-        `SELECT oli.product_id, oli.quantity, oli.unit_price, p.name, p.name_ar
+        `SELECT oli.product_id, oli.quantity, oli.unit_price, p.name, p.name_ar, ${CAR_COLUMNS}
          FROM order_line_items oli JOIN products p ON p.id = oli.product_id
+         ${CAR_JOIN}
          WHERE oli.sub_order_id = $1`,
         [so.id]
       );
@@ -588,7 +625,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       // session -- see cart/routes.js's own comment for why.
       const itemsWithImages = await Promise.all(items.map(async (i) => {
         const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [i.product_id]);
-        return { productId: i.product_id, name: (req.query.lang === 'ar' && i.name_ar) ? i.name_ar : i.name, quantity: i.quantity, unitPrice: order.replacement_of && !isAdmin ? 0 : Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
+        return { productId: i.product_id, name: isAdmin ? i.name : buyerName(i, req.query.lang), quantity: i.quantity, unitPrice: order.replacement_of && !isAdmin ? 0 : Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
       }));
 
       // The hub's leg of the journey, if this sub-order has reached the
@@ -640,9 +677,23 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
         hubId: so.hub_id,
         hubName: so.hub_name,
         hubShipment,
+        // patch-buyer-fault-tracking: checking / problem / replaced (replacementOrderId) / refunding / refunded / closed, for the buyer's order page
+        faultOutcome: shipmentRows.length ? (await require('../tracking/faultStory').faultStory(db, so.id, shipmentRows[0])).outcome : null,
         // Can this part still be returned? (cancelled: no; not delivered: yes; delivered: until the delivery date plus the admin's return window)
         ...returnState({ subOrderStatus: so.status, orderStatus: order.status, deliveredAt: shipmentRows[0]?.delivered_at || null, windowDays: returnWindowDays }),
         items: itemsWithImages,
+        // Admin countdown (in this part's card): the supplier still has to accept or refuse it by respondBy.
+        ...(isAdmin ? { answerWaiting: isAwaitingAnswer(so), respondBy: so.respond_by || null, answerWindowHours, timesSent: (so.resend_count || 0) + 1 } : {}),
+        // Admin: may Leap still cancel this part (Order page > Cancel), and if it was cancelled: by whom, when, why, and its refund (migration 145).
+        ...(isAdmin ? {
+          cancellable: isSubOrderCancellable(so.status, shipmentRows[0]?.status || null),
+          cancelledBy: so.status !== 'cancelled' ? null : so.cancelled_by || (so.refused_at ? 'supplier' : so.no_answer_closed_at ? 'no_answer' : 'buyer'),
+          cancelledAt: so.cancelled_at || so.refused_at || so.no_answer_closed_at || null,
+          cancelReason: so.cancel_reason || null,
+          refundAmount: so.refund_needed_amount == null ? null : Number(so.refund_needed_amount),
+          refundStatus: so.refund_status || null,
+          refundedAt: so.refund_issued_at || null,
+        } : {}),
       });
     }
 
@@ -798,7 +849,7 @@ async function computeHubStatus(orderId) {
   );
   if (rows.length === 0) return null;
   // A flagged shipment whose flag has been CLOSED (resolved) reads 'closed': the admin's "Disputes" tab and hub-status chip used to keep showing it as an open flag.
-  for (const row of rows) { if (row.status === 'flagged' && row.resolved_at) row.status = 'closed'; }
+  for (const row of rows) { if (['flagged', 'returned_to_supplier', 'discarded_at_hub'].includes(row.status) && row.resolved_at) row.status = 'closed'; }      // + returned / discarded (patch-orders-fault-done)
   let leastAdvanced = null;
   let leastAdvancedIdx = Infinity;
   for (const row of rows) {
@@ -818,6 +869,40 @@ async function computeHubStatus(orderId) {
 
 // How far one supplier part has come, from the order being placed (0) to delivered (6).
 const ORDER_STEPS = ['Placed', 'Supplier accepted', 'Shipped to hub', 'At hub', 'Inspected & packed', 'Shipped to buyer', 'Delivered'];
+// patch-orders-fault-done: a part the hub found a problem with is DONE once its case is finished (replacement delivered, refund marked, or closed
+// by hand): it no longer keeps the order at "At hub" (50%) and "not delivered" for ever.
+const FAULT_HUB = ['flagged', 'returned_to_supplier', 'discarded_at_hub'];
+async function faultEndingsByOrder(orderIds) {
+  const out = {};
+  if (!orderIds.length) return out;
+  const { rows } = await db.query(
+    `SELECT so.order_id, so.status AS part_status, (to_jsonb(so) ->> 'refused_at') IS NOT NULL AS refused, hs.status AS hub_status, hs.resolved_at,
+            fc.outcome, fc.replacement_order_id
+     FROM supplier_sub_orders so
+     LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
+     LEFT JOIN LATERAL (SELECT f.outcome, f.replacement_order_id FROM fault_cases f WHERE f.sub_order_id = so.id ORDER BY f.created_at DESC LIMIT 1) fc ON true
+     WHERE so.order_id = ANY($1::text[])`,
+    [orderIds]
+  );
+  for (const r of rows) {
+    const e = out[r.order_id] || (out[r.order_id] = { active: 0, done: 0, endings: [], problem: false });
+    if (r.part_status === 'cancelled' || r.refused) continue;
+    e.active++;
+    const fault = FAULT_HUB.includes(r.hub_status);
+    if (fault && r.resolved_at) {
+      e.done++;
+      e.endings.push(r.outcome === 'replacement' && r.replacement_order_id ? { kind: 'replaced', orderId: r.replacement_order_id } : r.outcome === 'refund' ? { kind: 'refunded' } : { kind: 'closed' });
+    } else if (fault) e.problem = true;
+    else if (r.hub_status === 'delivered') e.done++;
+  }
+  for (const e of Object.values(out)) {
+    const kinds = e.endings.map((x) => x.kind);
+    e.finished = e.active > 0 && e.done === e.active && e.endings.length > 0;
+    e.ending = !e.finished ? null : kinds.includes('replaced') ? 'replaced' : kinds.includes('refunded') ? 'refunded' : 'closed';
+    e.replacementOrderIds = e.endings.filter((x) => x.kind === 'replaced').map((x) => x.orderId);
+  }
+  return out;
+}
 function orderPartStep(partStatus, hubStatus) {
   if (hubStatus === 'delivered') return 6;
   if (hubStatus === 'shipped_to_buyer') return 5;
@@ -828,12 +913,18 @@ function orderPartStep(partStatus, hubStatus) {
   return 0;
 }
 /** The admin list's extra fields: buyerName, progress { step, percent, label, cancelled, flagged }, assigned { done, of }. */
-function adminListExtras(o, p, buyerNames) {
+function adminListExtras(o, p, buyerNames, f = null) {
   const cancelled = o.status === 'cancelled' || !p || p.active === 0;
   const step = cancelled ? 0 : Math.min(...p.steps);
+  let label = cancelled ? 'Cancelled' : ORDER_STEPS[step];
+  if (!cancelled && f && step === ORDER_STEPS.length - 1 && f.endings.length) {
+    const kinds = f.endings.map((x) => x.kind);
+    const ending = kinds.includes('replaced') ? `Replaced → ${f.replacementOrderIds.join(', ')}` : kinds.includes('refunded') ? 'Refunded' : 'Closed';
+    label = f.endings.length === f.active ? ending : `Delivered · ${ending}`;
+  } else if (!cancelled && f && f.problem && step === 3) label = 'Problem at hub';
   return {
     buyerName: o.buyer_id ? (buyerNames[o.buyer_id] || null) : null,
-    progress: { step, percent: cancelled ? 0 : Math.round((step / (ORDER_STEPS.length - 1)) * 100), label: cancelled ? 'Cancelled' : ORDER_STEPS[step], cancelled, flagged: Boolean(p && p.flagged) },
+    progress: { step, percent: cancelled ? 0 : Math.round((step / (ORDER_STEPS.length - 1)) * 100), label, cancelled, flagged: Boolean(p && p.flagged) || Boolean(f && f.problem), ended: f && f.finished ? f.ending : null },
     assigned: { done: p ? p.assigned : 0, of: p ? p.active : 0 },
   };
 }
@@ -872,10 +963,13 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
     // Admin list (new): the buyer's name, how far each order has come (the step its SLOWEST supplier part has reached, 0-6), and
     // whether every part has a hub. Cancelled and refused parts are left out. One query for all the orders.
     const progressByOrder = {};
+    const answerByOrder = {};
+    const answerWindow = isAdmin ? await adminAnswerWindowHours() : null;
     const buyerNames = {};
     if (isAdmin && orderIds.length > 0) {
       const { rows: parts } = await db.query(
         `SELECT so.order_id, so.status AS part_status, so.hub_id, (to_jsonb(so) ->> 'refused_at') IS NOT NULL AS refused,
+                so.respond_by, so.accepted_at, so.escalated_at, so.refused_at,
                 hs.status AS hub_status, hs.resolved_at
          FROM supplier_sub_orders so
          LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
@@ -884,11 +978,17 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       );
       for (const p of parts) {
         const e = progressByOrder[p.order_id] || (progressByOrder[p.order_id] = { steps: [], assigned: 0, active: 0, flagged: false });
+        // Admin countdown: the soonest time a supplier of this order still has to answer by, and how many parts are waiting.
+        if (isAwaitingAnswer({ ...p, status: p.part_status })) {
+          const a = answerByOrder[p.order_id] || (answerByOrder[p.order_id] = { dueAt: null, waiting: 0 });
+          a.waiting++;
+          if (!a.dueAt || new Date(p.respond_by) < new Date(a.dueAt)) a.dueAt = p.respond_by;
+        }
         if (p.part_status === 'cancelled' || p.refused) continue;
         e.active++;
         if (p.hub_id) e.assigned++;
         if (p.hub_status === 'flagged' && !p.resolved_at) e.flagged = true;
-        e.steps.push(orderPartStep(p.part_status, p.hub_status));
+        e.steps.push(p.resolved_at && FAULT_HUB.includes(p.hub_status) ? ORDER_STEPS.length - 1 : orderPartStep(p.part_status, p.hub_status));      // a finished fault case = done
       }
       const buyerIds = [...new Set(rows.map((o) => o.buyer_id).filter(Boolean))];
       if (buyerIds.length > 0) {
@@ -915,6 +1015,7 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       }
     }
 
+    const endingsByOrder = await faultEndingsByOrder(orderIds);      // patch-orders-fault-done
     const withDisplayStatus = await Promise.all(rows.map(async (o) => {
       const suppliers = suppliersByOrder[o.id] || [];
       // Real per-order anonymization (new) -- scoped to THIS order's
@@ -937,7 +1038,11 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
         itemCount: (partsByOrder[o.id] || {}).itemCount || 0,
         photos: (partsByOrder[o.id] || {}).photos || [],
         supplierNames: isAdmin ? suppliers.map((s) => s.name) : suppliers.map((s) => labelMap.get(s.supplierId)),
-        ...(isAdmin ? adminListExtras(o, progressByOrder[o.id], buyerNames) : {}),
+        // 'replaced' / 'refunded' / 'closed' once every part is done and at least one ended through a hub-found fault (patch-orders-fault-done)
+        faultEnding: endingsByOrder[o.id]?.ending || null,
+        replacementOrderIds: endingsByOrder[o.id]?.ending ? endingsByOrder[o.id].replacementOrderIds : [],
+        ...(isAdmin ? adminListExtras(o, progressByOrder[o.id], buyerNames, endingsByOrder[o.id] || null) : {}),
+        ...(isAdmin ? { answerDueAt: answerByOrder[o.id]?.dueAt || null, answerWaiting: answerByOrder[o.id]?.waiting || 0, answerWindowHours: answerWindow } : {}),
       };
     }));
 
@@ -961,6 +1066,18 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
 // before 'shipped_to_buyer' (including 'flagged' -- a real quality
 // issue caught at the hub still hasn't left for the buyer), counts
 // as cancellable. Already-cancelled stays excluded.
+// Admin countdown: a supplier part still waiting for its supplier's first answer (same test as the no-answer rules).
+function isAwaitingAnswer(so) {
+  return so.status === 'pending' && !so.accepted_at && !so.escalated_at && !so.refused_at && !!so.respond_by;
+}
+// The supplier's time to answer (Orders > Rules > step 1), for the admin countdown colours.
+async function adminAnswerWindowHours() {
+  try {
+    const { rows } = await db.query('SELECT wait_hours FROM order_no_answer_rules WHERE id = 1');
+    return Number(rows[0]?.wait_hours ?? 24);
+  } catch { return 24; }
+}
+
 function isSubOrderCancellable(subOrderStatus, hubStatus) {
   if (subOrderStatus === 'cancelled') return false;
   if (hubStatus === 'shipped_to_buyer' || hubStatus === 'delivered') return false;
@@ -1042,18 +1159,15 @@ router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'This order can no longer be cancelled — at least one part has already shipped. Contact support for help instead.' });
     }
 
+    // Migration 145: each part is cancelled with who / when / why, its stock goes back, and its share of the payment is refunded
+    // (Orders > Rules > step 5: automatically, or by the admin in Orders > Cancelled).
+    const cancelled = await cancellation.cancelParts(client, { orderId: req.params.id, subOrderIds: subOrders.filter((so) => so.status !== 'cancelled').map((so) => so.id), by: 'buyer', reason: 'The buyer cancelled the order' });
     await client.query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [req.params.id]);
-    await client.query(`UPDATE supplier_sub_orders SET status = 'cancelled' WHERE order_id = $1`, [req.params.id]);
 
     await client.query('COMMIT');
 
-    // Real supplier notification (new) -- best-effort, after commit,
-    // same reasoning as every other real transactional trigger: a
-    // cancelled order concerns every real supplier whose sub-order was
-    // just cancelled, not just the buyer.
-    for (const so of subOrders) {
-      await notifySupplierOfCancellation(req.params.id, so.supplier_id);
-    }
+    // After the commit: the buyer and each supplier are told, then the refund. Never fails the request.
+    cancellation.afterCancel(cancelled, { by: 'buyer' }).catch((err) => console.error('[cancel] after-cancel failed (non-fatal):', err.message));
 
     res.json({ id: req.params.id, status: 'cancelled' });
   } catch (err) {
@@ -1108,23 +1222,55 @@ router.post('/:id/sub-orders/:subOrderId/cancel', optionalAuth, async (req, res,
       return res.status(400).json({ error: 'This part has already shipped and can no longer be cancelled. Contact support for help instead.' });
     }
 
-    await client.query(`UPDATE supplier_sub_orders SET status = 'cancelled' WHERE id = $1`, [req.params.subOrderId]);
-
-    // Confirmed with the person: if every real sub-order on this
-    // order is now cancelled (this one plus any already cancelled
-    // before it), the real parent order is cancelled too.
-    const everyoneCancelled = subOrders.every((so) => String(so.id) === String(req.params.subOrderId) || so.status === 'cancelled');
-    if (everyoneCancelled) {
-      await client.query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [req.params.id]);
-    }
+    // Migration 145: recorded (who / when / why), stock back, refunded; the order is cancelled too when this was its last part.
+    const cancelled = await cancellation.cancelParts(client, { orderId: req.params.id, subOrderIds: [target.id], by: 'buyer', reason: 'The buyer cancelled this part' });
+    const everyoneCancelled = cancelled.orderCancelled;
 
     await client.query('COMMIT');
 
-    await notifySupplierOfCancellation(req.params.id, target.supplier_id);
+    cancellation.afterCancel(cancelled, { by: 'buyer' }).catch((err) => console.error('[cancel] after-cancel failed (non-fatal):', err.message));
 
     res.json({ id: req.params.id, subOrderId: req.params.subOrderId, status: 'cancelled', orderStatus: everyoneCancelled ? 'cancelled' : order.status });
   } catch (err) {
     await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// POST /:id/admin-cancel { subOrderIds?: [...], reason, note? }   Leap cancels the order (no subOrderIds: every part that can still be cancelled)
+// or some of its parts. The same rule as the buyer's: a part already on its way to the buyer, delivered, or handled as a fault cannot be cancelled.
+// reason: one of cancellation.REASONS ('other' needs a short note). Refunds by Orders > Rules > step 5; the buyer and the supplier are told.
+router.post('/:id/admin-cancel', requireAuth, requireRole('admin'), requirePageAccess('orders'), async (req, res, next) => {
+  const { reason, note } = req.body || {};
+  if (!cancellation.REASONS[reason]) return res.status(400).json({ error: `reason must be one of: ${Object.keys(cancellation.REASONS).join(', ')}` });
+  const cleanNote = typeof note === 'string' ? note.trim().slice(0, 300) : '';
+  if (reason === 'other' && cleanNote.length < 3) return res.status(400).json({ error: 'Please write a short note explaining why.' });
+  const reasonText = [cancellation.REASONS[reason], cleanNote].filter(Boolean).join(': ');
+  // what the buyer is told: the reason, except for a suspicious order (never said to the buyer) and 'other' (the note, if any)
+  const buyerReason = reason === 'suspicious' ? null : reason === 'other' ? (cleanNote || null) : cancellation.REASONS[reason];
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: orderRows } = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (orderRows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Order not found' }); }
+    const subOrders = await fetchSubOrdersWithHubStatus(client, req.params.id);
+    const wanted = Array.isArray(req.body?.subOrderIds) && req.body.subOrderIds.length > 0 ? req.body.subOrderIds.map(String) : null;
+    const chosen = subOrders.filter((so) => !wanted || wanted.includes(String(so.id)));
+    if (wanted && chosen.length !== new Set(wanted).size) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'A part was not found on this order.' }); }
+    if (wanted && chosen.some((so) => !isSubOrderCancellable(so.status, so.hub_status))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'A chosen part is already cancelled, on its way to the buyer, delivered, or handled as a fault, so it can no longer be cancelled.' });
+    }
+    const ids = chosen.filter((so) => isSubOrderCancellable(so.status, so.hub_status)).map((so) => so.id);
+    if (ids.length === 0) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Nothing on this order can still be cancelled.' }); }
+    const cancelled = await cancellation.cancelParts(client, { orderId: req.params.id, subOrderIds: ids, by: 'admin', reason: reasonText, adminId: String(req.user.sub) });
+    await client.query('COMMIT');
+    await cancellation.afterCancel(cancelled, { by: 'admin', reasonText: buyerReason });      // waits for the refund, so the page shows how it went
+    res.json({ id: req.params.id, orderCancelled: cancelled.orderCancelled, cancelled: cancelled.parts.map((p) => ({ subOrderId: p.subOrderId, refundAmount: p.amount })) });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
   } finally {
     client.release();
@@ -1265,16 +1411,17 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
     // Layout: theme B, see receiptPdf.js.
     const isAr = req.query.lang === 'ar';
     const { rows: itemRows } = await db.query(
-      `SELECT oli.quantity, oli.unit_price, p.name, p.name_ar
+      `SELECT oli.quantity, oli.unit_price, p.name, p.name_ar, ${CAR_COLUMNS}
        FROM order_line_items oli
        JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
        JOIN products p ON p.id = oli.product_id
+       ${CAR_JOIN}
        WHERE so.order_id = $1
        ORDER BY so.id, oli.id`,
       [req.params.id]
     );
     const items = receiptItemsFor({ order, isAdmin, items: itemRows }).map((i) => ({
-      name: (isAr && i.name_ar) ? i.name_ar : i.name, quantity: Number(i.quantity), unitUsd: Number(i.unit_price),
+      name: buyerName(i, isAr ? 'ar' : 'en'), quantity: Number(i.quantity), unitUsd: Number(i.unit_price),
     }));
     const title = order.replacement_of ? receiptTitleFor({ order, isAr, defaultTitle: null, shapeArabic: (text) => text }) : null;
     const { rows: addressRows } = await db.query('SELECT * FROM order_addresses WHERE order_id = $1', [req.params.id]);
@@ -1313,10 +1460,14 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
       totalUsd: Number(order.total) || 0,
       currency,
       footerNote,
-      logoPath: path.join(__dirname, '../../../assets/leap-logo.png'),
+      // patch-receipt-arial-logo: the round LEAP logo (copied from the portals' public/brand/leap-logo.png) and Arial for Arabic text;
+      // each falls back to the file used before when it is missing
+      logoPath: [path.join(__dirname, '../../../assets/leap-logo-receipt.png'), path.join(__dirname, '../../../assets/leap-logo.png')].find((p) => require('fs').existsSync(p)) || null,
       fonts: {
-        arabicRegular: path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'),
-        arabicBold: path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf'),
+        arabicRegular: path.join(__dirname, '../../../assets/arial.ttf'),
+        arabicBold: path.join(__dirname, '../../../assets/arialbd.ttf'),
+        fallbackRegular: path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'),
+        fallbackBold: path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf'),
       },
     }, bidi, ArabicReshaper);
   } catch (err) {

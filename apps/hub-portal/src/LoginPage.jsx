@@ -1,13 +1,14 @@
 import React, { useState } from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { login } from "./auth";
 import { useLang } from "./langContext";
 
 const C = {
   ink: "#14171C", canvas: "#F5F6F8", card: "#FFFFFF", line: "#E4E6EA",
-  signal: "#E8622C", muted: "#6B7280", redBg: "#FBE7E5", red: "#C0362C",
+  signal: "#F9B317", muted: "#636B78", redBg: "#FAE6E4", red: "#C0362C",
 };
-const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
-const body = { fontFamily: "'Inter', sans-serif" };
+const disp = { fontFamily: "'Manrope', 'Noto Sans SC', sans-serif" };
+const body = { fontFamily: "'Manrope', 'Noto Sans SC', sans-serif" };
 
 export default function LoginPage({ onLoginSuccess }) {
   const { t, lang, toggle } = useLang();
@@ -35,8 +36,9 @@ export default function LoginPage({ onLoginSuccess }) {
   };
 
   return (
-    <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: C.canvas }}>
-      <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
+    <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "radial-gradient(circle at 20% 10%, #1F5574, #0B3146 45%, #07202F)" }}>
+      <style>{"@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');"}</style>
+      <form onSubmit={handleSubmit} style={{ width: 380, background: C.card, border: "1px solid #07202F", borderRadius: 16, padding: 32, boxShadow: "0 16px 40px rgba(0,0,0,0.35)" }}>
         {/* the logo, drawn like an engraving when the page opens (public/brand/leap-logo-animated.svg); the still logo if that file is missing */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <img src="/brand/leap-logo-animated.svg" alt="Leap Auto Parts" width={104} height={104} style={{ display: "block" }}
@@ -83,7 +85,8 @@ export default function LoginPage({ onLoginSuccess }) {
           disabled={isSubmitting}
           style={{
             width: "100%", marginTop: 8, padding: "13px 16px", borderRadius: 8, border: "none",
-            background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, fontSize: 15,
+            background: isSubmitting ? "#D1D5DB" : C.signal, color: "#0B3146", fontWeight: 800, fontSize: 15,
+            boxShadow: isSubmitting ? "none" : "0 1px 0 rgba(255,255,255,0.45) inset, 0 2px 4px rgba(227,159,12,0.35), 0 6px 14px rgba(227,159,12,0.25)",
             cursor: isSubmitting ? "default" : "pointer", fontFamily: "inherit",
           }}
         >

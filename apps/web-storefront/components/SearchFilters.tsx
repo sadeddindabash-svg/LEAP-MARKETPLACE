@@ -13,7 +13,7 @@ import { useLocRouter } from "./useLocRouter";
 
 export interface FilterSection { id: string; nameEn: string; nameAr: string | null }
 
-const pill = "inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-[10px] border-[1.5px] px-3 text-sm font-semibold";
+const pill = "inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-[10px] border-[1.5px] px-3 text-sm font-semibold sm:max-lg:min-h-9 sm:max-lg:gap-0.5 sm:max-lg:px-1.5 sm:max-lg:text-[12.5px]";          // a little smaller on a tablet, so the one row fits
 const chip = "inline-flex min-h-8 items-center gap-2 rounded-full bg-navy px-3 text-xs font-bold text-white hover:bg-[#123f56]";
 const pop = "absolute start-0 top-full z-30 mt-2 w-72 rounded-xl border border-[#c5d0d8] bg-white p-3 shadow-[0_12px_30px_rgba(10,49,68,0.18)]";
 const optionRow = (on: boolean) => `flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2 text-start text-sm ${on ? "bg-[#f4f8fb] font-bold text-navy" : "hover:bg-chalk"}`;
@@ -23,18 +23,22 @@ function Radio({ on }: { on: boolean }) {
 }
 
 /** One dropdown of the bar: a button showing "Label: value", and its panel. Only one is open at a time; a click outside or Escape closes it. */
-function Drop({ id, label, value, active, open, setOpen, disabled, alignEnd, children }: {
-  id: string; label: string; value: string; active: boolean; open: string | null; setOpen: (v: string | null) => void; disabled?: boolean; alignEnd?: boolean; children: React.ReactNode;
+// The label ("Brand:") is not shown on any screen, only the value (screen readers still read it). On a phone, phoneHidden hides a step until the one before it is
+// chosen; on a tablet or a PC that step is shown greyed, as "All models", and waitText ("Choose a brand first") is what a screen reader hears.
+// stack makes the button fill its column on a phone, so three fit on one line.
+// Every panel opens under its box, as wide as the box (the box is the one positioned on a phone), so it never runs off the screen.
+function Drop({ id, label, value, active, open, setOpen, disabled, alignEnd, phoneHidden, stack, waitText, children }: {
+  id: string; label: string; value: string; active: boolean; open: string | null; setOpen: (v: string | null) => void; disabled?: boolean; alignEnd?: boolean; phoneHidden?: boolean; stack?: boolean; waitText?: string; children: React.ReactNode;
 }) {
   const isOpen = open === id;
   return (
-    <div className="relative" data-drop={id}>
+    <div className={`relative max-sm:static sm:flex-none ${stack ? "min-w-0" : ""} ${phoneHidden ? "max-sm:hidden" : ""}`} data-drop={id}>
       <button type="button" aria-haspopup="true" aria-expanded={isOpen} disabled={disabled} onClick={() => setOpen(isOpen ? null : id)}
-        className={`${pill} ${active ? "border-navy bg-[#f4f8fb] text-ink" : "border-[#c5d0d8] bg-white text-ink"} disabled:cursor-not-allowed disabled:opacity-50`}>
-        <span className="font-medium text-muted">{label}:</span><span className="max-w-[12rem] truncate">{value}</span>
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" className={`text-muted transition-transform ${isOpen ? "rotate-180" : ""}`}><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        className={`${pill} ${stack ? "max-sm:w-full max-sm:justify-center max-sm:gap-1 max-sm:px-1 max-sm:text-[13px]" : ""} ${active ? "border-navy bg-[#f4f8fb] text-ink" : "border-[#c5d0d8] bg-white text-ink"} disabled:cursor-not-allowed disabled:opacity-50`}>
+        <span className="sr-only">{label}:</span><span aria-hidden={waitText ? true : undefined} className={`max-w-[12rem] truncate ${stack ? "max-sm:min-w-0" : ""}`}>{value}</span>{waitText && <span className="sr-only">{waitText}</span>}
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" className={`flex-none text-muted transition-transform ${isOpen ? "rotate-180" : ""}`}><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
-      {isOpen && <div role="dialog" aria-label={label} className={`${pop} ${alignEnd ? "start-auto end-0" : ""}`}>{children}</div>}
+      {isOpen && <div role="dialog" aria-label={label} className={`${pop} ${alignEnd ? "sm:start-auto sm:end-0" : ""} max-sm:inset-x-0 max-sm:w-auto`}>{children}</div>}
     </div>
   );
 }
@@ -173,16 +177,19 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
   const clearAll = { ...noCar(), q: null, category: null, part: null, minPrice: null, maxPrice: null, maxDeliveryDays: null, sort: null };
 
   return (
-    <div ref={root} className="mb-6">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">{heading}</div>
-        <div className="empty:hidden min-w-64"><FitsMyCarToggle /></div>
+    <div ref={root} className="mb-2">
+      {/* The title is not shown (screen readers and search engines still have it): only "Parts Fit with my Car" (when there is a garage car), at the very top. */}
+      <div className="flex flex-wrap items-end justify-start gap-4">          {/* at the start: on the left in English, on the right in Arabic */}
+        <div className="sr-only">{heading}</div>
+        <div className="empty:hidden mb-2 max-sm:w-full sm:min-w-64"><FitsMyCarToggle /></div>
       </div>
 
-      <div className="rounded-xl border border-line bg-white">
+      {/* On a tablet or a PC one box, ONE row: the car | section and part | price, delivery ... sort. On a phone three boxes, 8 px apart: the car, then section and
+          part, then price, delivery and sort. No titles anywhere. Between 640 and 767 px (too narrow for one row) the row wraps. */}
+      <div className="max-sm:grid max-sm:gap-2 sm:flex sm:items-center sm:gap-1 sm:rounded-xl sm:border sm:border-line sm:bg-white sm:p-1.5 sm:max-md:flex-wrap lg:gap-1.5 lg:p-2">
       {/* Line 1: the car. Each step filters the results at once. */}
-      <div role="group" aria-label={t("sf_your_car")} className="flex flex-wrap items-center gap-2 border-b border-line p-2.5">
-        <span className="px-1 text-sm font-bold text-navy">{t("sf_your_car")}</span>
+      <div role="group" aria-label={t("sf_your_car")} className="relative flex flex-wrap items-center gap-2 border-line p-2 max-sm:rounded-xl max-sm:border max-sm:bg-white sm:flex-nowrap sm:gap-1 sm:border-e sm:p-0 sm:pe-1 lg:gap-1.5 lg:pe-1.5">
+        <span className="sr-only">{t("sf_your_car")}</span>          {/* no title: the buttons say it */}
         <Drop id="brand" label={t("sf_brand")} value={brandName || (carBrand ? "…" : t("sf_all_brands"))} active={!!carBrand} open={open} setOpen={(v) => { setOpen(v); setBrandQuery(""); }}>
           {(brands?.length ?? 0) > 8 && (
             <input value={brandQuery} onChange={(e) => setBrandQuery(e.target.value)} placeholder={t("sf_search_brands")} aria-label={t("sf_search_brands")} autoFocus className="mb-2 w-full rounded-lg border-[1.5px] border-[#c5d0d8] px-2.5 py-2 text-sm" />
@@ -194,7 +201,7 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
             ))}
           </div>
         </Drop>
-        <Drop id="model" label={t("sf_model")} value={modelName || (carModel ? "…" : carBrand ? t("sf_all_models") : t("sf_pick_brand_first"))} active={!!carModel} open={open} setOpen={setOpen} disabled={!carBrand}>
+        <Drop id="model" label={t("sf_model")} value={modelName || (carModel ? "…" : t("sf_all_models"))} active={!!carModel} open={open} setOpen={setOpen} disabled={!carBrand} phoneHidden={!carBrand} waitText={carBrand ? undefined : t("sf_pick_brand_first")}>
           <div className="grid max-h-80 gap-0.5 overflow-y-auto">
             <button type="button" className={optionRow(!carModel)} onClick={() => go({ ...noCar(), brandId: carBrand })}><Radio on={!carModel} />{t("sf_all_models")}</button>
             {brandModels === null ? <p className="px-2 py-2 text-sm text-muted">{t("search_loading")}</p> : brandModels.map((m) => (
@@ -202,7 +209,7 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
             ))}
           </div>
         </Drop>
-        <Drop id="year" label={t("sf_year")} value={yearParam ? String(yearParam) : carModel ? t("sf_all_years") : t("sf_pick_model_first")} active={!!yearParam} open={open} setOpen={setOpen} disabled={!carModel}>
+        <Drop id="year" label={t("sf_year")} value={yearParam ? String(yearParam) : t("sf_all_years")} active={!!yearParam} open={open} setOpen={setOpen} disabled={!carModel} phoneHidden={!carModel} waitText={carModel ? undefined : t("sf_pick_model_first")}>
           <div className="grid max-h-80 grid-cols-3 gap-0.5 overflow-y-auto">
             <button type="button" className={`${optionRow(!yearParam)} col-span-3`} onClick={() => go({ ...noCar(), brandId: carBrand, modelId: carModel })}><Radio on={!yearParam} />{t("sf_all_years")}</button>
             {modelGens === null ? <p className="col-span-3 px-2 py-2 text-sm text-muted">{t("search_loading")}</p> : years.map((y) => (
@@ -221,7 +228,8 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
       </div>
 
       {/* Line 2: what kind of part, and how it is listed. */}
-      <div role="group" aria-label={t("sf_filters")} className="flex flex-wrap items-center gap-2 p-2.5">
+      <div role="group" aria-label={t("sf_filters")} className="max-sm:contents sm:flex sm:min-w-0 sm:flex-1 sm:items-center sm:gap-1 sm:max-md:flex-wrap lg:gap-1.5">
+        <div className="max-sm:relative max-sm:flex max-sm:flex-wrap max-sm:gap-2 max-sm:rounded-xl max-sm:border max-sm:border-line max-sm:bg-white max-sm:p-2 sm:flex sm:gap-1 sm:border-e sm:border-line sm:pe-1 lg:gap-1.5 lg:pe-1.5">
         <Drop id="section" label={t("sf_section")} value={category ? sectionName : t("all_sections")} active={!!category} open={open} setOpen={setOpen}>
           <div className="grid max-h-80 gap-0.5 overflow-y-auto">
             <button type="button" className={optionRow(!category)} onClick={() => go({ category: null, part: null })}><Radio on={!category} />{t("all_sections")}</button>
@@ -230,7 +238,7 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
             ))}
           </div>
         </Drop>
-        <Drop id="part" label={t("sf_part")} value={part ? partName : category ? t("sf_all_parts") : t("sf_pick_section_first")} active={!!part} open={open} setOpen={setOpen} disabled={!category}>
+        <Drop id="part" label={t("sf_part")} value={part ? partName : t("sf_all_parts")} active={!!part} open={open} setOpen={setOpen} disabled={!category} phoneHidden={!category} waitText={category ? undefined : t("sf_pick_section_first")}>
           <div className="grid max-h-80 gap-0.5 overflow-y-auto">
             <button type="button" className={optionRow(!part)} onClick={() => go({ part: null })}><Radio on={!part} />{t("sf_all_parts")}</button>
             {sectionParts === null ? <p className="px-2 py-2 text-sm text-muted">{t("search_loading")}</p> : sectionParts.map((p) => (
@@ -238,7 +246,9 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
             ))}
           </div>
         </Drop>
-        <Drop id="price" label={t("sf_price")} value={priceText ?? t("sf_any_price")} active={!!priceText} open={open} setOpen={setOpen}>
+        </div>
+        <div className="max-sm:relative max-sm:grid max-sm:grid-cols-3 max-sm:gap-1.5 max-sm:rounded-xl max-sm:border max-sm:border-line max-sm:bg-white max-sm:p-2 sm:contents">
+        <Drop id="price" label={t("sf_price")} value={priceText ?? t("sf_any_price")} active={!!priceText} open={open} setOpen={setOpen} stack>
           <form onSubmit={(e) => { e.preventDefault(); applyPrice(); }} className="grid gap-2">
             <div className="flex gap-2">
               <label className="min-w-0 flex-1"><span className="sr-only">{t("sf_min")}</span><input inputMode="numeric" value={minText} onChange={(e) => setMinText(e.target.value.replace(/[^\d]/g, ""))} placeholder={t("sf_min")} className="w-full rounded-lg border-[1.5px] border-[#c5d0d8] px-2.5 py-2 text-sm" /></label>
@@ -256,23 +266,24 @@ export function SearchFilters({ sections, heading }: { sections: FilterSection[]
             </div>
           </form>
         </Drop>
-        <Drop id="delivery" label={t("sf_delivery")} value={deliveryText ?? t("sf_delivery_any")} active={!!deliveryText} open={open} setOpen={setOpen}>
+        <Drop id="delivery" label={t("sf_delivery")} value={deliveryText ?? t("sf_delivery_any")} active={!!deliveryText} open={open} setOpen={setOpen} stack>
           <div className="grid gap-0.5">
             <button type="button" className={optionRow(!extra.maxDeliveryDays)} onClick={() => go({ maxDeliveryDays: null })}><Radio on={!extra.maxDeliveryDays} />{t("sf_delivery_any")}</button>
             {DELIVERY_DAYS.map((d) => <button key={d} type="button" className={optionRow(extra.maxDeliveryDays === d)} onClick={() => go({ maxDeliveryDays: d })}><Radio on={extra.maxDeliveryDays === d} />{t("sf_delivery_within", { n: d })}</button>)}
           </div>
         </Drop>
-        <div className="ms-auto">
-          <Drop id="sort" label={t("sf_sort")} value={t(sortKey)} active={!!extra.sort} open={open} setOpen={setOpen} alignEnd>
+        <div className="min-w-0 sm:ms-auto">
+          <Drop id="sort" label={t("sf_sort")} value={t(sortKey)} active={!!extra.sort} open={open} setOpen={setOpen} alignEnd stack>
             <div className="grid gap-0.5">
               {sorts.map(([v, key]) => <button key={key} type="button" className={optionRow((extra.sort ?? "") === v)} onClick={() => go({ sort: v || null })}><Radio on={(extra.sort ?? "") === v} />{t(key)}</button>)}
             </div>
           </Drop>
         </div>
+        </div>
       </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {chips.map((c) => (
           <button key={c.key} type="button" onClick={() => go(c.change)} className={chip}>
             <span className="max-w-[16rem] truncate">{c.label}</span><span aria-hidden="true" className="opacity-80">×</span><span className="sr-only">{t("clear")}</span>

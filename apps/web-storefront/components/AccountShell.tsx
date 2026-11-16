@@ -63,6 +63,8 @@ const Icon = ({ href, size }: { href: string; size: number }) => (
   <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[href] ?? ICONS["/account"]} /></svg>
 );
 const TIER = "/account/loyalty";
+// the same list, its icons and the unread number, for "Account" in the header and in the phone's bottom bar (AccountMenuList)
+export { ITEMS as ACCOUNT_MENU_ITEMS, Icon as AccountMenuIcon, useUnread as useAccountUnread };
 // Inside the pages (not My tier): the cards a little rounder, a section title a small gold capital label as on My tier, a delivered / done status gold and
 // one still on its way light blue, and the My garage ring readable on the navy box.
 const THEME_CSS = `.account-themed .account-body .rounded-\\[14px\\] { border-radius: 16px !important; }

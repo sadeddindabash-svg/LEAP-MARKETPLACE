@@ -24,6 +24,27 @@ const db = require('../../../db/pool');
 
 const SHIPPING_VOLUMETRIC_DIVISOR = 5000; // industry-standard air-freight divisor (cm^3 per kg)
 
+// Shipping from Delivery Rules (patch-delivery-prices): the buyer's country (given, else the current request's buyer, else the fallback country) and the
+// supplier's warehouse country (given, else looked up from the supplier, cached for 5 minutes).
+const supplierCountries = new Map();
+async function warehouseCountryOf(supplierId) {
+  if (!supplierId) return null;
+  const hit = supplierCountries.get(supplierId);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.country;
+  const { rows } = await db.query('SELECT country FROM suppliers WHERE id = $1', [supplierId]);
+  const country = rows[0] ? rows[0].country : null;
+  supplierCountries.set(supplierId, { country, at: Date.now() });
+  return country;
+}
+async function destinationFor(given) {
+  if (given) return String(given).toUpperCase();
+  const { currentDestinationIsoCode } = require('../shared/requestContext');
+  const fromRequest = await currentDestinationIsoCode();
+  if (fromRequest) return fromRequest;
+  const { getDeliverySettings } = require('../deliveryEstimate/settings');
+  return (await getDeliverySettings()).fallbackCountryIso || 'JO';
+}
+
 /**
  * The real, honest FX rate lookup. There is NO live-rate API configured
  * in this environment — same category of external dependency as the
@@ -77,7 +98,7 @@ function chargeableWeightKg({ weightKg, lengthCm, widthCm, heightCm }) {
  * component in sequence. Returns a full breakdown (not just the final
  * number) — a money calculation should be auditable, not a black box.
  */
-async function calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm }) {
+async function calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm, destinationIsoCode, warehouseCountry, supplierId }) {
   if (supplierCostCny == null || supplierCostCny <= 0) {
     throw new Error('supplierCostCny must be a positive number');
   }
@@ -91,6 +112,7 @@ async function calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, wid
 
   for (const c of components) {
     let feeAmountCny;
+    let shippingInfo = null;
     if (c.type === 'percentage') {
       feeAmountCny = runningTotalCny * (Number(c.value) / 100);
     } else if (c.type === 'flat') {
@@ -101,11 +123,24 @@ async function calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, wid
       }
       const chargeable = chargeableWeightKg({ weightKg, lengthCm, widthCm, heightCm });
       feeAmountCny = Number(c.value) * chargeable;
+    } else if (c.type === 'shipping_rules') {
+      // the rule that fits this product, for the buyer's country (Delivery Rules > How it works, step 5)
+      if (weightKg == null || lengthCm == null || widthCm == null || heightCm == null) {
+        throw new MissingShippingDataError(`Cannot apply shipping fee "${c.name}" — product is missing weight/dimensions`);
+      }
+      const { shippingQuote } = require('../deliveryEstimate/engine');
+      const dest = await destinationFor(destinationIsoCode);
+      const from = warehouseCountry || (await warehouseCountryOf(supplierId));
+      const q = await shippingQuote({ weightKg, lengthCm, widthCm, heightCm, warehouseCountry: from, destinationIsoCode: dest });
+      if (!q.ok) throw new MissingShippingDataError(`Cannot apply shipping fee "${c.name}" — no delivery rule fits this product and no general shipping price is set`);
+      feeAmountCny = q.amountCny;
+      shippingInfo = { destinationIsoCode: dest, warehouseCountry: from, rateCnyPerKg: q.rateCnyPerKg, chargeableKg: Number(q.chargeableKg.toFixed(3)), matched: q.matched, ruleIndex: q.ruleIndex, countryPrice: q.countryPrice, minimumApplied: q.minimumApplied };
     } else {
       continue; // unknown type — skip rather than crash a live catalog request
     }
     runningTotalCny += feeAmountCny;
-    breakdown.push({ step: c.name, type: c.type, amountCny: Number(feeAmountCny.toFixed(4)), runningTotalCny: Number(runningTotalCny.toFixed(4)) });
+    // a shipping line keeps the type 'shipping_volumetric' in the breakdown: orders, free-shipping promo codes and parcel costs count shipping by it
+    breakdown.push({ step: c.name, type: c.type === 'shipping_rules' ? 'shipping_volumetric' : c.type, feeType: c.type, ...(shippingInfo ? { shipping: shippingInfo } : {}), amountCny: Number(feeAmountCny.toFixed(4)), runningTotalCny: Number(runningTotalCny.toFixed(4)) });
   }
 
   const { rate: fxRate, source: fxSource } = await getFxRate('CNY_USD');

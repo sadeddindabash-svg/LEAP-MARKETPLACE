@@ -16,28 +16,57 @@ export default function QuotationDocument({ quote, print = false }: { quote: Quo
   const place = [quote.delivery.city, quote.delivery.country ? countryName(lang, quote.delivery.country) : null].filter(Boolean).join(lang === "ar" ? "، " : ", ");
   const cell = "px-2.5 py-2 align-top";
   return (
-    <article data-testid="quotation-document" className={`rounded-[10px] border border-line bg-white ${print ? "p-0 border-0" : "p-5 sm:p-7"} text-[13.5px] text-ink`}>
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b-[3px] border-signal pb-3">
-        <div>
-          <p className="text-[22px] font-extrabold tracking-tight text-navy">{t("quote_brand")}</p>
-          <p className="text-xs text-muted">leapautoparts.com</p>
+    <article data-testid="quotation-document" className={`relative isolate rounded-[10px] border border-line bg-white ${print ? "p-0 border-0" : "p-3"} text-[13.5px] text-ink`}>
+      {/* a faint logo behind the parts */}
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-[34%] -z-10 mx-auto block size-[240px] bg-[url('/brand/leap-logo-static.svg')] bg-contain bg-center bg-no-repeat opacity-[0.05] sm:size-[320px]" />
+      {/* the navy header (design C, confirmed with the person via mockup): the logo, the name and www.leapautoparts.com on the reading side; "Quotation" (the
+          title's size), its number (the address's size) and the date on the other; a gold edge under it. Arabic: everything from the right. */}
+      <header className="relative overflow-hidden rounded-[14px] bg-gradient-to-br from-navy to-[#215a78] px-4 pb-5 pt-4 text-white sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="flex min-w-0 items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a fixed SVG, printed as it is */}
+            <img src="/brand/leap-logo-static.svg" alt="" width={64} height={64} className="size-12 flex-none sm:size-16" />
+            <div className="min-w-0">
+              <p className="text-[19px] font-extrabold leading-tight sm:text-[24px]">{t("quote_brand")}</p>
+              <p className="mt-0.5 text-[12.5px] text-[#f9d77a]"><bdi dir="ltr">www.leapautoparts.com</bdi></p>
+            </div>
+          </div>
+          <div className="ms-auto text-end">
+            <p className="text-[19px] font-extrabold leading-tight sm:text-[24px]">{t("quote_doc_title_case")}</p>
+            <p data-testid="quotation-number" className="mt-0.5 text-[12.5px] font-extrabold"><bdi dir="ltr">{quote.id}</bdi></p>
+            <p className="text-[12.5px] text-[#f9d77a]">{t("quote_date_label")} {date(quote.createdAt)}</p>
+          </div>
         </div>
-        <div className="text-end">
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted rtl:tracking-normal">{t("quote_doc_title")}</p>
-          <p data-testid="quotation-number" className="text-lg font-extrabold text-navy" dir="ltr">{quote.id}</p>
-          <p className="text-xs text-muted">{t("quote_issued")} {date(quote.createdAt)}</p>
-        </div>
+        <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1 bg-signal" />
       </header>
 
-      <dl className="mt-3 grid gap-2.5 sm:grid-cols-3">
-        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_for_label")} · {t(PARTY_KEY[quote.party.type])}</dt><dd className="font-semibold"><bdi>{quote.party.name}</bdi>{quote.party.policyNumber && <> · {t("quote_policy_short")} <bdi dir="ltr">{quote.party.policyNumber}</bdi></>}</dd></div>
-        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_report_short")}</dt><dd className="font-semibold" dir="ltr">{quote.party.reportNumber || "—"}</dd></div>
-        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_car")}</dt><dd className="font-semibold"><bdi>{vehicleLabel(v)}</bdi>{v.vin && <> · <bdi dir="ltr">VIN {v.vin}</bdi></>}{v.plate && <> · {t("quote_plate_short")} <bdi dir="ltr">{v.plate}</bdi></>}</dd></div>
+      <dl className="mt-2 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_for_label")} · {t(PARTY_KEY[quote.party.type])}</dt><dd className="font-semibold [overflow-wrap:anywhere]"><bdi>{quote.party.name}</bdi>{quote.party.policyNumber && <> · {t("quote_policy_short")} <bdi dir="ltr">{quote.party.policyNumber}</bdi></>}</dd></div>
+        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_report_short")}</dt><dd className="font-semibold"><bdi dir="ltr">{quote.party.reportNumber || "—"}</bdi></dd></div>
+        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_car")}</dt><dd className="font-semibold [overflow-wrap:anywhere]"><bdi>{vehicleLabel(v, lang)}</bdi>{v.vin && <> · <bdi dir="ltr">VIN {v.vin}</bdi></>}{v.plate && <> · {t("quote_plate_short")} <bdi dir="ltr">{v.plate}</bdi></>}</dd></div>
         {quote.buyerName && <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_buyer")}</dt><dd className="font-semibold"><bdi>{quote.buyerName}</bdi></dd></div>}
         {place && <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_deliver_to")}</dt><dd className="font-semibold"><bdi>{place}</bdi></dd></div>}
+        <div className="rounded-lg bg-[#f6f8fa] px-3 py-2"><dt className="text-[11px] font-bold text-muted">{t("quote_col_valid")}</dt><dd className="font-semibold">{date(quote.expiresAt)}</dd></div>
       </dl>
 
-      <div className="mt-4 overflow-x-auto">
+      {/* a phone (not the printed PDF): each part as a small card, so the quotation fits the screen's width */}
+      {!print && (
+        <ul data-testid="quotation-parts-cards" className="mt-2 grid gap-2 sm:hidden">
+          {quote.items.map((i) => (
+            <li key={i.productId} className="rounded-[10px] border border-[#eef0f3] px-3 py-2.5">
+              <p className="flex items-start justify-between gap-3 font-bold"><span className="min-w-0 [overflow-wrap:anywhere]"><bdi>{i.name}</bdi></span><span className="whitespace-nowrap">{money(i.totalUsd)}</span></p>
+              <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-muted">
+                {i.oemNumber && <span dir="ltr">OEM {i.oemNumber}</span>}
+                {i.seller && <span dir="ltr">{i.seller}</span>}
+                <span>{t("quote_col_valid")} {date(i.validUntil)}</span>
+                <span className="whitespace-nowrap">{i.quantity} × {money(i.unitPriceUsd)}</span>
+              </p>
+              {!i.inStock && <p className="text-[11px] font-semibold text-[#a12a21]">{t("quote_out_of_stock_day")}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={`mt-2 overflow-x-auto ${print ? "" : "max-sm:hidden"}`}>
         <table className="w-full min-w-[560px] border-collapse">
           <thead>
             <tr className="bg-navy text-start text-[11.5px] text-white">
@@ -54,10 +83,10 @@ export default function QuotationDocument({ quote, print = false }: { quote: Quo
               <tr key={i.productId} className="border-b border-[#eef0f3]">
                 <td className={cell}>
                   <span className="block font-bold"><bdi>{i.name}</bdi></span>
-                  {i.oemNumber && <span className="block text-[11px] text-muted" dir="ltr">OEM {i.oemNumber}</span>}
+                  {i.oemNumber && <span className="block text-[11px] text-muted"><bdi dir="ltr">OEM {i.oemNumber}</bdi></span>}
                   {!i.inStock && <span className="block text-[11px] font-semibold text-[#a12a21]">{t("quote_out_of_stock_day")}</span>}
                 </td>
-                <td className={`${cell} text-[12px]`} dir="ltr">{i.seller ?? "—"}</td>
+                <td className={`${cell} text-[12px]`}><bdi dir="ltr">{i.seller ?? "—"}</bdi></td>
                 <td className={`${cell} whitespace-nowrap`}>{date(i.validUntil)}</td>
                 <td className={`${cell} text-end`}>{i.quantity}</td>
                 <td className={`${cell} whitespace-nowrap text-end`}>{money(i.unitPriceUsd)}</td>
@@ -68,19 +97,19 @@ export default function QuotationDocument({ quote, print = false }: { quote: Quo
         </table>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-5">
-        <div className="flex max-w-[330px] items-center gap-3">
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-x-5 gap-y-2">
+        <div className="flex min-w-0 max-w-[330px] items-center gap-3">
           {quote.qr && <img src={quote.qr} alt="" width={84} height={84} className="size-[84px] flex-none" />}
-          <p className="text-[12px] text-muted">{t("quote_verify_note", { url: quote.link ? quote.link.replace(/^https?:\/\//, "") : `/q/${quote.code}` })} <b className="text-ink" dir="ltr">{quote.code}</b></p>
+          <p className="min-w-0 text-[12px] text-muted [overflow-wrap:anywhere]">{t("quote_verify_note", { url: quote.link ? quote.link.replace(/^https?:\/\//, "") : `/q/${quote.code}` })} <b className="text-ink" dir="ltr">{quote.code}</b></p>
         </div>
-        <dl className="min-w-[250px] flex-1 sm:max-w-[320px]">
+        <dl className="min-w-0 flex-1 basis-full sm:min-w-[250px] sm:basis-auto sm:max-w-[320px]">
           <div className="flex justify-between py-1"><dt>{t("quote_subtotal")}</dt><dd>{money(quote.subtotalUsd)}</dd></div>
           {quote.shippingUsd > 0 && <div className="flex justify-between py-1"><dt>{t("quote_shipping")}</dt><dd>{money(quote.shippingUsd)}</dd></div>}
           <div className="mt-1 flex justify-between border-t-2 border-navy pt-2 text-[15px] font-extrabold"><dt>{t("quote_total", { code: quote.currency.code })}</dt><dd data-testid="quotation-total">{money(quote.totalUsd)}</dd></div>
         </dl>
       </div>
 
-      <section className="mt-4 rounded-lg border border-[#f0d9a0] bg-[#fff8e5] px-3.5 py-2.5" aria-label={t("quote_who_pays")}>
+      <section className="mt-2 rounded-lg border border-[#f0d9a0] bg-[#fff8e5] px-3.5 py-2.5" aria-label={t("quote_who_pays")}>
         <p className="text-[11.5px] font-extrabold text-muted">{t("quote_who_pays")}</p>
         {quote.shares.map((s) => (
           <p key={s.id} className="flex justify-between gap-3 font-semibold">
@@ -90,10 +119,15 @@ export default function QuotationDocument({ quote, print = false }: { quote: Quo
         ))}
       </section>
 
-      <footer className="mt-3 border-t border-[#eef0f3] pt-2.5 text-[11.5px] text-muted">
+      <footer className="mt-2 border-t border-[#eef0f3] pt-2 text-[11.5px] text-muted">
         <p className="font-bold text-ink">{t("quote_expires_note", { date: date(quote.expiresAt) })}</p>
         <p>{t("quote_not_invoice")}</p>
       </footer>
+      {/* for whoever approves it: name and signature, and a stamp */}
+      <div className="mt-4 flex gap-5 text-[11.5px] text-muted">
+        <p className="flex-1 border-t-[1.5px] border-dashed border-[#b9c6d0] pt-1.5">{t("quote_sign_by")}</p>
+        <p className="flex-[0.6] border-t-[1.5px] border-dashed border-[#b9c6d0] pt-1.5">{t("quote_stamp")}</p>
+      </div>
     </article>
   );
 }

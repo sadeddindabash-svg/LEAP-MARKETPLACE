@@ -13,7 +13,8 @@ const { logAdminAction } = require('../audit/helpers');
  */
 const router = express.Router();
 
-const ALLOWED_TYPES = ['percentage', 'flat', 'shipping_volumetric'];
+const ALLOWED_TYPES = ['percentage', 'flat', 'shipping_volumetric', 'shipping_rules'];      // shipping_rules: the price comes from Delivery Rules (patch-delivery-prices)
+const SHIPPING_TYPES = ['shipping_volumetric', 'shipping_rules'];
 
 function toFeeComponentDto(row) {
   return {
@@ -47,6 +48,10 @@ router.post('/fee-components', requireAuth, requireRole('admin'), requirePageAcc
     }
     if (!ALLOWED_TYPES.includes(type)) {
       return res.status(400).json({ error: `type must be one of: ${ALLOWED_TYPES.join(', ')}` });
+    }
+    if (SHIPPING_TYPES.includes(type)) {
+      const { rows: already } = await db.query('SELECT 1 FROM pricing_fee_components WHERE type = ANY($1) AND is_active = true LIMIT 1', [SHIPPING_TYPES]);
+      if (already.length) return res.status(400).json({ error: 'There is already an active shipping line. Delete it or make it inactive first.' });
     }
     const id = `fee_${Date.now()}`;
     await db.query(
@@ -239,11 +244,11 @@ router.patch('/fx-rate-mode', requireAuth, requireRole('admin'), requirePageAcce
 // calculation produces internally.
 router.post('/preview', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
-    const { supplierCostCny, weightKg, lengthCm, widthCm, heightCm } = req.body || {};
-    const result = await calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm });
+    const { supplierCostCny, weightKg, lengthCm, widthCm, heightCm, destinationIsoCode, warehouseCountry } = req.body || {};
+    const result = await calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm, destinationIsoCode: destinationIsoCode || undefined, warehouseCountry: warehouseCountry || undefined });
     res.json(result);
   } catch (err) {
-    if (err.message && (err.message.includes('must be a positive number') || err.message.includes('missing weight') || err.message.includes('No FX rate'))) {
+    if (err.message && (err.message.includes('must be a positive number') || err.message.includes('missing weight') || err.message.includes('no delivery rule fits') || err.message.includes('No FX rate'))) {
       return res.status(400).json({ error: err.message });
     }
     next(err);

@@ -38,8 +38,8 @@ describe("the column beside the photos (computer screens)", () => {
   it("is pinned only from the medium screen up: on a phone (one column) none of it applies", async () => {
     const cls = String(kids(grid(await page())!)[1].props.className).split(" ").filter((c) => /sticky|top-|self-start|max-h|overflow/.test(c)); expect(cls.length).toBeGreaterThan(0); for (const c of cls) expect(c.startsWith("md:"), c).toBe(true);
   });
-  it("is released where the photos and details end: the sections below (other listings, reviews) are NOT inside the two columns, so they are never covered", async () => {
-    const root = await page(); const g = grid(root)!; expect(contains(g, OemComparison)).toBe(false); expect(contains(g, ReviewsSection)).toBe(false); expect(contains(root, ReviewsSection)).toBe(true); expect(contains(root, OemComparison)).toBe(true);
+  it("is released only when the reviews end: other suppliers and reviews are in the photo column, never in the pinned name column", async () => {
+    const root = await page(); const g = grid(root)!; const [left, right] = kids(g); expect(contains(left, OemComparison)).toBe(true); expect(contains(left, ReviewsSection)).toBe(true); expect(contains(right, OemComparison)).toBe(false); expect(contains(right, ReviewsSection)).toBe(false);
   });
   it("the same in Arabic (the columns swap sides by themselves)", async () => { const g = grid(await page("ar")); expect(String(kids(g!)[1].props.className)).toContain("md:sticky"); });
 });

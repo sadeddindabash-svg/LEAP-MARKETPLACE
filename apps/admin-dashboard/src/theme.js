@@ -29,22 +29,41 @@ export const C = {
   card: "#FFFFFF",
   line: "#E4E6EA",
   lineDark: "#2A2F38",
-  signal: "#F2A71B",
-  signalDark: "#C4870D",
+  signal: "#F9B317",
+  signalDark: "#E39F0C",
+  // LEAP portals design system (navy frame, gold for the next step)
+  navy: "#0B3146",
+  navyDeep: "#07202F",
+  navySoft: "#1F5574",
+  onNavyMuted: "#9FB4C3",
+  goldTint: "#FDF3D8",
+  surfaceHigh: "#F9FAFB",
+  lineStrong: "#CFD4DB",
   // Real, new -- dark text-on-gold, matching the mobile app's own
   // real onSignal token exactly. Gold is too light for white text to
   // read well against it, matching the real site's own real contrast
   // choice (dark text on every real gold button/pill there).
-  onSignal: "#241A05",
+  onSignal: "#0B3146",
   torque: "#2A5FD9",
   gauge: "#1E9D6B",
   amber: "#B9791F",
   red: "#C0362C",
-  muted: "#6B7280",
-  gaugeBg: "#E4F5EC",
-  amberBg: "#FCEFD8",
-  torqueBg: "#E9EFFC",
-  redBg: "#FBE7E5",
+  muted: "#636B78",
+  gaugeBg: "#E3F4EC",
+  amberBg: "#FBF0DC",
+  torqueBg: "#E6EDFC",
+  redBg: "#FAE6E4",
+  // text on the tints above (4.5:1 or better)
+  gaugeInk: "#13714B",
+  amberInk: "#8A5A12",
+  torqueInk: "#2350B8",
+  redInk: "#A82E25",
+};
+// Shadows of the design system: flat cards, and the two raised things (navy hero cards, gold buttons).
+export const SHADOW = {
+  card: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)",
+  navyRaised: "0 1px 3px rgba(11,49,70,0.12), 0 3px 6px rgba(11,49,70,0.2), 0 10px 24px rgba(11,49,70,0.18)",
+  goldRaised: "0 1px 0 rgba(255,255,255,0.45) inset, 0 2px 4px rgba(227,159,12,0.35), 0 6px 14px rgba(227,159,12,0.25)",
 };
 export const disp = { fontFamily: "'Manrope', sans-serif" };
 export const body = { fontFamily: "'Manrope', sans-serif" };

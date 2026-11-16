@@ -95,7 +95,7 @@ function Ticket({ ticketId }: { ticketId: string }) {
       <ul className="grid gap-3">
         {ticket.messages.map((msg, i) => (
           <li key={i} className={`flex ${msg.senderRole === "buyer" ? "justify-end" : "justify-start"}`}>
-            <p dir="auto" className={`max-w-[75%] whitespace-pre-wrap rounded-[14px] px-4 py-2.5 text-[15px] ${msg.senderRole === "buyer" ? "bg-navy text-white" : "border border-line bg-white text-ink"}`}>{msg.message}</p>
+            <p dir="auto" className={`max-w-[75%] whitespace-pre-wrap rounded-[14px] px-4 py-2.5 text-[15px] ${msg.senderRole === "buyer" ? "bg-gauge text-white" : "bg-signal text-on-signal"}`}>{msg.message}</p>
           </li>
         ))}
       </ul>

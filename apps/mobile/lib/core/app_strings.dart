@@ -549,6 +549,10 @@ class AppStrings {
     // ---- Tooltips, a heading and a few labels that had no translation at all ----
     'remove_item': {'en': 'Remove item', 'ar': 'إزالة المنتج'},
     'decrease_quantity': {'en': 'Decrease quantity', 'ar': 'تقليل الكمية'},
+    // basket price lines during a checkout hold (Pricing > Discount rules > Rules)
+    'cart_line_held': {'en': 'held price', 'ar': 'سعر محجوز'},
+    'cart_line_new': {'en': "added later · today's price", 'ar': 'أُضيفت لاحقًا · سعر اليوم'},
+    'cart_line_lowered': {'en': 'price dropped', 'ar': 'انخفض السعر'},
     'increase_quantity': {'en': 'Increase quantity', 'ar': 'زيادة الكمية'},
     'remove_vehicle': {'en': 'Remove vehicle', 'ar': 'إزالة السيارة'},
     'remove_photo': {'en': 'Remove photo', 'ar': 'إزالة الصورة'},

@@ -4,12 +4,13 @@ import { C, body } from "./theme";
 import { API_BASE_URL, SessionExpiredError, getStoredToken, fetchVersionsForGeneration, createVersion, updateVersion, updateVersionPhoto, deleteVersion, uploadCatalogImage } from "./auth";
 
 // The VERSIONS of one vehicle year (version name, engine, seats, photo), added by hand. Each of the six texts is written in English, Arabic and Chinese (all required), seats are
-// a number from 1 to 12, and the photo is required when adding (the shortest side at least 400 px). A version that arrived from the Excel import without a picture is marked
+// a number from 1 to 60, and the photo is required when adding (the shortest side at least 400 px). A version that arrived from the Excel import without a picture is marked
 // "No photo yet" and gets its picture here ("Add photo").
 const EMPTY = { name: "", nameAr: "", nameZh: "", engine: "", engineAr: "", engineZh: "", seats: "" };
 const mediaSrc = (url) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 
-function VersionForm({ initial = EMPTY, requirePhoto, submitLabel, onSubmit, onCancel, busy, error }) {
+export function VersionForm({      // patch-vehicle-data-redesign: exported for VehicleVersionsPage
+ initial = EMPTY, requirePhoto, submitLabel, onSubmit, onCancel, busy, error }) {
   const [values, setValues] = useState({ ...EMPTY, ...initial, seats: initial.seats === undefined || initial.seats === null ? "" : String(initial.seats) });
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -23,7 +24,7 @@ function VersionForm({ initial = EMPTY, requirePhoto, submitLabel, onSubmit, onC
         if (!values[key + suffix].trim()) { setProblem(`${label} in ${lang} is required.`); return; }
       }
     }
-    if (!/^\d{1,2}$/.test(values.seats.trim()) || Number(values.seats) < 1 || Number(values.seats) > 12) { setProblem("Seats must be a whole number from 1 to 12."); return; }
+    if (!/^\d{1,2}$/.test(values.seats.trim()) || Number(values.seats) < 1 || Number(values.seats) > 60) { setProblem("Seats must be a whole number from 1 to 60."); return; }
     if (requirePhoto && !photoFile) { setProblem("A photo is required."); return; }
     setProblem(null);
     onSubmit({ ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()])), seats: Number(values.seats) }, photoFile);

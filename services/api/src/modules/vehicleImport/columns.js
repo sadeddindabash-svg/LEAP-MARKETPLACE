@@ -4,7 +4,7 @@ const FIELDS = [
   { key: 'brand', label: 'Brand', max: 120, headers: { en: 'Brand', ar: 'الماركة', zh: '品牌' } },
   { key: 'model', label: 'Model', max: 120, headers: { en: 'Model', ar: 'الموديل', zh: '车型' } },
   { key: 'year', label: 'Year', headers: { en: 'Year', ar: 'السنة', zh: '年份' } },
-  { key: 'version', label: 'Version', max: 120, headers: { en: 'Version', ar: 'الفئة', zh: '版本' } },
+  { key: 'version', label: 'Version', max: 200, headers: { en: 'Version', ar: 'الفئة', zh: '版本' } },
   { key: 'engine', label: 'Engine', max: 200, headers: { en: 'Engine', ar: 'المحرك', zh: '发动机' } },
   { key: 'seats', label: 'Seats', headers: { en: 'Seats', ar: 'عدد المقاعد', zh: '座位数' } },
 ];

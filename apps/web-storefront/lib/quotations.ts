@@ -4,6 +4,7 @@ import { apiMessage } from "./serverMessages";
 import { netFetch } from "./net";
 import { ARAB_WORDS } from "./currency";
 import type { DictKey, Lang } from "./i18n";
+import type { ProductSummary } from "./api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
@@ -83,12 +84,31 @@ export const fetchPublicQuotation = (code: string, lang: Lang, count = true) => 
 export const confirmQuotationShare = (code: string, shareId: number, payer: { name: string; email: string; phone?: string; paymentMethod: string }, lang: Lang) =>
   call<Quotation>(`/quotations/public/${encodeURIComponent(code)}/shares/${shareId}`, { method: "POST", body: payer, lang });
 
+/** The parts that fit a car of the catalogue: the shop filtered to its generation, year and version (the sellers' fitment). Up to 60, for a search or a section. */
+export async function fetchFittingParts(vehicle: NewQuoteVehicle, opts: { search?: string; category?: string | null; lang: Lang }): Promise<ProductSummary[]> {
+  const q = new URLSearchParams({ generationId: vehicle.generationId, year: String(vehicle.year), limit: "60" });
+  if (vehicle.versionId) q.set("versionId", vehicle.versionId);
+  if (opts.search) q.set("search", opts.search);
+  if (opts.category) q.set("category", opts.category);
+  if (opts.lang === "ar") q.set("lang", "ar");
+  const res = await netFetch(`${API_BASE_URL}/catalog/products?${q.toString()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  const data: unknown = await res.json();
+  return Array.isArray(data) ? (data as ProductSummary[]) : [];
+}
+
+/** Which of these parts fit the car (the server's own check: the parts kept when the car changed). */
+export async function fitCheck(token: string, vehicle: NewQuoteVehicle, productIds: string[]): Promise<Set<string>> {
+  const r = await call<{ fits: string[] }>("/quotations/fit-check", { method: "POST", token, body: { vehicle, productIds } });
+  return new Set(r.fits);
+}
+
 /** The page's own sentence for a refusal the server explained with a code. */
 export const QUOTE_ERROR_KEY: Record<string, DictKey> = {
   quote_items: "err_quote_items", quote_unavailable: "err_quote_unavailable", quote_party: "err_quote_party", quote_vehicle: "err_quote_vehicle", quote_address: "err_quote_address",
   quote_share_total: "err_quote_shares", quote_share_percent: "err_quote_shares", quote_share_payer: "err_quote_shares", quote_expired: "err_quote_expired", quote_closed: "err_quote_closed",
   quote_share_done: "err_quote_share_done", quote_payer_name: "err_quote_payer_name", quote_payer_email: "err_quote_payer_email", quote_payment_method: "err_quote_payment_method",
-  quote_out_of_stock: "err_quote_out_of_stock", quote_not_found: "err_quote_not_found",
+  quote_out_of_stock: "err_quote_out_of_stock", quote_not_found: "err_quote_not_found", quote_not_fit: "err_quote_not_fit",
 };
 export function quoteErrorText(e: unknown, t: (k: DictKey) => string): string {
   if (e instanceof QuotationError && e.code && QUOTE_ERROR_KEY[e.code]) return t(QUOTE_ERROR_KEY[e.code]);
@@ -109,7 +129,11 @@ export function quoteDate(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(lang === "ar" ? "ar-u-nu-latn" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
 }
 
-export const vehicleLabel = (v: QuoteVehicle): string => [v.make, v.model, v.year, v.version].filter(Boolean).join(" ");
+/** The quotation's car: in Arabic when the page is (its Arabic brand, model and version, kept since the car comes from the catalogue), else in English. */
+export const vehicleLabel = (v: QuoteVehicle, lang?: Lang): string => {
+  const ar = lang === "ar";
+  return [ar && v.makeAr ? v.makeAr : v.make, ar && v.modelAr ? v.modelAr : v.model, v.year, ar && v.versionAr ? v.versionAr : v.version].filter(Boolean).join(" ");
+};
 
 /** The share amounts typed as one number: the party's percent (the buyer pays the rest). */
 export function sharesFor(mode: "party" | "buyer" | "split", partyPercent: number): NewQuotation["shares"] {

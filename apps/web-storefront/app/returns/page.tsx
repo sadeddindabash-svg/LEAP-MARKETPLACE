@@ -70,7 +70,7 @@ export default function ReturnsPage() {
             <li key={c.id}>
               <Link href={`/returns/${c.id}`} className="flex items-center justify-between gap-3 rounded-[14px] border border-line bg-white p-4 hover:border-navy">
                 <span className="min-w-0">
-                  <span dir="auto" className="block font-semibold">{c.reason}</span>
+                  <span dir="auto" className="block font-semibold">{c.reasonCode && c.reasonCode !== "other" ? t(`return_reason_${c.reasonCode}`) : c.reason}</span>
                   <span className="block text-xs text-muted"><span dir="ltr">{c.id}</span> · {t("for_order")} <span className="font-plate" dir="ltr">{c.orderId}</span></span>
                 </span>
                 <span className="shrink-0 rounded-full bg-[#fff4d6] px-3 py-1 text-xs font-bold text-navy">{statusLabel(lang, c.status)}</span>

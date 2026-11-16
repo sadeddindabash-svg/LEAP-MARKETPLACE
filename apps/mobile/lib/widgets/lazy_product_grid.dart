@@ -18,7 +18,9 @@ import 'product_card.dart';
 class LazyProductGrid extends StatefulWidget {
   final Future<({List<Product> items, bool hasMore})> Function(int page) fetchPage;
   final String Function(List<Product> loadedSoFar) buildHeader;
-  const LazyProductGrid({super.key, required this.fetchPage, required this.buildHeader});
+  // evenOnly (same brand; confirmed with the person via mockup): only full lines of 2, an odd last card is left out; a single card shows nothing.
+  final bool evenOnly;
+  const LazyProductGrid({super.key, required this.fetchPage, required this.buildHeader, this.evenOnly = false});
 
   @override
   State<LazyProductGrid> createState() => _LazyProductGridState();
@@ -110,7 +112,8 @@ class _LazyProductGridState extends State<LazyProductGrid> {
     // genuinely zero real results, both show nothing here, matching
     // every other real optional section's own established convention
     // on this page.
-    if (!_initialLoadDone || _items.isEmpty) return const SizedBox.shrink();
+    final shown = widget.evenOnly ? _items.length - _items.length % 2 : _items.length;
+    if (!_initialLoadDone || shown == 0) return const SizedBox.shrink();
     final palette = LeapPalette.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 20),
@@ -129,7 +132,7 @@ class _LazyProductGridState extends State<LazyProductGrid> {
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
+                itemCount: shown,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   mainAxisSpacing: 10,

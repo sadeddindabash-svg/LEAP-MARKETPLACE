@@ -10,6 +10,7 @@ import { useLang, useT } from "@/components/LangProvider";
 import { useLocRouter } from "@/components/useLocRouter";
 import { usePolled } from "@/components/usePolled";
 import { fetchReturnCase, resolveImageUrl, sendReturnCaseMessage } from "@/lib/api";
+import { formatUsd } from "@/lib/returnText";      // patch-returns-flow
 import { statusLabel } from "@/lib/orders";
 import { CONVERSATION_POLL_MS } from "@/lib/support";
 
@@ -50,11 +51,34 @@ function ReturnCase({ caseId }: { caseId: string }) {
       <p className="mb-2"><Link href="/returns" className="text-sm font-semibold text-navy underline underline-offset-4">{t("back_to_returns")}</Link></p>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-navy">{rc.reason}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-navy">{rc.reasonCode && rc.reasonCode !== "other" ? t(`return_reason_${rc.reasonCode}`) : rc.reason}</h1>
           <p className="text-sm text-muted">{t("for_order")} <Link href={orderHref} className="font-plate font-semibold underline underline-offset-4" dir="ltr">{rc.orderId}</Link></p>
         </div>
         <StatusPill label={statusLabel(lang, rc.status)} done={rc.status === "completed"} />
       </div>
+      {(rc.status === "approved" || rc.status === "completed") && rc.sendBack != null && (
+        <section className="mb-6 rounded-xl border border-[#f3d27a] bg-[#fdf3d8] p-4 text-sm text-ink" aria-label={t("return_send_title")}>
+          {rc.sendBack && rc.returnHub ? (
+            rc.receivedAt ? <p className="font-semibold">{t("return_part_received")}</p> : (
+              <>
+                <h2 className="mb-2 text-base font-bold text-navy">{t("return_send_title")}</h2>
+                <p>{t("return_send_to")}</p>
+                <p className="mt-1 font-bold" dir="auto">{rc.returnHub.name}</p>
+                <p dir="auto">{rc.returnHub.address}</p>
+                <p className="mt-3">{t("return_send_code")} <span className="ms-1 inline-block rounded-md border-[1.5px] border-navy bg-white px-2 py-0.5 font-plate font-bold text-navy" dir="ltr">{rc.id}</span></p>
+                <p className="mt-2 text-muted">{t("return_send_receipt")}</p>
+              </>
+            )
+          ) : <p className="font-semibold">{t("return_keep_part")}</p>}
+          {rc.refundAmount ? (
+            <p className="mt-3 border-t border-[#f3d27a] pt-3 font-semibold">
+              {rc.refundedAt ? t("return_refund_done", { amount: formatUsd(rc.refundAmount) })
+                : rc.refundStatus === "waiting_part" ? t("return_refund_waiting_part", { amount: formatUsd(rc.refundAmount) })
+                : t("return_refund_pending", { amount: formatUsd(rc.refundAmount) })}
+            </p>
+          ) : null}
+        </section>
+      )}
       {rc.photos.length > 0 && (
         <section className="mb-6" aria-label={t("return_photos")}>
           <ul className="flex flex-wrap gap-2">

@@ -31,17 +31,17 @@ beforeEach(() => { m.lang.current = "en"; });
 const SUMMARY = (right: El) => kids(right).find((c) => c.type === "p" && c.props["data-testid"] === "product-summary") ?? null;
 const DESC = "Ceramic front brake pads with low dust and quiet braking. Direct replacement for the original part, supplied with new wear sensors.";
 describe("the description under the name", () => {
-  it("comes right after the title and the chips and before the stock box, the seller lines, the price block and the buttons", async () => {
-    const { right } = columns(await page({ description: DESC })); const types = kids(right).map((c) => c.type); expect(types).toEqual(["div", "div", "p", StockBanner, SellerSignals, PriceBlock, "div"]);
+  it("comes right after the name, before the chips, the stock box, the seller lines, the price block and the buttons", async () => {
+    const { right } = columns(await page({ description: DESC })); const types = kids(right).map((c) => c.type); expect(types).toEqual(["h1", "p", "div", StockBanner, SellerSignals, PriceBlock, "div"]);
     expect(SUMMARY(right)).not.toBeNull();
   });
-  it("is the part's description (trimmed), as plain text", async () => { const { right } = columns(await page({ description: `   ${DESC}\n  ` })); expect(textOf(SUMMARY(right))).toBe(DESC); });
-  it("is 16 px with comfortable line spacing, in the page's text colour at 80%, 14 px below the chips", async () => {
-    const c = (SUMMARY(columns(await page({ description: DESC })).right)!.props.className as string).split(" "); for (const k of ["text-base", "leading-relaxed", "text-ink/80", "mt-3.5"]) expect(c, k).toContain(k);
+  it("is the part's description (trimmed), as plain text", async () => { const { right } = columns(await page({ description: `   ${DESC}\n  ` })); expect(textOf(SUMMARY(right)).trim()).toBe(DESC); });
+  it("is 16 px with comfortable line spacing, in the page's text colour at 80%, 8 px below the name", async () => {
+    const c = (SUMMARY(columns(await page({ description: DESC })).right)!.props.className as string).split(" "); for (const k of ["text-base", "leading-relaxed", "text-ink/80", "mt-2"]) expect(c, k).toContain(k);
   });
   it("keeps the supplier's line breaks and never lets a very long word push the column wider", async () => { const c = (SUMMARY(columns(await page({ description: DESC })).right)!.props.className as string).split(" "); expect(c).toContain("whitespace-pre-line"); expect(c).toContain("[overflow-wrap:anywhere]"); });
   it("has no direction of its own, so it follows the page: left to right in English and right to left in Arabic", async () => { for (const lang of ["en", "ar"] as const) { const p = SUMMARY(columns(await page({ description: DESC }, lang)).right)!; expect(p.props.dir).toBeUndefined(); } });
-  it("in Arabic it is the description the server sent (already in Arabic), unchanged", async () => { const ar = "فحمات فرامل أمامية من السيراميك قليلة الغبار وهادئة أثناء الكبح."; expect(textOf(SUMMARY(columns(await page({ description: ar }, "ar")).right))).toBe(ar); });
+  it("in Arabic it is the description the server sent (already in Arabic), unchanged", async () => { const ar = "فحمات فرامل أمامية من السيراميك قليلة الغبار وهادئة أثناء الكبح."; expect(textOf(SUMMARY(columns(await page({ description: ar }, "ar")).right)).trim()).toBe(ar); });
 });
 describe("a part with no description", () => {
   it("shows nothing under the name (null, empty, or only spaces and line breaks), and the column is as it was", async () => {

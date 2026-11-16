@@ -115,6 +115,21 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
     return [...unit, ...unit];
   }
 
+  // Each logo's own shadow, small enough to fade out completely inside the box (3 + 6 px under a logo, 10 px of room)
+  static BoxDecoration _logoRound(BuildContext context) {
+    if (Theme.of(context).brightness == Brightness.dark) {
+      return const BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Color(0x80000000), blurRadius: 6, offset: Offset(0, 3))]);
+    }
+    return const BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.white, Color(0xFFEEF2F6)]),
+      boxShadow: [
+        BoxShadow(color: Color(0x1F0B3146), blurRadius: 3, offset: Offset(0, 1)),
+        BoxShadow(color: Color(0x330B3146), blurRadius: 6, offset: Offset(0, 3)),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -134,12 +149,13 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
       children: [
         Container(
       decoration: Premium.card(context, radius: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      // the logos run from edge to edge, cut by the box's rounded corners (patch-logo-strip-shadows, confirmed with the person via mockup)
+      clipBehavior: Clip.antiAlias,
       child: SizedBox(
       height: _circleSize + 20,
       child: SingleChildScrollView(
         controller: _scrollController,
-        padding: const EdgeInsets.symmetric(vertical: 10),      // room for the logos' shadows
+        padding: const EdgeInsets.symmetric(vertical: 10),      // the logos in the middle of the box's height (patch-logo-strip-center); each shadow fits in the 10 px under it
         scrollDirection: Axis.horizontal,
         // Real, deliberate -- this is a purely automatic ticker, not
         // something the person drags themselves; disabling manual
@@ -154,7 +170,7 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
                 child: Container(
                   width: _circleSize,
                   height: _circleSize,
-                  decoration: Premium.round(context),
+                  decoration: _logoRound(context),
                   child: ClipOval(
                     child: Container(
                       width: _circleSize,

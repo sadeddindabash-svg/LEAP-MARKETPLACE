@@ -33,12 +33,12 @@ describe('the admin sidebar groups (pure logic)', () => {
   });
 
   it('CRITICAL: for the owner the sidebar is the old list with each group at the place of its first member', () => {
-    expect(labels(sidebarEntries(NAV, allowing('all')))).toEqual(['Overview', 'Orders', 'Products', 'Vehicle Data', 'Categories', 'Suppliers', 'Hubs', 'Delivery Rules', 'Returns', 'Flagged Shipments', 'Support', 'Financial', 'Settings']);
+    expect(labels(sidebarEntries(NAV, allowing('all')))).toEqual(['Overview', 'Orders', 'Returns', 'Flagged Shipments', 'Products', 'Vehicle Data', 'Categories', 'Suppliers', 'Hubs', 'Delivery Rules', 'Financial', 'Support', 'Settings']);
   });
 
   it('CRITICAL: a group is shown when the admin may open AT LEAST ONE of its pages, and only those pages count', () => {
     expect(labels(sidebarEntries(NAV, allowing(['payouts'])))).toEqual(['Financial']);
-    expect(labels(sidebarEntries(NAV, allowing(['reviews', 'orders', 'hubs'])))).toEqual(['Orders', 'Support', 'Hubs']);
+    expect(labels(sidebarEntries(NAV, allowing(['reviews', 'orders', 'hubs'])))).toEqual(['Orders', 'Hubs', 'Support']);
     expect(labels(sidebarEntries(NAV, allowing([])))).toEqual([]);
     expect(labels(sidebarEntries(NAV, allowing(['supplierMessages'])))).toEqual(['Suppliers']);   // even if the group's FIRST page is not allowed
     const financial = NAV_GROUPS.find((g) => g.label === 'Financial');

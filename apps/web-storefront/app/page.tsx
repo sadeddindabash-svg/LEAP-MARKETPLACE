@@ -72,7 +72,7 @@ export default async function HomePage() {
       </section>
 
       {stats.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pt-5 max-md:pt-2 sm:px-8" aria-label="Leap Auto Parts">
+        <section className="mx-auto max-w-7xl px-4 pt-5 max-md:hidden sm:px-8" aria-label="Leap Auto Parts">          {/* the totals: not on a phone */}
           <ul className="grid grid-cols-2 gap-3 max-md:grid-cols-4 max-md:gap-1.5 sm:gap-4 lg:grid-cols-4">
             {stats.map((s) => <StatTile key={s.icon} n={number(s.n)} label={s.label} paths={STAT_ICONS[s.icon]} picture={s.picture} />)}
           </ul>
@@ -82,7 +82,7 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4 pt-5 max-md:pt-2 sm:px-8" aria-labelledby="home-sections">
           {/* a phone: no title over the sliding sections (it stays for screen readers) */}
           <h2 id="home-sections" className="mb-6 text-3xl font-bold tracking-tight max-md:sr-only">{t(lang, "shop_by_section")}</h2>
-          <TileRow phoneSlide variant="wide" defaultColumns={4} gridClassName="grid grid-cols-4 gap-x-2 gap-y-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
+          <TileRow phoneSlide variant="wide" defaultColumns={5} gridClassName="grid grid-cols-4 gap-x-2 gap-y-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
             {categories.map((c) => <SectionTile key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} name={pickName(lang, c.nameEn, c.nameAr)} photo={c.photoUrl} />)}
           </TileRow>
         </section>

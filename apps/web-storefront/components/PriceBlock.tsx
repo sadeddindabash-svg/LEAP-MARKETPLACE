@@ -7,7 +7,7 @@ import { t, type Lang } from "@/lib/i18n";
 export default function PriceBlock({ price, originalPrice, lang }: { price: number; originalPrice?: number | null; lang: Lang }) {
   const percent = discountPercent(price, originalPrice);
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
       <span className="font-display font-bold text-4xl"><Price usd={price} /></span>
       {percent !== null && originalPrice != null && (
         <>

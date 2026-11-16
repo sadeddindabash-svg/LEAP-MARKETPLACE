@@ -9,12 +9,14 @@ import ProductDetails from "@/components/ProductDetails";
 import ProductChips from "@/components/ProductChips";
 import ReviewsSection from "@/components/ReviewsSection";
 import ShareButton from "@/components/ShareButton";
+import DealCountdown from "@/components/DealCountdown";
 import { WishlistButton } from "@/components/WishlistButton";
-import WishlistHeart from "@/components/WishlistHeart";
 import { JsonLd } from "@/components/JsonLd";
 import StockBanner from "@/components/StockBanner";
 import SellerSignals from "@/components/SellerSignals";
 import PriceBlock from "@/components/PriceBlock";
+import ProductNameBand, { type NameBandTitle } from "@/components/ProductNameBand";
+import DescriptionMore from "@/components/DescriptionMore";
 import {
   fetchCategories,
   fetchOemAlternatives,
@@ -73,7 +75,8 @@ export default async function ProductPage({ params }: PageProps) {
   const productUrl = absoluteUrl(localizePath(lang, `/products/${product.id}`));
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-6xl px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
+      {/* Every space between the blocks: 12 px phone, 16 px tablet and computer, like the space between product cards (confirmed with the person via mockup). */}
       {/* Structured data: the price and stock a search result can show, the REAL review rating (only if real reviews exist), and the breadcrumb trail. */}
       <JsonLd data={productJsonLd(product, reviews, { url: productUrl, imageUrls: product.images.map(resolveImageUrl), categoryName })} />
       <JsonLd data={breadcrumbJsonLd([
@@ -81,50 +84,64 @@ export default async function ProductPage({ params }: PageProps) {
         ...(categoryName ? [{ name: categoryName, path: localizePath(lang, `/search?category=${encodeURIComponent(product.category)}`) }] : []),
         { name: product.name, path: localizePath(lang, `/products/${product.id}`) },
       ])} />
-      <div className="grid md:grid-cols-2 gap-10">
-        <div>
-          <ProductGallery images={product.images.map(resolveImageUrl)} alt={product.name} />
-          <ProductDetails product={product} lang={lang} />
+      {/* On a phone (one column) the order is: the photos, the name with the price and the buttons, then the details card (confirmed with the person).
+          The left column is "contents" there, so its two parts take their own places; on a tablet and a computer it is the column beside the name, as before. */}
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+        <div className="max-md:contents">
+          <div className="max-md:order-1"><ProductGallery images={product.images.map(resolveImageUrl)} alt={product.name} /></div>
+          <div className="max-md:order-3"><ProductDetails product={product} lang={lang} /></div>
+          {/* "Same part, other suppliers" and the reviews sit in the photo column, under Technical Specifications, the same width: the name column beside
+              them stays pinned until the reviews end (confirmed with the person via mockup). On a phone they come after the details, as before. */}
+          <div className="max-md:order-4"><OemComparison products={oemMatches} lang={lang} /></div>
+          <div className="max-md:order-5"><ReviewsSection productId={product.id} summary={reviews} /></div>
         </div>
 
         {/* The column beside the photos (title, price, Add to cart) stays in view while the photos and the details card are scrolled, and is released where they end. On a phone the page is one column: nothing is pinned.
-            A very tall column (a long description) gets its own small scroll instead of hiding the buttons. The header stays on top on a computer, so the column stays just under it (--header-h, see HeaderPin). */}
-        <div className="md:sticky md:top-[calc(var(--header-h,0px)+1rem)] md:max-h-[calc(100vh-var(--header-h,0px)-2rem)] md:self-start md:overflow-y-auto md:pe-1">
-          <div className="flex items-start justify-between gap-3">
-            <h1 className="font-display min-w-0 font-bold text-4xl tracking-tight [overflow-wrap:anywhere]">
-              {product.name}
-            </h1>
-            <div className="flex shrink-0 items-center gap-2">
-              <WishlistHeart productId={product.id} name={product.name} variant="page" />
-              <ShareButton title={product.name} />
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+            A very tall column (a long description) still scrolls by itself (mouse wheel, trackpad) so the buttons stay reachable, but shows no scroll bar. The header stays on top on a computer, so the column stays just under it (--header-h, see HeaderPin). */}
+        {/* PC and tablet: the same 20 px between every block of this column (name, description, chips, stock, seller lines, price, countdown, buttons);
+            a block that is not there takes its space with it (confirmed with the person via mockup). The phone keeps its own spacing. */}
+        <div className="max-md:order-2 md:sticky md:top-[calc(var(--header-h,0px)+1rem)] md:max-h-[calc(100vh-var(--header-h,0px)-2rem)] md:self-start md:overflow-y-auto md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden md:flex md:flex-col md:gap-5 md:[&>*]:mt-0">
+          {/* The whole title, on as many lines as it needs (patch-name-car-part, confirmed with the person via mockup): name · brand model · version (years) · part number; phone and tablet 20 px, computer 26 px. */}
+          {/* patch-product-name-band: the name in a navy band (option 6, confirmed with the person via mockup): the part's name large in white, the car
+              and versions with the years under it, the part number in a gold pill. */}
+          <h1 title={product.name} className="font-display shrink-0 rounded-2xl bg-[linear-gradient(160deg,#1f5574_-30%,#0b3146_45%,#07202f_100%)] px-4 py-3 text-white shadow-[0_8px_14px_-8px_rgba(11,49,70,0.45)] [overflow-wrap:anywhere] sm:px-[18px] sm:py-3.5">
+            <ProductNameBand title={(product as { fitTitle?: NameBandTitle | null }).fitTitle} name={product.name} lang={lang} partNumber={product.oemNumber} />
+          </h1>
+          {/* In this order (confirmed with the person via mockup): the name, the description, then the chips (the part class and the car it fits), then the stock box. */}
+          {product.description?.trim() && (
+            // patch-product-name-compact: the first 2 lines with "… Read more" at the end of the 2nd line (inside the text); shrink-0 so the
+            // computer's scrolling column never squeezes it away (it showed only "Read more" there)
+            <p id="product-summary" data-testid="product-summary" className="relative mt-2 line-clamp-2 shrink-0 whitespace-pre-line text-base leading-relaxed text-ink/80 [overflow-wrap:anywhere]">{product.description.trim()}<DescriptionMore lang={lang} /></p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
             <ProductChips product={product} lang={lang} />
           </div>
-          {product.description?.trim() && (
-            <p data-testid="product-summary" className="mt-3.5 whitespace-pre-line text-base leading-relaxed text-ink/80 [overflow-wrap:anywhere]">{product.description.trim()}</p>
-          )}
           {/* Like the mobile app: the stock box with the delivery date, who ships it, then the price (with the old price and the discount when there is one). The description is under the name here AND in the specifications card (with the part number). */}
-          <StockBanner stockQuantity={product.stockQuantity} estimatedDeliveryDays={product.estimatedDeliveryDays} lang={lang} />
+          <StockBanner stockQuantity={product.stockQuantity} estimatedDeliveryDays={product.estimatedDeliveryDays} estimatedDeliveryRange={product.estimatedDeliveryRange} lang={lang} />
           <SellerSignals isVerifiedSeller={product.isVerifiedSeller} shipsFromCountry={product.shipsFromCountry} shipsFromCountryAr={product.shipsFromCountryAr} lang={lang} />
           <PriceBlock price={product.price} originalPrice={product.originalPrice} lang={lang} />
+          {/* the deal countdown, while a discount with an end is running (confirmed with the person via mockup, option B) */}
+          {product.discountEndsAt && product.originalPrice != null && <DealCountdown endsAt={product.discountEndsAt} lang={lang} />}
 
-          <div className="mt-8">
+          <div className="mt-4">
             <AddToCartButton productId={product.id} inStock={product.stockQuantity > 0} unitPrice={product.price} maxQuantity={product.stockQuantity} />
             {product.stockQuantity === 0 && <div className="mt-3"><NotifyWhenInStock productId={product.id} /></div>}
-            <WishlistButton productId={product.id} />
+            {/* "Add to wishlist" and Share on one line under Add to cart */}
+            <div className="mt-2 flex items-stretch gap-2">
+              <div className="min-w-0 flex-1 [&>*]:mt-0">
+                <WishlistButton productId={product.id} />
+              </div>
+              <ShareButton title={product.name} boxed />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* The sections under a part, in the mobile app's order. Each one is drawn only when it has something to show. */}
-      <OemComparison products={oemMatches} lang={lang} />
-      <ReviewsSection productId={product.id} summary={reviews} />
+      {/* The rows under a part, in the mobile app's order (other suppliers and reviews are in the photo column above). Each one is drawn only when it has something to show. */}
       {(product.model || (product.fitCarCount ?? 0) > 0) && (
-        <LazyProductRow id="model-h" title={t(lang, "more_model_parts", { name: [product.brand, product.model].filter(Boolean).join(" ") })} source={{ kind: "sameModel", productId: product.id }} pageSize={8} maxExtraPages={2} />
+        <LazyProductRow id="model-h" title={t(lang, "more_model_parts", { name: [product.brand, product.model].filter(Boolean).join(" ") })} source={{ kind: "sameModel", productId: product.id }} pageSize={8} maxExtraPages={2} fullRows />
       )}
-      {product.brand && <LazyProductRow id="brand-h" title={t(lang, "more_brand_parts", { brand: product.brand })} source={{ kind: "sameBrand", productId: product.id }} pageSize={8} maxExtraPages={2} />}
+      {product.brand && <LazyProductRow id="brand-h" title={t(lang, "more_brand_parts", { brand: product.brand })} source={{ kind: "sameBrand", productId: product.id }} pageSize={8} maxExtraPages={2} fullRows />}
       <LazyProductRow id="newest-h" title={t(lang, "newest_products")} source={{ kind: "newest" }} pageSize={8} hiddenId={product.id} />
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
 import { fetchAdminCategories, fetchAdminParts, editCategoryDetails, editPartDetails, reviewPartSizes } from "./catalogAdminApi";
@@ -77,7 +78,7 @@ export default function CatalogEditorPanel({ onSessionExpired }) {
   };
 
   const box = { border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, background: C.card, marginBottom: 14 };
-  const button = (primary, disabled) => ({ ...body, padding: "7px 13px", borderRadius: 8, border: primary ? "none" : `1px solid ${C.line}`, background: disabled ? "#D1D5DB" : primary ? C.ink : "#fff", color: primary ? "#fff" : C.ink, fontWeight: 600, fontSize: 12.5, cursor: disabled ? "default" : "pointer" });
+  const button = (primary, disabled) => ({ ...body, padding: "7px 13px", borderRadius: 8, border: primary ? "none" : `1px solid ${C.line}`, background: disabled ? "#D1D5DB" : primary ? C.navy : "#fff", color: primary ? "#fff" : C.ink, fontWeight: 600, fontSize: 12.5, cursor: disabled ? "default" : "pointer" });
   const input = { ...body, fontSize: 13, padding: "6px 8px", border: `1px solid ${C.line}`, borderRadius: 6, width: "100%", boxSizing: "border-box" };
   const chip = (text, color, bg) => <span style={{ fontSize: 10.5, fontWeight: 700, color, background: bg, borderRadius: 999, padding: "1px 7px", marginLeft: 6 }}>{text}</span>;
   const visibleParts = parts.filter((p) => !filter || `${p.code} ${p.nameEn} ${p.nameAr} ${p.nameZh} ${p.subcategoryEn}`.toLowerCase().includes(filter.toLowerCase()));
@@ -94,7 +95,7 @@ export default function CatalogEditorPanel({ onSessionExpired }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {(categories || []).map((c) => (
             <button key={c.id} onClick={() => { setSelectedId(c.id); setEditing(null); setFilter(""); }} aria-pressed={selectedId === c.id}
-              style={{ ...body, fontSize: 12.5, padding: "5px 10px", borderRadius: 8, border: `1px solid ${selectedId === c.id ? C.ink : C.line}`, background: selectedId === c.id ? C.ink : "#fff", color: selectedId === c.id ? "#fff" : C.ink, cursor: "pointer" }}>
+              style={{ ...body, fontSize: 12.5, padding: "5px 10px", borderRadius: 8, border: `1px solid ${selectedId === c.id ? C.navy : C.line}`, background: selectedId === c.id ? C.navy : "#fff", color: selectedId === c.id ? "#fff" : C.ink, cursor: "pointer" }}>
               {c.nameEn}<span style={{ opacity: 0.7 }}> · {c.partCount}</span>
             </button>
           ))}
@@ -131,7 +132,7 @@ export default function CatalogEditorPanel({ onSessionExpired }) {
       )}
 
       {editing && (
-        <div ref={formRef} style={{ ...box, borderColor: C.ink }} aria-label={editing.kind === "part" ? "Edit part" : "Edit category"} role="group">
+        <div ref={formRef} style={{ ...box, borderColor: C.navy }} aria-label={editing.kind === "part" ? "Edit part" : "Edit category"} role="group">
           <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>{editing.kind === "part" ? `Edit part: ${editing.original.nameEn}` : `Edit category: ${editing.original.nameEn}`}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             {(editing.kind === "part" ? PART_TEXT : CATEGORY_TEXT).map(([key, label, dir]) => (

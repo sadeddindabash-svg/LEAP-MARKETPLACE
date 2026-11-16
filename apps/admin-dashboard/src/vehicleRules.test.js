@@ -8,10 +8,10 @@ const rules = require('../../../services/api/src/modules/fitment/vehicleRules.js
 const images = require('../../../services/api/src/modules/uploads/imageRules.js');
 
 describe('the vehicle field rules (shared by the manual form and the Excel import)', () => {
-  it('CRITICAL: seats are a whole number from 1 to 12: text digits and Arabic digits are fine, 0, 13, 5.5 and words are not', () => {
-    for (const ok of [1, 5, 12, '5', ' 6 ', '٥']) expect(rules.parseSeats(ok), String(ok)).toBeGreaterThan(0);
+  it('CRITICAL: seats are a whole number from 1 to 60: text digits and Arabic digits are fine, 0, 61, 5.5 and words are not', () => {
+    for (const ok of [1, 5, 12, 15, 17, 60, '5', ' 6 ', '٥']) expect(rules.parseSeats(ok), String(ok)).toBeGreaterThan(0);
     expect(rules.parseSeats('٥')).toBe(5);
-    for (const bad of [0, 13, 5.5, '5.5', 'five', '', null, undefined, -1, '1e1']) expect(rules.parseSeats(bad), String(bad)).toBeNull();
+    for (const bad of [0, 61, 100, 5.5, '5.5', 'five', '', null, undefined, -1, '1e1']) expect(rules.parseSeats(bad), String(bad)).toBeNull();
   });
   it('CRITICAL: a year is four digits from 1950 to next year, written in English or Arabic digits', () => {
     const next = new Date().getFullYear() + 1;
@@ -34,8 +34,8 @@ describe('the vehicle field rules (shared by the manual form and the Excel impor
     }
   });
   it('a version is refused with seats out of range, and with texts that are too long; texts and seats are tidied', () => {
-    expect(rules.validateVersionFields({ ...good, seats: 13 }).field).toBe('seats');
-    expect(rules.validateVersionFields({ ...good, name: 'x'.repeat(121) }).field).toBe('name');
+    expect(rules.validateVersionFields({ ...good, seats: 61 }).field).toBe('seats');
+    expect(rules.validateVersionFields({ ...good, name: 'x'.repeat(201) }).field).toBe('name');
     expect(rules.validateVersionFields({ ...good, engineZh: '长'.repeat(201) }).field).toBe('engineZh');
     expect(rules.validateVersionFields({ ...good, name: ' AWD   Flagship ', seats: '٦' }).value).toMatchObject({ name: 'AWD Flagship', seats: 6 });
     expect(rules.validateVersionFields(null).ok).toBe(false);

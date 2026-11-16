@@ -13,10 +13,10 @@ describe("the brand tile", () => {
   it("is one link to the brand's parts with the name under the photo", () => { show(); const a = screen.getByTestId("brand-tile"); expect(a.getAttribute("href")).toBe("/search?q=BYD"); expect(screen.getByText("BYD")).toBeInTheDocument(); });
   it("in Arabic the link keeps /ar", () => { show({ name: "بي واي دي" }, "ar"); expect(screen.getByTestId("brand-tile").getAttribute("href")).toBe("/ar/search?q=BYD"); });
   it("the photo is a circle (76 px on a phone, 96 px from the small breakpoint up) with a fine ring, cropped to fill; there is NO card border around the tile", () => {
-    show(); const c = screen.getByTestId("brand-tile-photo"); for (const k of ["rounded-full", "size-[60px]", "md:size-24", "overflow-hidden", "bg-[#e6edf2]"]) expect(c.className.split(" "), k).toContain(k); expect(c.className).toContain("shadow-[0_0_0_3px_#fff,0_0_0_4px_#d3dae0]");
+    show(); const c = screen.getByTestId("brand-tile-photo"); for (const k of ["rounded-full", "size-[60px]", "md:size-24", "overflow-hidden", "bg-chalk", "border-[1.5px]", "border-transparent"]) expect(c.className.split(" "), k).toContain(k); expect(c.className).not.toContain("#fff"); expect(screen.getByTestId("photo").className).toContain("mix-blend-multiply");
     expect(screen.getByTestId("photo").className).toContain("object-cover"); expect(screen.getByTestId("photo").getAttribute("alt")).toBe(""); const tile = screen.getByTestId("brand-tile").className; expect(tile).not.toMatch(/\bborder\b/); expect(tile).not.toContain("bg-white");
   });
-  it("the ring turns gold when the tile is hovered", () => { show(); expect(screen.getByTestId("brand-tile-photo").className).toContain("group-hover:shadow-[0_0_0_3px_#fff,0_0_0_4px_#fab219]"); expect(screen.getByTestId("brand-tile").className).toContain("group"); });
+  it("the border turns gold when the tile is hovered", () => { show(); expect(screen.getByTestId("brand-tile-photo").className).toContain("group-hover:border-signal"); expect(screen.getByTestId("brand-tile").className).toContain("group"); });
   it("with no photo the circle shows the grey picture icon", () => { show({ photo: null }); expect(screen.queryByTestId("photo")).not.toBeInTheDocument(); expect(screen.getByTestId("brand-tile-photo").querySelector("svg")).not.toBeNull(); });
   it("a long name is cut after two lines", () => { show({ name: "An extremely long brand name that wraps" }); expect(screen.getByText(/An extremely long/).className).toContain("line-clamp-2"); });
 });

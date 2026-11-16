@@ -92,8 +92,8 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
 
   const shown = summary.reviews.slice(0, visible);
   return (
-    <section className="mt-16 border-t border-line pt-10" aria-labelledby="rv-h">
-      <h2 id="rv-h" className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xl font-bold tracking-tight">
+    <section className="mt-3 border-t border-line pt-3 sm:mt-4 sm:pt-4" aria-labelledby="rv-h">      {/* inside the photo column on PC and tablet, so as wide as "Technical Specifications"; phone: full width */}
+      <h2 id="rv-h" className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xl font-bold tracking-tight">
         {t("reviews_heading")}
         {summary.reviewCount > 0 && (
           <span className="flex items-center gap-2 text-base font-normal text-muted">
@@ -106,7 +106,7 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
       {summary.reviews.length === 0 ? (
         <p className="text-muted">{t("no_reviews_yet")}</p>
       ) : (
-        <ul className="grid gap-5 md:grid-cols-2">
+        <ul className="grid gap-4">{/* one review card per row, as wide as Technical Specifications (confirmed with the person via mockup) */}
           {shown.map((r) => {
             const isMine = !!mine && r.id === mine.id;
             return (
@@ -160,7 +160,7 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
 
       {/* The box below the list: sign in, the form, write a review, or where my review stands. It is left out when it would be empty (my review is approved and in the list). */}
       {(!userId || formOpen || !mine || state !== "approved" || (canEdit && !mineListed) || !!error) && (
-      <div ref={formBox} className="mt-10 rounded-[14px] border border-line bg-white p-6">
+      <div ref={formBox} className="mt-4 rounded-[14px] border border-line bg-white p-6">
         {!userId ? (
           <Link href="/login" className="font-bold text-navy underline underline-offset-4">{t("login_to_review")}</Link>
         ) : formOpen ? (

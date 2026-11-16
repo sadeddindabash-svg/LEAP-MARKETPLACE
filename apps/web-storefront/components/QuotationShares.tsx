@@ -22,9 +22,9 @@ export default function QuotationShares({ quote, onChange }: { quote: Quotation;
   }, [country]);
   const open = quote.state === "open";
   return (
-    <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="quote-pay">
+    <section className="rounded-[14px] border border-line bg-white p-3" aria-labelledby="quote-pay">
       <h2 id="quote-pay" className="text-lg font-bold text-navy">{t("quote_who_pays")}</h2>
-      <ul className="mt-3 grid gap-3">
+      <ul className="mt-2 grid gap-2">
         {quote.shares.map((s) => (
           <li key={s.id} className="rounded-xl border border-line p-3.5">
             <p className="flex flex-wrap justify-between gap-2 font-semibold">
@@ -39,7 +39,7 @@ export default function QuotationShares({ quote, onChange }: { quote: Quotation;
           </li>
         ))}
       </ul>
-      {open && <p className="mt-3 text-[12.5px] text-muted">{t("quote_no_money_note")} {t("quote_when_all", { city: quote.delivery.city ?? "" })}</p>}
+      {open && <p className="mt-2 text-[12.5px] text-muted">{t("quote_no_money_note")} {t("quote_when_all", { city: quote.delivery.city ?? "" })}</p>}
     </section>
   );
 }

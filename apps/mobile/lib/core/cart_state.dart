@@ -393,6 +393,8 @@ class CheckoutCart {
   PromoDetails? get appliedPromoDetails => _c.appliedPromoDetails;
   bool get lockActive => _c.lockActive;
   DateTime? get lockExpiresAt => _c.lockExpiresAt;
+  // the cart's id, sent with the order so the held discount prices are used (patch-checkout-cart-id)
+  String? get cartId => _c.cartId;
 
   static double _round2(double n) => (n * 100).roundToDouble() / 100;
 

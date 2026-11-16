@@ -228,4 +228,15 @@ async function profitReport(db, { kind = 'month', date, now: nowOverride } = {})
   };
 }
 
-module.exports = { profitReport, startOf, step, label, totalsOf, toPart, KINDS };
+// The admin Overview's "Total profit": the same formula as the report, over every part that is final by now (and every fault cost released so far).
+async function allTimeProfit(db) {
+  const { rows: [clock] } = await db.query(`SELECT to_char(now() AT TIME ZONE '${TZ}', 'YYYY-MM-DD"T"HH24:MI:SS') AS now_local`);
+  const now = local(clock.now_local);
+  const { rows: partRows } = await db.query(PARTS_SQL, [ts(now)]);
+  const { rows: faultRows } = await db.query(FAULTS_SQL, ['1970-01-01 00:00:00', ts(now)]);
+  const t = totalsOf(partRows.map(toPart), faultRows.map(toFault));
+  const { rows: openRows } = await db.query(PARTS_SQL.replace(`< $1::timestamp`, `>= $1::timestamp`), [ts(now)]);
+  return { netProfit: r2(t.netProfit), margin: t.margin, expectedProfit: r2(totalsOf(openRows.map(toPart), []).netProfit) };
+}
+
+module.exports = { profitReport, allTimeProfit, startOf, step, label, totalsOf, toPart, KINDS };

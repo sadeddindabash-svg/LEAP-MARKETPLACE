@@ -66,7 +66,7 @@ describe('checking every row', () => {
   });
   it('CRITICAL: the year and the seats must be valid AND the same in all three language blocks', async () => {
     for (const bad of [1949, 'abcd', '24']) { const { items } = await check([row({ year: bad })]); expect(items[0].ok, String(bad)).toBe(false); }
-    for (const bad of [0, 13, 'five', 5.5]) { const { items } = await check([row({ seats: bad })]); expect(items[0].ok, String(bad)).toBe(false); }
+    for (const bad of [0, 61, 'five', 5.5]) { const { items } = await check([row({ seats: bad })]); expect(items[0].ok, String(bad)).toBe(false); }
     const mismatch = await check([row({ yearAr: 2023 })]);
     expect(errorsOf(mismatch.items[0]).join(' ')).toMatch(/year columns disagree \(English 2022, Arabic 2023, Chinese 2022\)/);
     const seats = await check([row({ seatsZh: 7 })]);
@@ -95,8 +95,8 @@ describe('checking every row', () => {
     expect(warningsOf(items[0]).join(' ')).toMatch(/Chinese text of Engine has no Chinese characters/);
   });
   it('over-long texts are refused', async () => {
-    const { items } = await check([row({ version: 'x'.repeat(121) }), row({ version: 'y', engineAr: 'ع'.repeat(201) })]);
-    expect(errorsOf(items[0]).join(' ')).toMatch(/Version \(English\) is longer than 120/);
+    const { items } = await check([row({ version: 'x'.repeat(201) }), row({ version: 'y', engineAr: 'ع'.repeat(201) })]);
+    expect(errorsOf(items[0]).join(' ')).toMatch(/Version \(English\) is longer than 200/);
     expect(errorsOf(items[1]).join(' ')).toMatch(/Engine \(Arabic\) is longer than 200/);
   });
 });

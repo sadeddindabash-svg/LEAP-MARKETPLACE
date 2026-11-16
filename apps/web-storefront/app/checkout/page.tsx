@@ -10,6 +10,7 @@ import { useCurrency } from "@/components/CurrencyProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
 import { ShippingRow } from "@/components/FreeShipping";
+import { PartsDiscountRows, YouSaveBox } from "@/components/SavingsSummary";
 import { useLocRouter } from "@/components/useLocRouter";
 import {
   createAddress, fetchMyAddresses, fetchPaymentMethodsForCountry, placeOrder, resolveImageUrl, type PaymentMethod, type SavedAddress,
@@ -124,15 +125,18 @@ export default function CheckoutPage() {
     }
     if (overStock.length > 0) return;
 
-    const items = cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+    const items = cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity, ...(i.quotation?.id ? { quotationId: i.quotation.id } : {}) }));
     const payload = showForm ? addressPayload(fields) : null;
     const address = payload && { recipientName: payload.recipientName, phone: payload.phone, country: payload.country, city: payload.city, streetAddress: payload.streetAddress };
     keyRef.current ??= newIdempotencyKey();
+    // the basket goes with the order, so the order keeps the prices held at checkout (Pricing > Discount rules > Rules)
+    const who: { userId?: string; guestEmail?: string } = user ? { userId: user.id } : { guestEmail: guestEmail.trim() };
+    Object.assign(who, { cartId: (wholeCart ?? cart).cartId });
     setPlacing(true);
     try {
       const order = await placeOrder(
         items,
-        user ? { userId: user.id } : { guestEmail: guestEmail.trim() },
+        who,
         savedPick ? { addressId: savedPick.id } : { address: address! },
         cart.appliedPromoCode ?? undefined,
         { waitForAllShipments: waitAll && several, idempotencyKey: keyRef.current, lang, displayCurrency: currencyCode },
@@ -230,9 +234,10 @@ export default function CheckoutPage() {
           <h2 id="co-summary" className="mb-4 text-xl font-bold">{t("order_summary")}</h2>
           <ul className="mb-3 grid gap-2 text-sm">
             {cart.items.map((i) => (
-              <li key={i.productId} className="flex justify-between gap-3"><span className="min-w-0 truncate">{i.name} × {i.quantity}</span><Price usd={i.price * i.quantity} className="font-semibold" /></li>
+              <li key={i.productId} className="flex justify-between gap-3"><span className="min-w-0 truncate">{i.name} × {i.quantity}{i.quotation?.id && <span className="block text-[11px] font-extrabold text-signal-dark" dir="ltr">📄 {i.quotation.id}</span>}{(i.lines?.length ?? 0) > 1 && <span data-testid="checkout-price-lines" className="block text-[11px] text-muted">{i.lines!.map((l, k) => <span key={k} className="me-2 inline-block">{l.quantity} × <Price usd={l.price} /> · {t(l.isNew ? "cart_line_new" : "cart_line_held")}</span>)}</span>}</span>{/* no struck-through price here: the savings lines below show it */}<Price usd={i.price * i.quantity} className="font-semibold" /></li>
             ))}
           </ul>
+          <PartsDiscountRows summary={summary} />
           <div className="flex justify-between border-t border-line py-2"><span>{t("subtotal")}</span><Price usd={summary.subtotal} /></div>
           {summary.discount > 0 && (
             <div className="flex justify-between py-2 font-semibold text-[#0f6b49]">
@@ -242,6 +247,7 @@ export default function CheckoutPage() {
           )}
           <ShippingRow shipping={cart.shipping} />
           <div className="mt-1 flex justify-between border-t-2 border-line pt-3 text-[22px] font-extrabold"><span>{t("total")}</span><Price usd={summary.total} /></div>
+          <YouSaveBox summary={summary} />
           {loyaltyBeatsPromo(cart) && <p className="mt-2 text-sm text-muted">{t("loyalty_beats_promo", { amount: format(summary.discount) })}</p>}
           {cart.lockActive && <p className="mt-2 text-xs text-muted">{t("price_locked_note")}</p>}
 

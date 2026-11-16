@@ -11,7 +11,7 @@ export default function HeroPicker() {
   const router = useLocRouter();
   const [choice, setChoice] = useState<VehicleChoice | null>(null);
   return (
-    <div className="rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6 max-md:p-3">
+    <div className="rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6 max-md:p-3 max-md:[&_label]:sr-only">          {/* a phone: no "Brand", "Model"... titles over the boxes (each box says "Choose a brand"...); screen readers still have them */}
       <h2 className="mb-4 text-xl font-bold max-md:mb-2 max-md:text-base">{t("picker_title")}</h2>
       <form
         onSubmit={(e) => {
@@ -21,7 +21,7 @@ export default function HeroPicker() {
       >
         <VehicleCascade idPrefix="hp" onChange={setChoice} progressive />
         <button type="submit" disabled={!choice} className="mt-4 min-h-13 w-full max-md:mt-2.5 max-md:min-h-11 rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark disabled:cursor-not-allowed disabled:opacity-50">
-          {t("picker_cta")}
+          {t("home_picker_cta")}
         </button>
       </form>
     </div>

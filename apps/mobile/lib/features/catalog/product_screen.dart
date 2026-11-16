@@ -12,6 +12,7 @@ import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/fly_to_cart.dart';
 import '../../core/discount_display.dart';
+import '../../widgets/deal_countdown.dart';
 import '../../core/config/app_config.dart';
 import '../../widgets/fits_spec_row.dart';
 import '../../core/language_state.dart';
@@ -19,6 +20,7 @@ import '../../models/product.dart';
 import '../../models/vehicle.dart';
 import '../../models/fit_verdict.dart';
 import '../../widgets/fit_version_note.dart';
+import '../../widgets/product_title.dart';
 import '../../widgets/product_gone_view.dart';
 import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
@@ -270,6 +272,14 @@ class _ProductDetailBody extends StatelessWidget {
         ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
+            // B (confirmed with the person via mockup): the photo and the part's details (name, stock and delivery, seller, price) in ONE raised card, with the
+            // same 3D look as every card in the app.
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: Premium.cardFor(palette, radius: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
             Stack(
               children: [
                 KeyedSubtree(key: photoKey, child: _PhotoGallery(images: product.images)),
@@ -292,8 +302,8 @@ class _ProductDetailBody extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(product.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: palette.ink)),
+            const SizedBox(height: 12),
+            ProductTitle(title: product.fitTitle, name: product.name, full: true, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: palette.ink)),
             FitVersionNote(verdict: fitResult, vehicle: defaultVehicle, versionNames: product.fitVersionNames, onChooseVersion: () => context.push('/garage')),
             const SizedBox(height: 12),
             Column(
@@ -346,7 +356,8 @@ class _ProductDetailBody extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.public, size: 14, color: palette.muted),
+                            // the flag of the supplier's country (confirmed with the person via mockup); a country not in the list keeps the globe
+                            supplierFlagIcon(product.shipsFromCountry) ?? Icon(Icons.public, size: 14, color: palette.muted),
                             const SizedBox(width: 4),
                             Text(
                               _isAr
@@ -377,14 +388,20 @@ class _ProductDetailBody extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(color: discountTagColor(discountPercent), borderRadius: BorderRadius.circular(5)),
                     child: Text(
-                      '-$discountPercent% off',
+                      _isAr ? 'خصم $discountPercent%' : '-$discountPercent% off',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: discountTagTextColor(discountPercent)),
                     ),
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 24),
+            // the deal countdown, while a discount with an end is running (confirmed with the person via mockup, option B)
+            if (hasDiscount && product.discountEndsAt != null)
+              Padding(padding: const EdgeInsets.only(top: 10), child: DealCountdown(endsAt: product.discountEndsAt!, isAr: _isAr)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             Container(
               decoration: Premium.cardFor(palette, radius: 12),
               clipBehavior: Clip.antiAlias,
@@ -570,13 +587,39 @@ class _NotifyWhenInStockButtonState extends State<_NotifyWhenInStockButton> {
       icon: _isBusy
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(subscribed ? Icons.notifications_active : Icons.notifications_none, color: palette.signal),
-      label: Text(
-        subscribed
-            ? (widget.isAr ? 'سنُعلمك عند التوفر' : 'We\'ll notify you')
-            : (widget.isAr ? 'أعلمني عند التوفر' : 'Notify me when back in stock'),
+      // always on ONE line: on a narrow phone the words get a little smaller instead of wrapping
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          subscribed
+              ? (widget.isAr ? 'سنُعلمك عند التوفر' : 'We\'ll notify you')
+              : (widget.isAr ? 'أعلمني عند التوفر' : 'Notify when in stock'),
+          maxLines: 1,
+        ),
       ),
     );
   }
+}
+
+// The supplier's country, as its flag (the country comes from the server as its English name, or as its two-letter code).
+const Map<String, String> _countryCodes = {
+  'china': 'CN', 'japan': 'JP', 'south korea': 'KR', 'korea': 'KR', 'taiwan': 'TW', 'hong kong': 'HK', 'singapore': 'SG', 'thailand': 'TH',
+  'malaysia': 'MY', 'indonesia': 'ID', 'vietnam': 'VN', 'philippines': 'PH', 'india': 'IN', 'pakistan': 'PK',
+  'germany': 'DE', 'france': 'FR', 'italy': 'IT', 'spain': 'ES', 'portugal': 'PT', 'united kingdom': 'GB', 'uk': 'GB', 'netherlands': 'NL',
+  'belgium': 'BE', 'austria': 'AT', 'switzerland': 'CH', 'sweden': 'SE', 'poland': 'PL', 'czech republic': 'CZ', 'czechia': 'CZ', 'hungary': 'HU',
+  'romania': 'RO', 'russia': 'RU', 'turkey': 'TR', 'türkiye': 'TR', 'turkiye': 'TR',
+  'united states': 'US', 'usa': 'US', 'united states of america': 'US', 'canada': 'CA', 'mexico': 'MX', 'brazil': 'BR', 'argentina': 'AR',
+  'united arab emirates': 'AE', 'uae': 'AE', 'saudi arabia': 'SA', 'kuwait': 'KW', 'qatar': 'QA', 'bahrain': 'BH', 'oman': 'OM', 'jordan': 'JO',
+  'egypt': 'EG', 'morocco': 'MA', 'south africa': 'ZA', 'australia': 'AU',
+};
+
+Widget? supplierFlagIcon(String? country) {
+  final name = country?.trim().toLowerCase() ?? '';
+  if (name.isEmpty) return null;
+  final code = name.length == 2 ? name.toUpperCase() : _countryCodes[name];
+  if (code == null || !RegExp(r'^[A-Z]{2}$').hasMatch(code)) return null;
+  final flag = String.fromCharCodes(code.codeUnits.map((c) => 0x1F1E6 + c - 65));
+  return Text(flag, style: const TextStyle(fontSize: 14, height: 1));
 }
 
 class _SpecRow extends StatelessWidget {

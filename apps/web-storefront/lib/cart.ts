@@ -46,6 +46,9 @@ export function totals(cart: Pick<Cart, "items" | "appliedDiscountUsd" | "applie
   const fee = Number(cart.shipping?.chargedUsd ?? 0);
   const shippingFee = Number.isFinite(fee) ? Math.max(fee, 0) : 0;      // the fee of a small order (the server decides it); 0 when the rule is off or the value is not a number
   // What the buyer did NOT pay in shipping: the fee of a small order, when shipping is free (the limit was reached or a promo code waives it). 0 when a fee is charged or the rule is off.
+  // The parts' own discount (a discount rule, or a price held at checkout): their price before any discount minus what they cost now.
+  const itemsBefore = cart.items.reduce((sum, i) => sum + (i.originalPrice && i.originalPrice > i.price ? i.originalPrice : i.price) * i.quantity, 0);
+  const partsSaved = Math.max(0, itemsBefore - sub);
   const sh = cart.shipping;
   const fullFee = Number(sh?.feeUsd ?? 0);
   const shippingSaved = sh && sh.enabled && Number(sh.chargedUsd ?? 0) === 0 && Number.isFinite(fullFee) && fullFee > 0 && (sh.qualifies || sh.waivedByPromo) ? fullFee : 0;
@@ -56,7 +59,9 @@ export function totals(cart: Pick<Cart, "items" | "appliedDiscountUsd" | "applie
     shippingFee,
     total: goods + shippingFee,
     shippingSaved,
-    saved: discount + shippingSaved,                      // "You saved": the discount and the shipping fee not paid
+    itemsBefore,
+    partsSaved,
+    saved: partsSaved + discount + shippingSaved,      // every saving: the parts' discount, the promo or loyalty discount, and the free shipping                      // "You saved": the discount and the shipping fee not paid
     source: (cart.appliedDiscountSource ?? "none") as DiscountSource,
     loyaltyPercent: cart.loyaltyDiscountPercentage ?? 0,
     promoCode: cart.appliedPromoCode ?? null,

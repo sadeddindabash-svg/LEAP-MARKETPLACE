@@ -17,6 +17,8 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/premium.dart';
 import '../../widgets/cart_merge_banner.dart';
 import '../../widgets/free_shipping.dart';
+import '../../widgets/cart_price_lines.dart';
+import '../../widgets/product_title.dart';
 
 /// BUY-030–031: cart holds items from multiple suppliers but presents one
 /// unified basket and total; splitting into supplier sub-orders happens at
@@ -180,17 +182,27 @@ class CartScreen extends StatelessWidget {
         ),
         // Parts from a quotation first, together under its header (tap it to open the quotation); then the other parts, from the catalogue.
         for (final group in _byQuotation(cart.items).values) _QuotationGroup(items: group),
-        if (cart.items.any((i) => i.quotationId != null) && cart.items.any((i) => i.quotationId == null))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
-            child: Text(
-              context.watch<LanguageState>().isArabic ? 'قطع أخرى' : 'OTHER PARTS',
-              style: const TextStyle(color: Color(0xFFC98A00), fontWeight: FontWeight.w800, fontSize: 11.5, letterSpacing: .5),
+        // The other parts, from the catalogue: one box of their own (with a small heading when a quotation's box is above it).
+        if (cart.items.any((i) => i.quotationId == null))
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+            decoration: Premium.card(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (cart.items.any((i) => i.quotationId != null))
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(2, 8, 2, 0),
+                    child: Text(
+                      context.watch<LanguageState>().isArabic ? 'قطع أخرى' : 'OTHER PARTS',
+                      style: const TextStyle(color: Color(0xFFC98A00), fontWeight: FontWeight.w800, fontSize: 11.5, letterSpacing: .5),
+                    ),
+                  ),
+                ..._boxRows([for (final entry in grouped.entries) ...entry.value.where((i) => i.quotationId == null)]),
+              ],
             ),
           ),
-        for (final entry in grouped.entries)
-          if (entry.value.any((i) => i.quotationId == null))
-            _SupplierGroup(supplierName: entry.key, items: entry.value.where((i) => i.quotationId == null).toList()),
         // Real order summary (new) -- shows only real, currently-known
         // data (subtotal). Deliberately does not show a shipping/tax
         // breakdown here, matching the real Stitch reference's own
@@ -256,7 +268,12 @@ Map<String, List<CartItem>> _byQuotation(List<CartItem> items) {
   return map;
 }
 
-/// The parts of one quotation, together: a navy header (its number, who it is for, the car; tap it to open the quotation) over its lines, edged in gold.
+/// The parts inside one box: plain lines, a thin line between them (the box is the card, not each part).
+List<Widget> _boxRows(List<CartItem> items) => [
+      for (var n = 0; n < items.length; n++) _CartItemRow(key: ValueKey(items[n].productId), item: items[n], inBox: true, lineAbove: n > 0),
+    ];
+
+/// The parts of one quotation, in one box of their own with a gold edge: a navy header (its number, who it is for, the car; tap it to open the quotation) over its lines.
 class _QuotationGroup extends StatelessWidget {
   final List<CartItem> items;
   const _QuotationGroup({required this.items});
@@ -269,7 +286,9 @@ class _QuotationGroup extends StatelessWidget {
     final car = first.quotationCar ?? '';
     final sub = [if (party.isNotEmpty) '${ar ? 'لـ' : 'For'} $party', if (car.isNotEmpty) car].join(' · ');
     return Container(
-      // no gap of its own: its last line already ends with the 8 gap
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
+      decoration: Premium.card(context, ring: Premium.gold),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -301,31 +320,8 @@ class _QuotationGroup extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsetsDirectional.only(start: 8),
-            decoration: const BoxDecoration(border: BorderDirectional(start: BorderSide(color: Premium.gold, width: 3))),
-            child: Column(children: [for (final item in items) _CartItemRow(key: ValueKey(item.productId), item: item)]),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SupplierGroup extends StatelessWidget {
-  final String supplierName;
-  final List<CartItem> items;
-  const _SupplierGroup({required this.supplierName, required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      // no gap of its own: its last line already ends with the 8 gap
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final item in items) _CartItemRow(key: ValueKey(item.productId), item: item),
+          const SizedBox(height: 2),
+          ..._boxRows(items),
         ],
       ),
     );
@@ -334,7 +330,10 @@ class _SupplierGroup extends StatelessWidget {
 
 class _CartItemRow extends StatefulWidget {
   final CartItem item;
-  const _CartItemRow({super.key, required this.item});
+  /// Inside a box (a quotation's, or the other parts'): no card of its own; [lineAbove] draws the thin line between two parts.
+  final bool inBox;
+  final bool lineAbove;
+  const _CartItemRow({super.key, required this.item, this.inBox = false, this.lineAbove = false});
 
   @override
   State<_CartItemRow> createState() => _CartItemRowState();
@@ -474,9 +473,9 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
       duration: const Duration(milliseconds: 150),
       opacity: selected ? 1 : 0.55,
       child: Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: Premium.card(context),
+      margin: widget.inBox ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
+      padding: widget.inBox ? const EdgeInsets.symmetric(vertical: 10, horizontal: 2) : const EdgeInsets.all(12),
+      decoration: widget.inBox ? (widget.lineAbove ? BoxDecoration(border: Border(top: BorderSide(color: palette.line))) : null) : Premium.card(context),
       // Real, new -- tapping the row (anywhere not already its own
       // interactive control, like the quantity stepper or remove
       // button, which still receive their own taps first) opens this
@@ -546,7 +545,7 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Text(item.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: palette.ink), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      child: ProductTitle(title: item.fitTitle, name: item.name, style: TextStyle(fontSize: 13, color: palette.ink)),
                     ),
                     IconButton(
                       onPressed: _isRemoving ? null : () => _removeItem(context, cart),
@@ -587,6 +586,8 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
                       style: TextStyle(fontSize: 10.5, color: palette.signal, fontWeight: FontWeight.w600),
                     ),
                   ),
+                // during a checkout hold: the held units and the units added later can be two lines at two prices
+                if (item.lines.length > 1 || item.lines.any((l) => l.lowered)) CartPriceLines(item: item),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

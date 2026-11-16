@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { X } from "lucide-react";
 import { C, body } from "./theme";
 import { FRAME_W, FRAME_H, OUTPUT_W, OUTPUT_H, MIN_ZOOM, MAX_ZOOM, scaleFor, clampOffset, centeredOffset, zoomKeepingCentre, sourceRect } from "./bannerCrop";
@@ -6,7 +7,7 @@ import { FRAME_W, FRAME_H, OUTPUT_W, OUTPUT_H, MIN_ZOOM, MAX_ZOOM, scaleFor, cla
 // A window for choosing the part of a picture that becomes a banner photo (a wide frame, 5 : 2): drag the picture (or use the arrow keys) and zoom with the slider. "Use this crop" hands the chosen part (in the original picture's pixels) back.
 const KEY_STEP_PX = 10;
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 
 export default function BannerCropDialog({ title, image, saving, error, onCancel, onUse }) {
   const { url, width, height } = image;

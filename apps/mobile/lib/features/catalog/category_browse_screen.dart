@@ -87,11 +87,15 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
           : SlideInScope(child: Row(
               children: [
                 // Real sidebar -- every major category, tappable.
+                // Confirmed with the person via mockup: the side column and the parts at 90%, each section shorter, the parts' arrow at the very end,
+                // 6 between the cards and between the two columns, and the first part's top level with the chosen section's card.
+                // 96 wide with less room inside each section, so the longest names (Transmission, الإكسسوارات) fit on one line
                 SizedBox(
                   width: 96,
                   child: Container(
                     color: LeapPalette.of(context).chalk,
                     child: ListView.builder(
+                      padding: const EdgeInsets.only(top: 3),
                       itemCount: _categories!.length,
                       itemBuilder: (context, i) {
                         final c = _categories![i];
@@ -100,7 +104,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                         return SlideIn(index: i, child: InkWell(
                           onTap: () => _selectCategory(c.id),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 5),
                             // the chosen section rises out of the side column as a raised card
                             margin: selected ? const EdgeInsets.symmetric(horizontal: 4, vertical: 3) : EdgeInsets.zero,
                             decoration: selected ? Premium.card(context, radius: 12) : const BoxDecoration(),
@@ -114,23 +118,24 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                                 // category genuinely has no photo
                                 // uploaded yet (most don't, currently).
                                 Container(
-                                  width: 53,
-                                  height: 53,
-                                  margin: const EdgeInsets.only(bottom: 6),
+                                  width: 48,
+                                  height: 48,
+                                  margin: const EdgeInsets.only(bottom: 4),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: palette.chalk,
                                   ),
                                   clipBehavior: Clip.antiAlias,
                                   child: c.photoUrl != null
-                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 22, color: palette.muted))
-                                      : Icon(Icons.category_outlined, size: 22, color: selected ? palette.signal : palette.muted),
+                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 20, color: palette.muted))
+                                      : Icon(Icons.category_outlined, size: 20, color: selected ? palette.signal : palette.muted),
                                 ),
                                 Text(
                                   c.displayName(isAr),
                                   textAlign: TextAlign.center,
+                                  maxLines: 2,
                                   style: TextStyle(
-                                    fontSize: 11.5,
+                                    fontSize: 10.4,
                                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                                     color: selected ? palette.signal : palette.ink,
                                   ),
@@ -172,32 +177,45 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                       }
                       // the parts slide in again every time a section is chosen
                       return SlideInScope(key: ValueKey(_selectedCategoryId), child: ListView.separated(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsetsDirectional.fromSTEB(6, 6, 12, 12),
                         itemCount: parts.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
                         itemBuilder: (context, i) {
                           final part = parts[i];
                           final partLabel = part.displayName(isAr);
                           final categoryLabel = (selectedCategory != null && selectedCategory.id.isNotEmpty) ? selectedCategory.displayName(isAr) : '';
                           return SlideIn(index: i, child: PressDown(child: Container(
                             decoration: Premium.card(context),
-                            child: ListTile(
-                              leading: ClipOval(
-                                child: part.photoUrl != null
-                                    ? CachedNetworkImage(
-                                        imageUrl: ApiClient.resolveMediaUrl(part.photoUrl!),
-                                        width: 52,
-                                        height: 52,
-                                        fit: BoxFit.cover,
-                                        errorWidget: (context, url, error) => Container(width: 52, height: 52, color: palette.chalk, child: Icon(Icons.build_outlined, size: 23, color: palette.muted)),
-                                      )
-                                    : Container(width: 52, height: 52, color: palette.chalk, child: Icon(Icons.build_outlined, size: 23, color: palette.muted)),
-                              ),
-                              title: Text(partLabel, style: TextStyle(fontSize: 14.5, color: palette.ink)),
-                              trailing: Icon(Icons.chevron_right, color: palette.muted),
-                              onTap: () => context.push(
-                                '/category/$_selectedCategoryId',
-                                extra: {'categoryName': categoryLabel, 'part': part.nameEn, 'partLabel': partLabel},
+                            // the photo 6 from the card's edge, the name with all the room, the arrow at the very end
+                            child: Material(
+                              type: MaterialType.transparency,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => context.push(
+                                  '/category/$_selectedCategoryId',
+                                  extra: {'categoryName': categoryLabel, 'part': part.nameEn, 'partLabel': partLabel},
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsetsDirectional.fromSTEB(6, 6, 4, 6),
+                                  child: Row(
+                                    children: [
+                                      ClipOval(
+                                        child: part.photoUrl != null
+                                            ? CachedNetworkImage(
+                                                imageUrl: ApiClient.resolveMediaUrl(part.photoUrl!),
+                                                width: 47,
+                                                height: 47,
+                                                fit: BoxFit.cover,
+                                                errorWidget: (context, url, error) => Container(width: 47, height: 47, color: palette.chalk, child: Icon(Icons.build_outlined, size: 21, color: palette.muted)),
+                                              )
+                                            : Container(width: 47, height: 47, color: palette.chalk, child: Icon(Icons.build_outlined, size: 21, color: palette.muted)),
+                                      ),
+                                      const SizedBox(width: 9),
+                                      Expanded(child: Text(partLabel, style: TextStyle(fontSize: 13, height: 1.25, color: palette.ink))),
+                                      Icon(Icons.chevron_right, size: 20, color: palette.muted),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
                           )));

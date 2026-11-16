@@ -6,6 +6,7 @@ const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { logAdminAction } = require('../audit/helpers');
 const faultCases = require('../faultCases/helpers');
+const returnConversations = require('../returns/conversations');      // patch-returns-conversations (migration 149)
 const messages = require('../notifications/messages');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 const { getHubAddressRow } = require('../addressEnglish/helpers');
@@ -381,7 +382,7 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('fla
       // created. Falls back to null for any flag from before this
       // feature existed, which genuinely has no linked case.
       const { rows: caseRows } = await db.query(
-        `SELECT id FROM return_cases WHERE sub_order_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT id, supplier_answer, supplier_answer_note FROM return_cases WHERE sub_order_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [r.sub_order_id]
       );
       // The fault case (migration 091), if an admin has confirmed a real fault. Null while the flag is
@@ -402,6 +403,8 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('fla
         flaggedAt: flagEvent?.createdAt || r.updated_at, flagNote: flagEvent?.notes || null,
         flagPhotos: flagEvent?.photos || [], damageType: flagEvent?.damageType || null,
         returnCaseId: caseRows[0]?.id || null,
+        // the supplier's answer on the return (patch-fault-overrule-reason): a refusal needs Leap's reason to confirm the fault
+        supplierAnswer: caseRows[0]?.supplier_answer || null, supplierAnswerNote: caseRows[0]?.supplier_answer_note || null,
         hubStatus: r.status,
         // false = the supplier has no return address yet, so the hub would not know where to send a faulty unit (migration 092)
         supplierReturnAddressOnFile: (await getReturnAddress((await db.query('SELECT supplier_id FROM supplier_sub_orders WHERE id = $1', [r.sub_order_id])).rows[0].supplier_id)) !== null,
@@ -849,13 +852,12 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
       const { rows: seqRows } = await client.query("SELECT nextval('return_case_id_seq') AS n");
       const caseId = `RC-${seqRows[0].n}`;
       await client.query(
-        `INSERT INTO return_cases (id, order_id, sub_order_id, buyer_id, guest_email, reason) VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO return_cases (id, order_id, sub_order_id, buyer_id, guest_email, reason, source) VALUES ($1, $2, $3, $4, $5, $6, 'hub')`,
         [caseId, orderId, shipment.sub_order_id, buyerId, buyerId ? null : guestEmail, 'Quality issue flagged during hub inspection']
       );
-      await client.query(
-        `INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)`,
-        [caseId, `Our inspection hub flagged an issue with this shipment before it was sent to you: ${notes || 'no additional details provided'}. We're reviewing it and will follow up here.`]
-      );
+      // The hub's report opens the hub's conversation with Leap and the supplier's conversation at once; Leap and the supplier are told after the
+      // commit. The buyer is not messaged now: they hear major news only (a confirmed fault, the refund or the replacement).
+      returnNotifications.push(...(await returnConversations.onHubFlag(client, { caseId, shipment, notes, damageType, userId: req.user.sub })));
     }
 
     // The hub shipping the parcel to the BUYER is the real "your order has shipped" moment, and the tracking number

@@ -834,6 +834,8 @@ class ApiClient {
     String lang = 'en',
     // the currency the buyer sees prices in, saved with the order for the receipt (migration 123)
     String? displayCurrency,
+    // the basket the order comes from: the order keeps the prices held at checkout (Pricing > Discount rules > Rules)
+    String? cartId,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/order?lang=$lang'),
@@ -848,6 +850,7 @@ class ApiClient {
         'waitForAllShipments': waitForAllShipments,
         if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
         if (displayCurrency != null) 'displayCurrency': displayCurrency,
+        if (cartId != null) 'cartId': cartId,
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;

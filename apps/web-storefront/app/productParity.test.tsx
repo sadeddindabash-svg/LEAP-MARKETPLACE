@@ -31,7 +31,7 @@ beforeEach(() => { m.lang.current = "en"; });
 
 describe("the column beside the photos, like the mobile app", () => {
   it("holds, in this order: title, chips, stock box, seller lines, price block, buttons", async () => {
-    const { right } = columns(await page()); const types = kids(right).map((c) => (typeof c.type === "string" ? c.type : c.type)); expect(types).toEqual(["div", "div", StockBanner, SellerSignals, PriceBlock, "div"]);
+    const { right } = columns(await page()); const types = kids(right).map((c) => (typeof c.type === "string" ? c.type : c.type)); expect(types).toEqual(["h1", "div", StockBanner, SellerSignals, PriceBlock, "div"]);
     expect(find(kids(right)[5], AddToCartButton)).not.toBeNull();
   });
   it("the stock box gets the real stock and delivery estimate, the seller lines the real flags, the price block both prices", async () => {

@@ -1,0 +1,40 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { Lang } from "@/lib/i18n";
+
+/**
+ * "Read more" under the product's description (patch-product-name-band): the description shows 2 lines; when it is longer, this button opens
+ * it in full and "Show less" closes it again. Nothing shows when the description fits in 2 lines.
+ */
+const WORDS = { en: { more: "Read more", less: "Show less" }, ar: { more: "اقرأ المزيد", less: "عرض أقل" } };
+const CLAMP = "line-clamp-2";
+
+export default function DescriptionMore({ targetId, lang }: { targetId: string; lang: Lang }) {
+  const [long, setLong] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const check = () => { if (el.classList.contains(CLAMP)) setLong(el.scrollHeight > el.clientHeight + 1); };
+    check();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(check) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [targetId]);
+  if (!long) return null;
+  const w = WORDS[lang === "ar" ? "ar" : "en"];
+  const toggle = () => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const next = !open;
+    el.classList.toggle(CLAMP, !next);
+    setOpen(next);
+  };
+  return (
+    <button type="button" data-testid="description-more" aria-controls={targetId} aria-expanded={open} onClick={toggle}
+      className="mt-1 self-start text-[14px] font-bold text-navy underline decoration-signal decoration-2 underline-offset-4 hover:text-navy-deep md:!-mt-3">
+      {open ? w.less : w.more}
+    </button>
+  );
+}

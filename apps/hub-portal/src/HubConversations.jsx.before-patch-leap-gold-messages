@@ -1,0 +1,97 @@
+import React, { useEffect, useState } from "react";
+import { fetchHubConversations, sendHubConversationMessage, markHubConversationRead, getStoredToken, SessionExpiredError } from "./auth";
+import { useLang } from "./langContext";
+import { useHub } from "./hubContext";
+
+// The hub's conversations with Leap about the parcels it flagged (patch-returns-conversations, migration 149). The hub's own report is the first
+// message; Leap's questions and instructions (e.g. "the supplier accepted: send the part back") follow; the hub answers here. Only Leap reads them.
+const C = { ink: "#14171C", line: "#E4E6EA", muted: "#636B78", navy: "#0B3146", gold: "#F9B317", onGold: "#0B3146", torqueBg: "#E8EEFB", canvas: "#F5F6F8", red: "#C0362C", redBg: "#FAE6E4", redInk: "#A82E25" };
+const body = { fontFamily: "'Manrope', 'Noto Sans SC', sans-serif" };
+const mono = { fontFamily: "'JetBrains Mono', monospace" };
+
+const TEXT = {
+  zh: { title: "与平台的沟通", sub: "您标记的包裹：您的检验报告和平台的消息。回复只有平台能看到。", you: "您（质检中心）", leap: "平台", order: "订单", supplier: "供应商",
+    reply: "回复平台…", send: "发送", open: "查看对话", close: "收起", newCount: (n) => `${n} 条新消息`, error: "发送失败：", empty: "暂无对话。" },
+  en: { title: "Conversations with Leap", sub: "The parcels you flagged: your report and Leap's messages. Only Leap reads your replies.", you: "You (hub)", leap: "Leap", order: "Order", supplier: "Supplier",
+    reply: "Reply to Leap…", send: "Send", open: "Open conversation", close: "Hide", newCount: (n) => `${n} new`, error: "Could not send: ", empty: "No conversations." },
+};
+
+/** The conversations, read again every 15 seconds; `unread` = Leap messages the hub has not opened, for the menu. */
+export function useHubConversations() {
+  const { onSessionExpired } = useHub();
+  const [list, setList] = useState(null);
+  const load = () => fetchHubConversations(getStoredToken())
+    .then((l) => setList((cur) => (JSON.stringify(cur) === JSON.stringify(l) ? cur : l)))
+    .catch((err) => { if (err instanceof SessionExpiredError) onSessionExpired(); });
+  useEffect(() => {
+    load();
+    const timer = setInterval(() => { if (!document.hidden) load(); }, 15000);
+    return () => clearInterval(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return { list, reload: load, unread: (list || []).reduce((n, c) => n + (c.unread || 0), 0) };
+}
+
+export default function HubConversations({ data }) {
+  const { lang } = useLang();
+  const x = TEXT[lang] || TEXT.en;
+  const { onSessionExpired } = useHub();
+  const [openId, setOpenId] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const list = data.list || [];
+  if (list.length === 0) return null;
+  const when = (d) => new Date(d).toLocaleString(lang === "zh" ? "zh-CN" : "en-GB");
+
+  const toggle = async (c) => {
+    if (openId === c.caseId) { setOpenId(null); return; }
+    setOpenId(c.caseId); setDraft(""); setError(null);
+    if (c.unread) { try { await markHubConversationRead(getStoredToken(), c.caseId); data.reload(); } catch (err) { if (err instanceof SessionExpiredError) onSessionExpired(); } }
+  };
+  const send = async (c) => {
+    if (!draft.trim()) return;
+    setBusy(true); setError(null);
+    try { await sendHubConversationMessage(getStoredToken(), c.caseId, draft.trim()); setDraft(""); await data.reload(); }
+    catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setError(x.error + err.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ ...body, display: "flex", flexDirection: "column", gap: 10, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>{x.title} · {list.length}</div>
+      <div style={{ fontSize: 12.5, color: C.muted, marginTop: -4 }}>{x.sub}</div>
+      {list.map((c) => {
+        const open = openId === c.caseId;
+        const last = c.messages[c.messages.length - 1];
+        return (
+          <div key={c.caseId} style={{ background: "#fff", border: `1px solid ${c.unread ? C.gold : C.line}`, borderRadius: 14, padding: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ ...mono, fontSize: 13, fontWeight: 700, color: C.navy, border: `1.5px solid ${C.navy}`, borderRadius: 6, padding: "1px 7px" }}>{c.caseId}</span>
+              <span style={{ fontSize: 12, color: C.muted }}>{x.order} <span style={mono}>{c.orderId}</span> · {x.supplier}: {c.supplierName}</span>
+              {c.unread > 0 && <span style={{ fontSize: 11, fontWeight: 800, background: C.gold, color: C.onGold, borderRadius: 999, padding: "2px 8px" }}>{x.newCount(c.unread)}</span>}
+              <button type="button" onClick={() => toggle(c)} style={{ ...body, marginLeft: "auto", background: "none", border: "none", color: C.navy, fontWeight: 800, fontSize: 12.5, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{open ? x.close : x.open}</button>
+            </div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 8 }}>{c.items.map((i) => `${i.name} × ${i.quantity}`).join(", ")}</div>
+            {!open && last && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last.senderRole === "hub" ? x.you : x.leap}: {last.message.split("\n")[lang === "zh" ? 0 : last.message.includes("\n") ? 1 : 0]}</div>}
+            {open && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                {c.messages.length === 0 && <div style={{ fontSize: 12.5, color: C.muted }}>{x.empty}</div>}
+                {c.messages.map((m, i) => (
+                  <div key={i} style={{ fontSize: 12.5, color: C.ink, whiteSpace: "pre-line", lineHeight: 1.5, padding: "8px 11px", borderRadius: 10, maxWidth: "88%", alignSelf: m.senderRole === "hub" ? "flex-end" : "flex-start", background: m.senderRole === "hub" ? C.canvas : C.torqueBg }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: C.muted, marginBottom: 2 }}>{m.senderRole === "hub" ? x.you : x.leap} · {when(m.createdAt)}</div>
+                    {m.message}
+                  </div>
+                ))}
+                {error && <div role="alert" style={{ fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 8, padding: "8px 10px" }}>{error}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send(c)} placeholder={x.reply} aria-label={x.reply} style={{ ...body, flex: 1, height: 40, border: "1px solid #CFD4DB", borderRadius: 10, padding: "0 12px", fontSize: 13 }} />
+                  <button type="button" disabled={busy || !draft.trim()} onClick={() => send(c)} style={{ ...body, height: 40, padding: "0 16px", borderRadius: 10, border: "none", background: C.gold, color: C.onGold, fontWeight: 800, fontSize: 13, cursor: busy ? "default" : "pointer", opacity: busy || !draft.trim() ? 0.55 : 1 }}>{x.send}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

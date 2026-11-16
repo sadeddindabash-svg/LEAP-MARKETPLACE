@@ -3,14 +3,15 @@ const { createListCache } = require('./listCache');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { loadBuyerFit } = require('../orderVehicles/productCars');
-const { replaceProductFitment } = require('../orderVehicles/fitmentVersions');
+const { replaceProductFitment, readVersionsByEntry } = require('../orderVehicles/fitmentVersions');      // patch-admin-fitment-versions: + readVersionsByEntry
 const { withFallbackSections, withFallbackParts } = require('../catalogPhotos/fallback');
 const { loadSiteStats } = require('../siteStats/stats');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
-const { findMatchingDiscountRule } = require('../pricing/discountRules');
-const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
+const { findActiveDiscount, countdownEndsAt } = require('../pricing/discountRules');      // a rule's discount, only between its start and end (migration 133)
+const { resolveDestinationIsoCode, estimateDelivery } = require('../deliveryEstimate/engine');
+const { getDeliverySettings: getDivisorSettings } = require('../deliveryEstimate/settings');      // patch-admin-product-weight
 const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength, validateProductAttributes, supplierNameMinimums } = require('../shared/productValidation');
 const { validateRejection, saveRejection, clearRejection, notifySupplierOfRejection } = require('./rejection');      // reject with a reason (migration 118)
 const { logAdminAction } = require('../audit/helpers');
@@ -57,6 +58,8 @@ const continuationCache = createListCache({ ttlMs: process.env.CATALOG_LIST_CACH
 // real CJK Unicode range check can't verify a translation is GOOD,
 // but it can catch this exact real mistake before it ever reaches a
 // buyer.
+const { withCar } = require('../shared/carName');      // buyer names: name + car brand + model
+const { fitTitleFor } = require('../shared/fitTitle');      // the title in parts: name · car · version · part number (patch-name-car-part)
 const CJK_REGEX = /[\u4e00-\u9fff]/;
 function containsChineseCharacters(text) {
   return typeof text === 'string' && CJK_REGEX.test(text);
@@ -156,7 +159,10 @@ async function attachBuyerPrice(dto, row) {
   // app show a genuine "price dropped" comparison using real,
   // already-existing data, not a fabricated price history.
   const lastKnownPrice = row.last_known_buyer_price_usd === null ? null : Number(row.last_known_buyer_price_usd);
-  const discountPercentage = await findMatchingDiscountRule(row.id);
+  const active = await findActiveDiscount(row.id);
+  const discountPercentage = active ? active.percentage : null;
+  // discountEndsAt: when the discount ends, sent only when the product page should show the countdown (the rule's "show countdown" choice).
+  const discountEndsAt = discountPercentage !== null ? countdownEndsAt(active) : null;
 
   if (row.currency_code !== 'CNY') {
     const basePrice = Number(row.price);
@@ -167,6 +173,7 @@ async function attachBuyerPrice(dto, row) {
       currencyCode: row.currency_code,
       lastKnownPrice,
       originalPrice: discountPercentage !== null ? basePrice : null,
+      discountEndsAt,
     };
   }
   const result = await calculateBuyerPriceUsd({
@@ -175,6 +182,7 @@ async function attachBuyerPrice(dto, row) {
     lengthCm: shipped.length_cm === null ? null : Number(shipped.length_cm),
     widthCm: shipped.width_cm === null ? null : Number(shipped.width_cm),
     heightCm: shipped.height_cm === null ? null : Number(shipped.height_cm),
+    supplierId: row.supplier_id,      // the warehouse country for the delivery rule; the buyer's country comes from the request (patch-delivery-prices)
   });
   // Confirmed simplest, most predictable interpretation: the real
   // discount applies to the final, all-in real buyer price (already
@@ -188,6 +196,7 @@ async function attachBuyerPrice(dto, row) {
     price: finalPriceUsd,
     lastKnownPrice,
     originalPrice: discountPercentage !== null ? basePriceUsd : null,
+    discountEndsAt,
   };
 }
 
@@ -223,7 +232,7 @@ async function attachSupplierSignals(dto, supplierId) {
 // request (not per product) by the caller, via
 // resolveDestinationIsoCode(req) -- see this module's own call sites.
 async function attachDeliveryEstimate(dto, destinationIsoCode) {
-  const days = await calculateDeliveryDays({
+  const est = await estimateDelivery({
     weightKg: dto.weightKg,
     lengthCm: dto.lengthCm,
     widthCm: dto.widthCm,
@@ -231,7 +240,8 @@ async function attachDeliveryEstimate(dto, destinationIsoCode) {
     warehouseCountry: dto.shipsFromCountry,
     destinationIsoCode,
   });
-  return { ...dto, estimatedDeliveryDays: days };
+  // estimatedDeliveryDays: calendar days (null = no date shown); estimatedDeliveryRange: ± days when the date is shown as a range
+  return { ...dto, estimatedDeliveryDays: est.days, estimatedDeliveryRange: est.range };
 }
 
 // Real Brand/Model/Year for the product page, resolved from the
@@ -241,7 +251,7 @@ async function attachDeliveryEstimate(dto, destinationIsoCode) {
 // flat "Brand: / Model: / Year:" product-page layout. If multi-fitment
 // products become common enough that buyers need to see the full list,
 // that's a real follow-up, not something to overbuild here on a guess.
-async function attachPrimaryFitment(dto, productId, lang) {
+async function attachPrimaryFitment(dto, productId, lang, prefer) {
   const { rows } = await db.query(
     `SELECT vb.name AS brand, vb.name_ar AS brand_ar, vb.photo_url AS brand_logo_url, vm.name AS model, vm.name_ar AS model_ar, pfe.year
      FROM product_fitment_entries pfe
@@ -255,7 +265,10 @@ async function attachPrimaryFitment(dto, productId, lang) {
   const primary = rows[0] || null;
   const brandName = lang === 'ar' && primary?.brand_ar ? primary.brand_ar : primary?.brand || null;
   const modelName = lang === 'ar' && primary?.model_ar ? primary.model_ar : primary?.model || null;
-  return { ...dto, brand: brandName, brandLogoUrl: primary?.brand_logo_url || null, model: modelName, year: primary?.year || null };
+  // the buyer's name: the name that was added + the car's brand + model (confirmed with the person via mockup)
+  // the title in parts for the cards and the product page (patch-name-car-part); `name` stays the plain one-line name (search, sharing, older apps)
+  const fitTitle = await fitTitleFor(db, productId, lang, { name: dto.name, partNumber: dto.oemNumber ?? null, prefer });
+  return { ...dto, fitTitle, name: withCar(dto.name, brandName, modelName), brand: brandName, brandLogoUrl: primary?.brand_logo_url || null, model: modelName, year: primary?.year || null };
 }
 
 /**
@@ -475,7 +488,7 @@ router.get('/products', async (req, res, next) => {
       let dtos = await buildBuyerList(rows, async (r) => {
         let dto = toBuyerProductDto(r, lang);
         dto = await attachBuyerImages(dto, r.id);
-        dto = await attachPrimaryFitment(dto, r.id, lang);
+        dto = await attachPrimaryFitment(dto, r.id, lang, { generationId, year });      // a list for one car: the title shows that car
         dto = await attachPartTranslation(dto, r, lang);
         dto = await attachBuyerPrice(dto, r);
         dto = await attachSupplierSignals(dto, r.supplier_id);
@@ -1190,10 +1203,12 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
     // weightKg / lengthCm / widthCm / heightCm below are the product's OWN values (null when it uses its part's): the edit form saves them back, so showing
     // the part's here would silently copy them into the product. `effectiveShipping` says what the shipping cost really uses.
     const shipped = await withEffectiveShipping(row);
+    const { rows: supRows } = row.supplier_id ? await db.query('SELECT name FROM suppliers WHERE id = $1', [row.supplier_id]) : { rows: [] };   // patch-admin-product-redesign
+    const supplierName = supRows[0] ? supRows[0].name : null;
 
     const { rows: images } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [row.id]);
     const { rows: fitmentRows } = await db.query(
-      `SELECT pfe.generation_id, pfe.year, pfe.engine_id, pfe.transmission_id,
+      `SELECT pfe.id AS entry_id, pfe.generation_id, pfe.year, pfe.engine_id, pfe.transmission_id,
               vb.name AS brand_name, vm.name AS model_name, vg.name AS generation_name
        FROM product_fitment_entries pfe
        JOIN vehicle_generations vg ON vg.id = pfe.generation_id
@@ -1203,12 +1218,14 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
       [row.id]
     );
 
+    const versionsByEntry = await readVersionsByEntry(db, fitmentRows.map((f) => f.entry_id));      // patch-admin-fitment-versions
     res.json({
       id: row.id,
       name: row.name,
       nameAr: row.name_ar,
       description: row.description,
       descriptionAr: row.description_ar,
+      nameZh: row.name_zh || null, descriptionZh: row.description_zh || null,      // patch-admin-product-names: the supplier's original, read only
       category: row.category,
       part: row.part,
       position: row.position,
@@ -1228,10 +1245,15 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
       },
       images: images.map((i) => i.url),
       videoUrl: row.video_url,
+      volumetricDivisor: await getDivisorSettings().then((s) => Number(s.volumetricDivisor) || 5000).catch(() => 5000),      // patch-admin-product-weight: L x W x H / this = the size weight
+      status: row.status,                                                    // patch-admin-product-redesign: Live / Hidden / Waiting badge
+      supplierName: supplierName,
       fitment: fitmentRows.map((f) => ({
         generationId: f.generation_id, year: f.year, engineId: f.engine_id, transmissionId: f.transmission_id,
         brandName: f.brand_name, modelName: f.model_name,
-        label: `${f.brand_name} ${f.model_name} (${f.generation_name}) · ${f.year}`,
+        label: `${f.brand_name} ${f.model_name} · ${f.year}`,                       // patch-admin-fitment-versions: brand, model, year (no generation)
+        versionIds: (versionsByEntry.get(f.entry_id) || []).map((v) => v.id),
+        versions: (versionsByEntry.get(f.entry_id) || []).map((v) => ({ id: v.id, name: v.name, engine: v.engine })),
       })),
     });
   } catch (err) {
@@ -1512,7 +1534,11 @@ router.get('/trending-searches', async (req, res, next) => {
 router.get('/categories', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM product_categories ORDER BY sort_order ASC');
-    res.json((await withFallbackSections(rows)).map(toCategoryDto));      // (unchanged unless the admin turned the photo fallback on)
+    // patch-categories-redesign: + partCount and productCount (the admin's cards)
+    const { rows: counts } = await db.query(`SELECT c.id, (SELECT COUNT(*)::int FROM category_parts p WHERE p.category_id = c.id) AS part_count,
+      (SELECT COUNT(*)::int FROM products pr WHERE pr.category = c.id AND pr.deleted_at IS NULL) AS product_count FROM product_categories c`);
+    const countOf = new Map(counts.map((r) => [r.id, r]));
+    res.json((await withFallbackSections(rows)).map(toCategoryDto).map((c) => (countOf.has(c.id) ? { ...c, partCount: countOf.get(c.id).part_count, productCount: countOf.get(c.id).product_count } : c)));      // (unchanged unless the admin turned the photo fallback on)
   } catch (err) {
     next(err);
   }
@@ -1599,7 +1625,18 @@ function toDiscountRuleDto(row) {
     yearFrom: row.year_from,
     yearTo: row.year_to,
     discountPercentage: Number(row.discount_percentage),
+    startsAt: row.starts_at ? new Date(row.starts_at).toISOString() : null,
+    endsAt: row.ends_at ? new Date(row.ends_at).toISOString() : null,
+    countdown: row.countdown || 'last3',
+    status: discountRuleStatus(row),
   };
+}
+
+// 'scheduled' before its start, 'ended' after its end, otherwise 'active'.
+function discountRuleStatus(row, now = Date.now()) {
+  if (row.starts_at && new Date(row.starts_at).getTime() > now) return 'scheduled';
+  if (row.ends_at && new Date(row.ends_at).getTime() <= now) return 'ended';
+  return 'active';
 }
 
 const DISCOUNT_RULE_SELECT = `
@@ -1650,21 +1687,31 @@ router.get('/discount-rules', async (req, res, next) => {
 // three real dimensions (brand, model, year range) are pairwise
 // compatible -- since brand is always required and non-null here,
 // a differing real brand alone already rules out any real overlap.
-async function findOverlappingRule(brandId, modelId, yearFrom, yearTo, excludeId) {
+// Two rules for the same cars only clash when their time windows meet too (migration 133): a new Toyota offer can follow one that has ended.
+async function findOverlappingRule(brandId, modelId, yearFrom, yearTo, excludeId, startsAt = null, endsAt = null) {
   const { rows } = await db.query(
     `SELECT id FROM discount_rules
      WHERE brand_id = $1
        AND (model_id IS NULL OR $2::text IS NULL OR model_id = $2)
        AND (year_from IS NULL OR $4::int IS NULL OR year_from <= $4)
        AND ($3::int IS NULL OR year_to IS NULL OR $3 <= year_to)
-       AND ($5::int IS NULL OR id != $5)`,
-    [brandId, modelId ?? null, yearFrom ?? null, yearTo ?? null, excludeId ?? null]
+       AND ($5::int IS NULL OR id != $5)
+       AND (starts_at IS NULL OR $7::timestamptz IS NULL OR starts_at < $7)
+       AND ($6::timestamptz IS NULL OR ends_at IS NULL OR $6 < ends_at)`,
+    [brandId, modelId ?? null, yearFrom ?? null, yearTo ?? null, excludeId ?? null, startsAt, endsAt]
   );
   return rows.length > 0 ? rows[0].id : null;
 }
 
 function validateDiscountRuleInput(body) {
-  const { brandId, modelId, yearFrom, yearTo, discountPercentage } = body || {};
+  const { brandId, modelId, yearFrom, yearTo, discountPercentage, startsAt, endsAt, countdown } = body || {};
+  const when = (v) => (v === undefined || v === null || v === '' ? null : new Date(v));
+  const start = when(startsAt); const end = when(endsAt);
+  if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime()))) return { error: 'startsAt and endsAt must be dates' };
+  if (start && end && start.getTime() >= end.getTime()) return { error: 'The end must be after the start' };
+  const countdownChoice = countdown === undefined || countdown === null || countdown === '' ? 'last3' : countdown;
+  if (!['last3', 'always', 'never'].includes(countdownChoice)) return { error: "countdown must be 'last3', 'always' or 'never'" };
+  const window = { startsAt: start ? start.toISOString() : null, endsAt: end ? end.toISOString() : null, countdown: countdownChoice };
   if (!brandId) return { error: 'brandId is required -- every real rule needs at least a vehicle brand' };
   if (discountPercentage === undefined || discountPercentage === null || Number(discountPercentage) <= 0 || Number(discountPercentage) >= 100) {
     return { error: 'discountPercentage must be a number greater than 0 and less than 100' };
@@ -1672,14 +1719,14 @@ function validateDiscountRuleInput(body) {
   if (yearFrom !== undefined && yearFrom !== null && yearTo !== undefined && yearTo !== null && Number(yearFrom) > Number(yearTo)) {
     return { error: 'yearFrom must not be greater than yearTo' };
   }
-  return { brandId, modelId: modelId ?? null, yearFrom: yearFrom ?? null, yearTo: yearTo ?? null, discountPercentage: Number(discountPercentage) };
+  return { brandId, modelId: modelId ?? null, yearFrom: yearFrom ?? null, yearTo: yearTo ?? null, discountPercentage: Number(discountPercentage), ...window };
 }
 
 router.post('/admin/discount-rules', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
   try {
     const validated = validateDiscountRuleInput(req.body);
     if (validated.error) return res.status(400).json({ error: validated.error });
-    const { brandId, modelId, yearFrom, yearTo, discountPercentage } = validated;
+    const { brandId, modelId, yearFrom, yearTo, discountPercentage, startsAt, endsAt, countdown } = validated;
 
     if (modelId) {
       const { rows: modelCheck } = await db.query('SELECT brand_id FROM vehicle_models WHERE id = $1', [modelId]);
@@ -1687,15 +1734,15 @@ router.post('/admin/discount-rules', requireAuth, requireRole('admin'), requireP
       if (modelCheck[0].brand_id !== brandId) return res.status(400).json({ error: 'modelId does not belong to brandId' });
     }
 
-    const overlapId = await findOverlappingRule(brandId, modelId, yearFrom, yearTo);
+    const overlapId = await findOverlappingRule(brandId, modelId, yearFrom, yearTo, null, startsAt, endsAt);
     if (overlapId) {
-      return res.status(400).json({ error: `This rule overlaps with existing rule #${overlapId} -- a vehicle could match both. Adjust the brand, model, or year range so they don't conflict.` });
+      return res.status(400).json({ error: `This rule overlaps with existing rule #${overlapId} -- a vehicle could match both at the same time. Adjust the brand, model, year range or dates so they don't conflict.` });
     }
 
     const { rows } = await db.query(
-      `INSERT INTO discount_rules (brand_id, model_id, year_from, year_to, discount_percentage)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [brandId, modelId, yearFrom, yearTo, discountPercentage]
+      `INSERT INTO discount_rules (brand_id, model_id, year_from, year_to, discount_percentage, starts_at, ends_at, countdown)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [brandId, modelId, yearFrom, yearTo, discountPercentage, startsAt, endsAt, countdown]
     );
     const { rows: full } = await db.query(`${DISCOUNT_RULE_SELECT} WHERE dr.id = $1`, [rows[0].id]);
     res.status(201).json(toDiscountRuleDto(full[0]));
@@ -1708,7 +1755,7 @@ router.patch('/admin/discount-rules/:id', requireAuth, requireRole('admin'), req
   try {
     const validated = validateDiscountRuleInput(req.body);
     if (validated.error) return res.status(400).json({ error: validated.error });
-    const { brandId, modelId, yearFrom, yearTo, discountPercentage } = validated;
+    const { brandId, modelId, yearFrom, yearTo, discountPercentage, startsAt, endsAt, countdown } = validated;
 
     if (modelId) {
       const { rows: modelCheck } = await db.query('SELECT brand_id FROM vehicle_models WHERE id = $1', [modelId]);
@@ -1716,16 +1763,16 @@ router.patch('/admin/discount-rules/:id', requireAuth, requireRole('admin'), req
       if (modelCheck[0].brand_id !== brandId) return res.status(400).json({ error: 'modelId does not belong to brandId' });
     }
 
-    const overlapId = await findOverlappingRule(brandId, modelId, yearFrom, yearTo, Number(req.params.id));
+    const overlapId = await findOverlappingRule(brandId, modelId, yearFrom, yearTo, Number(req.params.id), startsAt, endsAt);
     if (overlapId) {
       return res.status(400).json({ error: `This rule overlaps with existing rule #${overlapId} -- a vehicle could match both. Adjust the brand, model, or year range so they don't conflict.` });
     }
 
     const { rows } = await db.query(
       `UPDATE discount_rules SET
-         brand_id = $1, model_id = $2, year_from = $3, year_to = $4, discount_percentage = $5, updated_at = now()
+         brand_id = $1, model_id = $2, year_from = $3, year_to = $4, discount_percentage = $5, starts_at = $7, ends_at = $8, countdown = $9, updated_at = now()
        WHERE id = $6 RETURNING id`,
-      [brandId, modelId, yearFrom, yearTo, discountPercentage, req.params.id]
+      [brandId, modelId, yearFrom, yearTo, discountPercentage, req.params.id, startsAt, endsAt, countdown]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Discount rule not found' });
     const { rows: full } = await db.query(`${DISCOUNT_RULE_SELECT} WHERE dr.id = $1`, [rows[0].id]);
@@ -1875,7 +1922,11 @@ router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageA
 router.get('/categories/:id/parts', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [req.params.id]);
-    res.json((await withFallbackParts(rows, req.params.id)).map(toPartDto));      // (unchanged unless the admin turned the photo fallback on)
+    // patch-categories-redesign: + productCount (the admin's cards)
+    const { rows: counts } = await db.query(`SELECT p.id, (SELECT COUNT(*)::int FROM products pr WHERE pr.category = p.category_id AND lower(btrim(pr.part)) = lower(btrim(p.name_en)) AND pr.deleted_at IS NULL) AS product_count
+      FROM category_parts p WHERE p.category_id = $1`, [req.params.id]);
+    const countOf = new Map(counts.map((r) => [String(r.id), r.product_count]));
+    res.json((await withFallbackParts(rows, req.params.id)).map(toPartDto).map((p) => (countOf.has(String(p.id)) ? { ...p, productCount: countOf.get(String(p.id)) } : p)));      // (unchanged unless the admin turned the photo fallback on)
   } catch (err) {
     next(err);
   }

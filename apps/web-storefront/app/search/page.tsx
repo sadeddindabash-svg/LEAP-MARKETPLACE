@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "@/components/LocLink";
 import { fetchCategories, fetchPartsForCategory, fetchProductsPaginated, type CategoryPart } from "@/lib/api";
 import InfiniteProductGrid from "@/components/InfiniteProductGrid";
-import { localizePath, pickName, t } from "@/lib/i18n";
+import { pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
 import { SearchFilters } from "@/components/SearchFilters";
 import { filterHref, readExtraFilters } from "@/lib/searchFilters";
@@ -70,27 +70,19 @@ export default async function SearchPage({ searchParams }: PageProps) {
     ? (total === 1 ? t(lang, "sf_fit_car_one") : t(lang, "sf_fit_car_many", { n: total }))
     : (total === 1 ? t(lang, "parts_found_one") : t(lang, "parts_found", { n: total }));
   const heading = (
-    <div>
+    <div>          {/* not shown on any screen (SearchFilters keeps it for screen readers and search engines): the filters and the chips say what is shown */}
       <h1 className="text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere]">{title}</h1>
       <p className="mt-1 text-sm text-muted">{part && sectionName ? `${t(lang, "sf_in_section", { section: sectionName })} · ` : ""}{countText}</p>
     </div>
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-10">
-      <form action={localizePath(lang, "/search")} className="mb-8">
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder={t(lang, "search_page_placeholder")}
-          className="w-full rounded-md border border-line px-4 py-3 text-sm"
-        />
-      </form>
+    <div className="mx-auto max-w-7xl px-2 pb-8 pt-2 sm:px-4 lg:px-6">
+      {/* no second search box on any screen: the one at the top of the page is enough */}
 
       {/* The title, the car, ONE bar of filters (section, part, price, delivery, sort) and the filters that are on, as chips: all in one place above the results, which keep
           four columns. A real <Suspense> boundary is required around useSearchParams() (a production build fails without one); its fallback is the title alone. */}
-      <Suspense fallback={<div className="mb-6">{heading}</div>}>
+      <Suspense fallback={<div className="sr-only">{heading}</div>}>
         <SearchFilters sections={categories.map((c) => ({ id: c.id, nameEn: c.nameEn, nameAr: c.nameAr }))} heading={heading} />
       </Suspense>
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
@@ -115,7 +107,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
                 total={total}
                 startPage={pageNum}
                 pageSize={PAGE_SIZE}
-                gridClassName="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4"
+                gridClassName="grid grid-cols-2 gap-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4"
               />
             </>
           )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import {
   PackageCheck, LogOut, ChevronLeft, Camera, X, AlertTriangle,
   PackageOpen, Search as SearchIcon, ClipboardCheck, PackagePlus, Truck, Inbox,
@@ -10,6 +11,8 @@ import {
 import LoginPage from "./LoginPage";
 import { HubMenu, HubBoard, HubStepBar, HubEmptyPane, useHubShipments, menuCounts, shipmentIdFromScan } from "./HubWorkspace";      // the new frame: side menu, Board, Shipments workbench
 import ChangePasswordPage from "./ChangePasswordPage";
+import HubReturns, { useIncomingReturns } from "./HubReturns";
+import { useHubConversations } from "./HubConversations";      // patch-returns-conversations      // returned parts coming to this hub (patch-returns-flow)
 import { HubContext, useHub } from "./hubContext";
 import { LangContext, useLang } from "./langContext";
 import InspectionList, { InspectionMissing } from "./InspectionList";      // the inspection list while inspecting (migration 129)
@@ -18,13 +21,51 @@ import DeliveryStatusCard from "./DeliveryStatusCard";      // after shipping: o
 import SupplierLabelTick from "./SupplierLabelTick";      // at "Packed": the supplier's label is removed or covered
 import ShippingCostCard from "./ShippingCostCard";      // the Shipping cost step before "Shipped to buyer" (migration 127)
 
+// The LEAP portals design (patch-portals-redesign): the same navy, gold and fonts as the admin and supplier portals.
 const C = {
   ink: "#14171C", canvas: "#F5F6F8", card: "#FFFFFF", line: "#E4E6EA",
-  signal: "#E8622C", torque: "#2A5FD9", gauge: "#1E9D6B", amber: "#B9791F", red: "#C0362C",
-  muted: "#6B7280", gaugeBg: "#E4F5EC", amberBg: "#FCEFD8", torqueBg: "#E9EFFC", redBg: "#FBE7E5",
+  signal: "#F9B317", onSignal: "#0B3146", navy: "#0B3146", navyDeep: "#07202F", navySoft: "#1F5574", onNavyMuted: "#9FB4C3",
+  torque: "#2A5FD9", gauge: "#1E9D6B", amber: "#B9791F", red: "#C0362C",
+  muted: "#636B78", gaugeBg: "#E3F4EC", amberBg: "#FBF0DC", torqueBg: "#E6EDFC", redBg: "#FAE6E4",
+  gaugeInk: "#13714B", amberInk: "#8A5A12", torqueInk: "#2350B8", redInk: "#A82E25",
 };
-const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
-const body = { fontFamily: "'Inter', sans-serif" };
+const disp = { fontFamily: "'Manrope', 'Noto Sans SC', sans-serif" };
+const body = { fontFamily: "'Manrope', 'Noto Sans SC', sans-serif" };
+const HUB_CSS = `@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
+
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):focus, select:focus, textarea:focus { outline: none; border-color: #2A5FD9 !important; box-shadow: 0 0 0 3px #E6EDFC; }
+button:focus-visible, a:focus-visible { outline: 2px solid #2A5FD9; outline-offset: 2px; }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: #0B3146; }
+::selection { background: #FDF3D8; color: #14171C; }
+[data-leap-header] input::placeholder { color: #9FB4C3; }
+[data-leap-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([data-leap-plain]), [data-leap-page] select, [data-leap-page] textarea { border-radius: 10px !important; border-color: #CFD4DB !important; color: #14171C; background-color: #fff; }
+[data-leap-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([data-leap-plain]), [data-leap-page] select { min-height: 38px; box-sizing: border-box; }
+[data-leap-page] input::placeholder, [data-leap-page] textarea::placeholder { color: #8A93A0; }
+[data-leap-page] select { cursor: pointer; }
+[data-leap-page] button { transition: background-color 150ms ease, box-shadow 150ms ease, transform 60ms ease, border-color 150ms ease; }
+[data-leap-page] button:not(:disabled):active { transform: translateY(1px); }
+[data-leap-page] button:disabled { cursor: not-allowed !important; }
+[data-leap-page] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-leap-page] ::-webkit-scrollbar-thumb { background: #C9D1DA; border-radius: 999px; border: 2px solid #F5F6F8; }
+[data-leap-page] table { border-collapse: separate !important; border-spacing: 0 !important; }
+[data-leap-page] th { background: #F6F8FA !important; color: #5B6472 !important; font-size: 11px !important; font-weight: 800 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; padding: 13px 18px !important; border-bottom: 1px solid #E4E6EA !important; white-space: nowrap; vertical-align: middle; }
+[data-leap-page] tbody td { padding: 15px 18px !important; border-bottom: 1px solid #EEF0F3 !important; vertical-align: middle !important; line-height: 1.45; font-variant-numeric: tabular-nums; }
+[data-leap-page] tbody tr { transition: background-color 120ms ease; }
+[data-leap-page] tbody tr:last-child > td { border-bottom: none !important; }
+[data-leap-page] tbody tr:nth-child(even):not([style*="background"]) > td { background: #FBFCFD; }
+[data-leap-page] tbody tr[style*="background"] > td { background: transparent; }
+[data-leap-page] tbody tr:hover > td { background: #FDF6E3 !important; }
+[data-leap-page] tbody tr[aria-selected="true"] > td { background: #FDF3D8 !important; }
+[data-leap-page] tbody tr > td:first-child { font-weight: 700; }
+[data-leap-page] tbody td[style*="text-align: right"], [data-leap-page] th[style*="text-align: right"] { white-space: nowrap; }
+[data-leap-page] tbody td[colspan]:only-child:not(:has(*)) { padding: 48px 18px 44px !important; text-align: center !important; color: #636B78 !important; font-size: 13.5px !important; font-weight: 600 !important; background: #fff !important; }
+[data-leap-page] tbody td[colspan]:only-child:not(:has(*))::before { content: ""; display: block; width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 12px; background: #F1F4F7 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23636B78' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / 20px no-repeat; }
+[data-leap-page] [data-leap-segments] { display: inline-flex !important; flex-wrap: wrap; align-items: center; gap: 2px !important; padding: 4px !important; background: #EEF1F4 !important; border: 1px solid #E4E6EA !important; border-radius: 12px !important; box-shadow: inset 0 1px 2px rgba(11,49,70,0.05) !important; width: fit-content; max-width: 100%; }
+[data-leap-page] [data-leap-segments] > button { display: inline-flex !important; align-items: center; gap: 6px; height: 34px !important; border: none !important; background: transparent !important; padding: 0 16px !important; margin: 0 !important; border-radius: 9px !important; font-size: 13px !important; font-weight: 700 !important; box-shadow: none !important; cursor: pointer; white-space: nowrap; }
+[data-leap-page] [data-leap-segments] > button:not([aria-selected="true"]):not([aria-pressed="true"]) { color: #5B6472; }
+[data-leap-page] [data-leap-segments] > button:hover:not([aria-selected="true"]):not([aria-pressed="true"]) { background: rgba(255,255,255,0.65) !important; color: #14171C; }
+[data-leap-page] [data-leap-segments] > button[aria-selected="true"], [data-leap-page] [data-leap-segments] > button[aria-pressed="true"] { background: #fff !important; color: #0B3146 !important; box-shadow: 0 1px 2px rgba(11,49,70,0.14), 0 3px 8px rgba(11,49,70,0.08) !important; }
+`;
 
 // Real bilingual support (new) -- this portal's own README flagged
 // English-only as the #1 next step, unlike apps/supplier-portal, which
@@ -58,6 +99,7 @@ const STRINGS = {
       returned_to_supplier: { label: "已退回供应商" },
       discarded_at_hub: { label: "已销毁" },
       closed: { label: "已关闭" },
+      waiting_leap: { label: "质检中心已完成 · 等待平台" },
     },
     filters: { all: "全部", awaiting_receipt: "待接收", in_progress: "处理中", shipped_to_buyer: "已发货", delivered: "已送达", flagged: "已标记" },
     queue: {
@@ -135,6 +177,7 @@ const STRINGS = {
       returned_to_supplier: { label: "Returned to supplier" },
       discarded_at_hub: { label: "Discarded" },
       closed: { label: "Closed" },
+      waiting_leap: { label: "Done by the hub · waiting for Leap" },
     },
     filters: { all: "All", awaiting_receipt: "Awaiting receipt", in_progress: "In progress", shipped_to_buyer: "Shipped", delivered: "Delivered", flagged: "Flagged" },
     queue: {
@@ -207,19 +250,22 @@ const STATUS_COLOR = {
   awaiting_receipt: [C.amber, C.amberBg], received: [C.torque, C.torqueBg], opened: [C.torque, C.torqueBg],
   inspected: [C.torque, C.torqueBg], packed: [C.torque, C.torqueBg], shipped_to_buyer: [C.gauge, C.gaugeBg],
   delivered: [C.gauge, C.gaugeBg],
-  flagged: [C.red, C.redBg], returned_to_supplier: [C.red, C.redBg], discarded_at_hub: [C.red, C.redBg],
+  flagged: [C.red, C.redBg], returned_to_supplier: [C.red, C.redBg], discarded_at_hub: [C.red, C.redBg], waiting_leap: [C.amber, C.amberBg],
 };
 
 // A flag the platform has CLOSED (migration 098: closed by hand, the shipment keeps its "flagged" status but has a resolution) is shown as Closed,
 // not as an open problem.
-const displayStatusOf = (shipment) => (shipment.status === "flagged" && shipment.resolvedAt ? "closed" : shipment.status);
+const displayStatusOf = (shipment) => (shipment.status === "flagged" && shipment.resolvedAt ? "closed"
+  : ["returned_to_supplier", "discarded_at_hub"].includes(shipment.status) && !shipment.resolvedAt ? "waiting_leap" : shipment.status);      // patch-hub-flagged-done
 
 function Badge({ status }) {
   const { t } = useLang();
   const [color, bg] = STATUS_COLOR[status] || [C.muted, "#EEEFF1"];
   const label = t.steps[status]?.label || status;
+  const ink = { [C.amber]: C.amberInk, [C.gauge]: C.gaugeInk, [C.torque]: C.torqueInk, [C.red]: C.redInk }[color] || color;
   return (
-    <span style={{ ...body, fontSize: 11, fontWeight: 700, color, background: bg, borderRadius: 6, padding: "4px 9px", whiteSpace: "nowrap" }}>
+    <span style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: ink, background: bg, borderRadius: 999, padding: "4px 10px", whiteSpace: "nowrap" }}>
+      <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: ink, flexShrink: 0 }} />
       {label}
     </span>
   );
@@ -228,7 +274,7 @@ function Badge({ status }) {
 function LangToggle() {
   const { lang, toggle } = useLang();
   return (
-    <div style={{ display: "flex", border: "1px solid #3A3F48", borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ display: "flex", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, overflow: "hidden" }}>
       {["zh", "en"].map((l) => (
         <button key={l} onClick={() => lang !== l && toggle()} style={{
           border: "none", cursor: "pointer", padding: "5px 10px", fontSize: 11, fontWeight: 700,
@@ -292,7 +338,7 @@ const FLAGGED_STATUSES = ["flagged", "returned_to_supplier", "discarded_at_hub"]
 const FILTER_TONE = { awaiting_receipt: "gold", in_progress: "gold", flagged: "red" };
 function FilterCount({ n, tone, active }) {
   if (!n) return null;
-  const colors = tone === "red" ? [C.red, "#fff"] : tone === "gold" ? ["#F2A71B", "#241A05"] : active ? ["#fff", C.ink] : ["#EEF0F3", C.ink];
+  const colors = tone === "red" ? [C.red, "#fff"] : tone === "gold" ? (active ? ["rgba(11,49,70,0.16)", C.onSignal] : [C.signal, C.onSignal]) : active ? ["rgba(11,49,70,0.16)", C.onSignal] : ["#EEF0F3", C.ink];
   return <span data-testid="filter-count" style={{ ...body, minWidth: 19, height: 19, padding: "0 5px", boxSizing: "border-box", borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 800, background: colors[0], color: colors[1] }}>{n}</span>;
 }
 
@@ -343,13 +389,13 @@ function QueueScreen({ onOpenShipment, presetFilter = "all", selectedId = null, 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the number on each filter: every shipment in it, whatever is typed in the search box
-  const inFilter = (s, id) => (id === "all" ? true : id === "in_progress" ? IN_PROGRESS_STATUSES.includes(s.status) : id === "flagged" ? FLAGGED_STATUSES.includes(s.status) && !s.resolvedAt : s.status === id);
+  const inFilter = (s, id) => (id === "all" ? true : id === "in_progress" ? IN_PROGRESS_STATUSES.includes(s.status) : id === "flagged" ? s.status === "flagged" && !s.resolvedAt : s.status === id);      // sent back / thrown away: under "All" (patch-hub-flagged-done)
   const countOf = (id) => shipments.filter((s) => inFilter(s, id)).length;
 
   const filtered = shipments.filter((s) => {
     if (filter === "all") { /* no status filter */ }
     else if (filter === "in_progress") { if (!IN_PROGRESS_STATUSES.includes(s.status)) return false; }
-    else if (filter === "flagged") { if (!FLAGGED_STATUSES.includes(s.status) || s.resolvedAt) return false; } // a flag the platform has CLOSED (however) is no longer an open problem: it stays under "All"
+    else if (filter === "flagged") { if (s.status !== "flagged" || s.resolvedAt) return false; } // a flag the platform has CLOSED (however) is no longer an open problem: it stays under "All"
     else if (s.status !== filter) return false;
 
     if (searchQuery.trim()) {
@@ -361,66 +407,93 @@ function QueueScreen({ onOpenShipment, presetFilter = "all", selectedId = null, 
     return true;
   });
 
+  // patch-hub-inbound-redesign: the list in the LEAP style -- a navy band with the title and the scan/search box, the filter pills, and parcel
+  // cards with a colour bar for the step and how long the parcel has waited there (red when it is late)
+  const { lang } = useLang();
+  const waited = (s) => (Date.now() - new Date(s.updatedAt || s.createdAt).getTime()) / (24 * 3600 * 1000);
+  const lateNow = (s) => ["awaiting_receipt", ...IN_PROGRESS_STATUSES].includes(s.status) && waited(s) >= 3;
+  const waitedText = (s) => {
+    const n = waited(s);
+    return lang === "zh" ? (n < 1 ? "今天" : `已等待 ${Math.floor(n)} 天`) : (n < 1 ? "today" : `waiting ${Math.floor(n)} ${Math.floor(n) === 1 ? "day" : "days"}`);
+  };
   return (
-    <div>
-      <div style={{ padding: "18px 20px 0" }}>
-        <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: C.ink }}>{t.queue.title}</div>
-        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+    <div style={{ minHeight: "100%", background: C.canvas }}>
+      <div data-leap-header="" style={{ background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 60%, ${C.navySoft} 140%)`, padding: "20px 20px 18px" }}>
+        <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal, marginBottom: 6 }}>LEAP</div>
+        <div style={{ ...disp, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{t.queue.title}</div>
+        <div style={{ ...body, fontSize: 12.5, color: C.onNavyMuted, marginTop: 3 }}>
           {loadState === "ready" ? t.queue.shownCount(filtered.length, shipments.length) : t.queue.loading}
         </div>
+        <div style={{ position: "relative", marginTop: 14 }}>
+          <SearchIcon size={16} color={C.muted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+          <input
+            type="text"
+            value={searchQuery}
+            ref={searchRef}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {      // Enter (a scanner ends with it): open the scanned parcel, or the only one found
+              if (e.key !== "Enter") return;
+              const scanned = shipmentIdFromScan(searchQuery);
+              const hit = scanned ? shipments.find((s) => String(s.id) === scanned) : (filtered.length === 1 ? filtered[0] : null);
+              if (hit) { onOpenShipment(hit.id); setSearchQuery(""); }
+            }}
+            placeholder={t.queue.searchPlaceholder}
+            data-leap-plain=""
+            style={{ ...body, width: "100%", boxSizing: "border-box", height: 42, padding: "0 12px 0 36px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.16)", background: "#fff", fontSize: 13.5, color: C.ink, outline: "none" }}
+          />
+        </div>
       </div>
-      <div style={{ padding: "14px 20px 0" }}>
-        <input
-          type="text"
-          value={searchQuery}
-          ref={searchRef}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => {      // Enter (a scanner ends with it): open the scanned parcel, or the only one found
-            if (e.key !== "Enter") return;
-            const scanned = shipmentIdFromScan(searchQuery);
-            const hit = scanned ? shipments.find((s) => String(s.id) === scanned) : (filtered.length === 1 ? filtered[0] : null);
-            if (hit) { onOpenShipment(hit.id); setSearchQuery(""); }
-          }}
-          placeholder={t.queue.searchPlaceholder}
-          style={{ ...body, width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }}
-        />
-      </div>
-      <div style={{ display: "flex", gap: 6, padding: "14px 20px 0", overflowX: "auto" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 14px", background: C.card, borderBottom: `1px solid ${C.line}` }}>
         {FILTER_IDS.map((id) => (
           <button
             key={id}
             onClick={() => setFilter(id)}
             style={{
-              ...body, display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 11px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-              border: `1px solid ${filter === id ? C.ink : C.line}`, background: filter === id ? C.ink : "#fff", color: filter === id ? "#fff" : C.ink,
+              ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 11px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+              border: `1px solid ${filter === id ? "#E39F0C" : "#CFD4DB"}`, background: filter === id ? C.signal : "#fff", color: filter === id ? C.onSignal : C.ink,
+              boxShadow: filter === id ? "0 1px 0 rgba(255,255,255,0.45) inset, 0 2px 4px rgba(227,159,12,0.35)" : "none",
             }}
           >{t.filters[id]}{loadState === "ready" && <FilterCount n={countOf(id)} tone={FILTER_TONE[id]} active={filter === id} />}</button>
         ))}
       </div>
 
-      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
         {loadState === "loading" && <div style={{ ...body, textAlign: "center", padding: 32, color: C.muted, fontSize: 13 }}>{t.queue.loading}</div>}
         {loadState === "error" && <div style={{ ...body, textAlign: "center", padding: 32, color: C.red, fontSize: 13 }}>{errorMessage}</div>}
         {loadState === "ready" && filtered.length === 0 && (
-          <div style={{ ...body, textAlign: "center", padding: 32, color: C.muted, fontSize: 13 }}>{t.queue.empty}</div>
-        )}
-        {loadState === "ready" && filtered.map((s) => (
-          <div
-            key={s.id}
-            onClick={() => onOpenShipment(s.id)}
-            aria-current={String(selectedId) === String(s.id) ? "true" : undefined}
-            style={{ background: String(selectedId) === String(s.id) ? "#FDF3DC" : C.card, border: `1px solid ${String(selectedId) === String(s.id) ? "#F2A71B" : C.line}`, borderLeft: `4px solid ${String(selectedId) === String(s.id) ? "#F2A71B" : C.line}`, borderRadius: 10, padding: 14, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-          >
-            <div>
-              <div style={{ ...body, fontWeight: 700, fontSize: 14, color: C.ink }}>
-                {s.orderId}
-                {s.replacementFor && <span style={{ marginLeft: 8, padding: "2px 8px", borderRadius: 999, background: C.amberBg, color: C.ink, fontSize: 10.5, fontWeight: 700 }}>{t.detail.replacementTag}</span>}
-              </div>
-              <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{s.supplierName}</div>
-            </div>
-            <Badge status={displayStatusOf(s)} />
+          <div style={{ ...body, textAlign: "center", padding: "40px 20px", color: C.muted, fontSize: 13, background: C.card, border: `1px dashed ${C.line}`, borderRadius: 12 }}>
+            <Inbox size={26} color="#CFD4DB" style={{ display: "block", margin: "0 auto 8px" }} />{t.queue.empty}
           </div>
-        ))}
+        )}
+        {loadState === "ready" && filtered.map((s) => {
+          const selected = String(selectedId) === String(s.id);
+          const shown = displayStatusOf(s);
+          const tone = (STATUS_COLOR[shown] || [C.muted])[0];
+          const late = lateNow(s);
+          return (
+            <div
+              key={s.id}
+              onClick={() => onOpenShipment(s.id)}
+              aria-current={selected ? "true" : undefined}
+              style={{
+                background: selected ? "#FDF3D8" : C.card, border: `1px solid ${selected ? "#E39F0C" : C.line}`, borderLeft: `4px solid ${selected ? C.signal : tone}`, borderRadius: 12,
+                boxShadow: selected ? "0 2px 10px rgba(227,159,12,0.2)" : "0 1px 2px rgba(11,49,70,0.06)", padding: "12px 14px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+                <div style={{ ...body, fontWeight: 800, fontSize: 14.5, color: C.ink, letterSpacing: "0.01em", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {s.orderId}
+                  {s.replacementFor && <span style={{ ...body, marginLeft: 8, padding: "2px 8px", borderRadius: 999, background: C.amberBg, color: C.amberInk, fontSize: 10.5, fontWeight: 800 }}>{t.detail.replacementTag}</span>}
+                </div>
+                <Badge status={shown} />
+              </div>
+              <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12, color: C.muted }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.supplierName}</span>
+                <span style={{ flexShrink: 0, fontWeight: late ? 800 : 600, color: late ? C.redInk : C.muted }}>{late ? "● " : ""}{waitedText(s)}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -679,274 +752,321 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   const needsFaultReturn = shipment.status === "flagged" && Boolean(shipment.faultCase && shipment.faultCase.needsReturn);
   const needsDeliveryConfirmation = shipment.status === "shipped_to_buyer";
 
+  // patch-hub-inbound-redesign: the parcel in the LEAP style -- a navy band (order, supplier, step), the step bar, then two columns:
+  // the work (what to do now, the shipping cost, the delivery) and the history as a timeline; beside it the parcel's contents and where it goes.
+  const card = { background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)" };
+  const cardTitle = { ...body, fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" };
+  const NextIcon = info && info.next ? (STEP_INFO[info.next] || {}).icon || ClipboardCheck : ClipboardCheck;
+  const photoSrc = (url) => (/^(https?:|data:|blob:)/.test(url) ? url : `${import.meta.env.VITE_API_BASE_URL || "http://localhost:4000"}${url}`);
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={22} color={C.ink} /></button>
-        <div>
-          <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{shipment.orderId}</div>
-          <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{shipment.supplierName}</div>
+    <div style={{ minHeight: "100%", background: C.canvas }}>
+      <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 60%, ${C.navySoft} 140%)` }}>
+        <button onClick={onBack} aria-label="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={20} color="#fff" /></button>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ ...disp, fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "0.01em", fontFamily: "'JetBrains Mono', monospace" }}>{shipment.orderId}</div>
+          <div style={{ ...body, fontSize: 12.5, color: C.onNavyMuted, marginTop: 2 }}>{shipment.supplierName}</div>
         </div>
-        <div style={{ marginLeft: "auto" }}><Badge status={displayStatusOf(shipment)} /></div>
+        <div style={{ marginLeft: "auto", flexShrink: 0 }}><Badge status={displayStatusOf(shipment)} /></div>
       </div>
       <HubStepBar status={shipment.status} />
 
-      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-        {shipment.status === "opened" && !showFlagForm ? (
-          <InspectionList key={shipment.status} shipmentId={shipmentId} shipment={shipment} token={getStoredToken()} onChange={setInspection} onSessionExpired={onSessionExpired} />
-        ) : (
-        <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
-          <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.items.toUpperCase()}</div>
-          {shipment.items.map((item, i) => (
-            <div key={i} style={{ ...body, fontSize: 13, color: C.ink, padding: "4px 0" }}>{item.name} × {item.quantity}</div>
-          ))}
-        </div>
-        )}
-
-        {/* A free REPLACEMENT for a faulty unit (migration 095): handled like any other shipment, but staff are told what it is. */}
-        {shipment.replacementFor && (
-          <div style={{ ...body, fontSize: 13, color: C.ink, background: C.amberBg, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
-            <strong>{t.detail.replacementFor} {shipment.replacementFor}</strong> {t.detail.replacementHint}
-          </div>
-        )}
-
-        {/* Where the parcel goes, IN ENGLISH (migration 094): hub staff cannot read an address typed in Arabic. */}
-        <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
-          <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: "0.04em", marginBottom: 8 }}>{t.detail.shipTo.toUpperCase()}</div>
-          {shipment.deliveryAddress ? (
-            <div style={{ ...body, fontSize: 13.5, color: C.ink, lineHeight: 1.45 }}>
-              <div style={{ fontWeight: 700 }}>{shipment.deliveryAddress.recipientName}</div>
-              <div>{shipment.deliveryAddress.streetAddress}</div>
-              <div>{[shipment.deliveryAddress.city, shipment.deliveryAddress.state, shipment.deliveryAddress.postalCode].filter(Boolean).join(", ")}</div>
-              <div>{shipment.deliveryAddress.country}</div>
-              {shipment.deliveryAddress.nationalAddress && <div>{shipment.deliveryAddress.nationalAddress}</div>}
-              <div style={{ color: C.muted }}>{shipment.deliveryAddress.phone}</div>
-              {shipment.deliveryAddress.englishSource === "auto" && (
-                <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: C.amberBg, color: C.amber, fontSize: 12, fontWeight: 700 }}>{t.detail.shipToAuto}</div>
-              )}
-              <AddressLabelButtons shipmentId={shipmentId} orderId={shipment.orderId} token={getStoredToken()} onError={setErrorMessage} onSessionExpired={onSessionExpired} />
+      <div style={{ padding: 20, display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {/* ---------------- the work ---------------- */}
+        <div style={{ flex: "1 1 420px", minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* A free REPLACEMENT for a faulty unit (migration 095): handled like any other shipment, but staff are told what it is. */}
+          {shipment.replacementFor && (
+            <div style={{ ...body, fontSize: 13, color: C.ink, background: C.amberBg, border: `1px solid #F3D27A`, borderRadius: 12, padding: 12 }}>
+              <strong>{t.detail.replacementFor} {shipment.replacementFor}</strong> {t.detail.replacementHint}
             </div>
-          ) : (
-            <div style={{ ...body, fontSize: 13, color: C.muted }}>{t.detail.shipToNone}</div>
           )}
+
+          {errorMessage && (
+            <div style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, border: `1px solid ${C.red}44`, borderRadius: 10, padding: 10 }}>{errorMessage}</div>
+          )}
+
+          {shipment.status === "opened" && !showFlagForm && (
+            <InspectionList key={shipment.status} shipmentId={shipmentId} shipment={shipment} token={getStoredToken()} onChange={setInspection} onSessionExpired={onSessionExpired} />
+          )}
+
+          {shipment.status === "packed" && !showFlagForm && (
+            <ShippingCostCard shipmentId={shipmentId} token={getStoredToken()} onChange={setMayShip} onSessionExpired={onSessionExpired} />
+          )}
+
+          {!isTerminal && !showFlagForm && info.next && (
+            <div style={{ ...card, borderTop: `4px solid ${C.signal}`, padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, background: "#FDF3D8", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><NextIcon size={20} color={C.onSignal} /></span>
+                <div>
+                  <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{stepText.promptTitle}</div>
+                  <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{stepText.promptHint}</div>
+                </div>
+              </div>
+
+              <div style={{ ...cardTitle, marginBottom: 8 }}>{t.detail.evidencePhotos}</div>
+              <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
+
+              <div style={{ ...cardTitle, margin: "16px 0 8px" }}>{t.detail.notes}</div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ ...body, width: "100%", boxSizing: "border-box", height: 64, borderRadius: 10, border: "1px solid #CFD4DB", padding: 10, fontSize: 13, resize: "none" }}
+              />
+
+              {info.next === "shipped_to_buyer" && (
+                <>
+                  <div style={{ ...cardTitle, margin: "16px 0 8px" }}>{t.detail.trackingNumber}</div>
+                  <input
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    style={{ ...body, width: "100%", boxSizing: "border-box", height: 42, borderRadius: 10, border: "1px solid #CFD4DB", padding: "0 12px", fontSize: 13.5, fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                </>
+              )}
+
+              {info.next === "inspected" && <InspectionMissing state={inspection} />}
+
+              {info.next === "packed" && <SupplierLabelTick checked={labelCovered} onChange={setLabelCovered} />}
+
+              {(() => {
+                const blocked = isSubmitting || (info.next === "shipped_to_buyer" && !mayShip) || (info.next === "packed" && !labelCovered) || (info.next === "inspected" && !inspection.ready);
+                return (
+                  <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => submitStep(info.next)}
+                      disabled={blocked}
+                      style={{ ...body, flex: "2 1 220px", height: 48, padding: "0 16px", borderRadius: 12, border: blocked ? "none" : "1px solid #E39F0C", background: blocked ? "#D1D5DB" : C.signal, color: C.onSignal, fontWeight: 800, fontSize: 15, cursor: blocked ? "default" : "pointer", boxShadow: blocked ? "none" : "0 1px 0 rgba(255,255,255,0.45) inset, 0 3px 8px rgba(227,159,12,0.35)" }}
+                    >
+                      {isSubmitting ? t.detail.saving : stepText.actionLabel}
+                    </button>
+                    <button
+                      onClick={() => { setShowFlagForm(true); setPhotos([]); setNotes(""); setDamageType(""); setErrorMessage(null); }}
+                      style={{ ...body, flex: "1 1 160px", height: 48, padding: "0 16px", borderRadius: 12, border: `1px solid ${C.red}`, background: "#fff", color: C.red, fontWeight: 800, fontSize: 13.5, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      <AlertTriangle size={15} />{t.detail.flagInstead}
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {!isTerminal && showFlagForm && (
+            <div style={{ ...card, borderTop: `4px solid ${C.red}`, padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, background: C.redBg, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><AlertTriangle size={20} color={C.red} /></span>
+                <div>
+                  <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>{t.detail.flagTitle}</div>
+                  <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{t.detail.flagDesc}</div>
+                </div>
+              </div>
+
+              <div style={{ ...cardTitle, marginBottom: 8 }}>{t.detail.evidencePhotos}</div>
+              <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
+
+              <div style={{ ...cardTitle, margin: "16px 0 8px" }}>{t.detail.damageTypeLabel}</div>
+              <select
+                aria-label={t.detail.damageTypeLabel}
+                value={damageType}
+                onChange={(e) => setDamageType(e.target.value)}
+                style={{ ...body, width: "100%", boxSizing: "border-box", height: 42, borderRadius: 10, border: "1px solid #CFD4DB", padding: "0 10px", fontSize: 13, background: "#fff" }}
+              >
+                <option value="">{t.detail.damageTypePlaceholder}</option>
+                {Object.entries(t.detail.damageTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+
+              <div style={{ ...cardTitle, margin: "16px 0 8px" }}>{t.detail.whatsWrong}</div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ ...body, width: "100%", boxSizing: "border-box", height: 64, borderRadius: 10, border: "1px solid #CFD4DB", padding: 10, fontSize: 13, resize: "none" }}
+              />
+
+              <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => submitStep("flagged")}
+                  disabled={isSubmitting}
+                  style={{ ...body, flex: "2 1 220px", height: 48, padding: "0 16px", borderRadius: 12, border: "none", background: isSubmitting ? "#D1D5DB" : C.red, color: "#fff", fontWeight: 800, fontSize: 15, cursor: isSubmitting ? "default" : "pointer" }}
+                >
+                  {isSubmitting ? t.detail.saving : t.detail.submitFlag}
+                </button>
+                <button onClick={() => setShowFlagForm(false)} style={{ ...body, flex: "1 1 140px", height: 48, padding: "0 16px", borderRadius: 12, border: "1px solid #CFD4DB", background: "#fff", color: C.ink, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                  {t.detail.cancel}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* No "Confirm delivered" in the hub: the parcel becomes Delivered only with the buyer's code (the driver's QR scan at the door). */}
+          {(needsDeliveryConfirmation || shipment.status === "delivered") && <DeliveryStatusCard shipment={shipment} />}
+
+          {isTerminal && !needsFaultReturn && shipment.status !== "delivered" && (
+            <div style={{ ...card, borderLeft: `4px solid ${shipment.status === "flagged" && !shipment.resolution ? C.red : C.amber}`, padding: 16, ...body, fontSize: 13.5, color: C.ink, fontWeight: 800 }}>
+              {shipment.status === "delivered" ? t.detail.completedBanner
+                : shipment.status === "returned_to_supplier" ? t.detail.returnedBanner
+                : shipment.status === "discarded_at_hub" ? t.detail.discardedBanner
+                : shipment.resolution ? t.detail.resolvedBanners[shipment.resolution] : t.detail.flaggedBanner}
+              {shipment.faultCase && !needsFaultReturn && (
+                <div style={{ fontWeight: 500, marginTop: 6, color: C.muted, fontSize: 12.5 }}>{t.detail.stage[shipment.faultCase.platformStage]}</div>
+              )}
+            </div>
+          )}
+
+          <HubDeliveryProof proof={shipment.deliveryProof} attempts={shipment.deliveryAttempts} />
+
+          {/* A real fault was confirmed by the platform: this hub has to deal with the faulty unit (migration 091). */}
+          {needsFaultReturn && (
+            <div style={{ ...card, borderTop: `4px solid ${C.red}`, padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, background: C.redBg, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><AlertTriangle size={20} color={C.red} /></span>
+                <div>
+                  <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>{t.detail.faultTitle}</div>
+                  <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{t.detail.faultDesc}</div>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.redInk, marginTop: 6 }}>{t.detail.waitingOnHub}</div>
+                </div>
+              </div>
+              <div style={{ ...cardTitle, marginBottom: 6 }}>{t.detail.faultItems}</div>
+              {shipment.faultCase.items.map((i) => (
+                <div key={i.productId} style={{ ...body, fontSize: 13, color: C.ink, padding: "2px 0" }}>{i.name || i.productId} × {i.quantity}</div>
+              ))}
+
+              {/* Where to send it (migration 092) -- only needed when the unit is going back, not when it is discarded here. */}
+              {returnMode === "return" && (
+                shipment.faultCase.returnAddress ? (
+                  <div style={{ marginTop: 14, padding: 14, borderRadius: 12, background: C.canvas, border: `1px solid ${C.line}` }}>
+                    <div style={{ ...cardTitle, marginBottom: 6 }}>{t.detail.sendTo}</div>
+                    <div style={{ ...body, fontSize: 14, fontWeight: 800, color: C.ink }}>{shipment.faultCase.returnAddress.contactName}</div>
+                    <div style={{ ...body, fontSize: 13, color: C.ink }}>{shipment.faultCase.returnAddress.phone}</div>
+                    <div style={{ ...body, fontSize: 13, color: C.ink, marginTop: 4, whiteSpace: "pre-wrap" }}>{shipment.faultCase.returnAddress.address}</div>
+                    <button onClick={() => setShowLabel(true)} style={{ ...body, marginTop: 10, height: 36, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.navy}`, background: "#fff", color: C.navy, fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>{t.detail.printLabel}</button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: C.amberBg, color: C.amberInk, ...body, fontSize: 12.5, fontWeight: 700 }}>{t.detail.noReturnAddress}</div>
+                )
+              )}
+
+              <div data-leap-segments="" style={{ display: "flex", gap: 8, margin: "16px 0 12px" }}>
+                {[["return", t.detail.returnOption], ["discard", t.detail.discardOption]].map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    aria-pressed={returnMode === mode}
+                    onClick={() => { setReturnMode(mode); setErrorMessage(null); }}
+                    style={{ ...body, flex: 1, height: 40, padding: "0 12px", borderRadius: 10, fontSize: 12.5, fontWeight: 800, cursor: "pointer", border: `1px solid ${returnMode === mode ? C.navy : "#CFD4DB"}`, background: returnMode === mode ? C.navy : "#fff", color: returnMode === mode ? "#fff" : C.ink }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ ...cardTitle, marginBottom: 8 }}>{t.detail.evidencePhotos}</div>
+              <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
+
+              {returnMode === "return" && (
+                <>
+                  <div style={{ ...cardTitle, margin: "16px 0 8px" }}>{t.detail.returnTracking}</div>
+                  <input
+                    aria-label={t.detail.returnTracking}
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    style={{ ...body, width: "100%", boxSizing: "border-box", height: 42, borderRadius: 10, border: "1px solid #CFD4DB", padding: "0 12px", fontSize: 13.5, fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                </>
+              )}
+
+              <button
+                onClick={() => submitStep(returnMode === "return" ? "returned_to_supplier" : "discarded_at_hub")}
+                disabled={isSubmitting}
+                style={{ ...body, width: "100%", marginTop: 16, height: 48, borderRadius: 12, border: "none", background: isSubmitting ? "#D1D5DB" : C.red, color: "#fff", fontWeight: 800, fontSize: 15, cursor: isSubmitting ? "default" : "pointer" }}
+              >
+                {isSubmitting ? t.detail.saving : returnMode === "return" ? t.detail.submitReturn : t.detail.submitDiscard}
+              </button>
+            </div>
+          )}
+          {showLabel && shipment.faultCase && shipment.faultCase.returnAddress && <ReturnLabel shipment={shipment} onClose={() => setShowLabel(false)} />}
+
+          {/* A false alarm puts the shipment back in the flow, so it is no longer terminal -- tell the
+              hub why it is moving again, instead of silently reappearing. */}
+          {!isTerminal && shipment.resolution === "continue_processing" && (
+            <div style={{ background: C.gaugeBg, borderRadius: 12, padding: 14, ...body, fontSize: 13, color: C.gaugeInk, fontWeight: 800 }}>
+              {t.detail.resolvedBanners.continue_processing}
+            </div>
+          )}
+
+          {/* the history, newest at the bottom, as a timeline */}
+          <div style={{ ...card, padding: 18 }}>
+            <div style={{ ...cardTitle, marginBottom: 14 }}>{t.detail.history}</div>
+            {shipment.events.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>{t.detail.noSteps}</div>}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {shipment.events.map((e, idx) => {
+                const stepInfo = STEP_INFO[e.step];
+                const eventStepText = t.steps[e.step];
+                const Icon = stepInfo?.icon || ClipboardCheck;
+                const bad = ["flagged", "returned_to_supplier", "discarded_at_hub"].includes(e.step);
+                const last = idx === shipment.events.length - 1;
+                return (
+                  <div key={e.id} style={{ display: "flex", gap: 12 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                      <span style={{ width: 30, height: 30, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", background: bad ? C.redBg : C.gaugeBg, border: `2px solid ${bad ? C.red : C.gauge}`, boxSizing: "border-box" }}>
+                        <Icon size={14} color={bad ? C.red : C.gaugeInk} />
+                      </span>
+                      {!last && <span style={{ width: 2, flex: 1, minHeight: 14, background: C.line }} />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0, paddingBottom: last ? 0 : 16 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", paddingTop: 5 }}>
+                        <span style={{ ...body, fontSize: 13, fontWeight: 800, color: bad ? C.redInk : C.ink }}>{eventStepText?.label || e.step}</span>
+                        <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: "auto" }}>{new Date(e.createdAt).toLocaleString()}</span>
+                      </div>
+                      {e.notes && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginTop: 4, whiteSpace: "pre-line" }}>{e.notes}</div>}
+                      {e.trackingNumber && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 4 }}>{t.detail.tracking(e.trackingNumber)}</div>}
+                      {e.photos.length > 0 && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                          {e.photos.map((url, i) => (
+                            <a key={i} href={photoSrc(url)} target="_blank" rel="noreferrer"><img src={photoSrc(url)} alt="" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}`, display: "block" }} /></a>
+                          ))}
+                        </div>
+                      )}
+                      {e.performedBy && <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 6 }}>{t.detail.by(e.performedBy)}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        {errorMessage && (
-          <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>
-        )}
-
-        {shipment.status === "packed" && !showFlagForm && (
-          <ShippingCostCard shipmentId={shipmentId} token={getStoredToken()} onChange={setMayShip} onSessionExpired={onSessionExpired} />
-        )}
-
-        {!isTerminal && !showFlagForm && info.next && (
-          <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
-            <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{stepText.promptTitle}</div>
-            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 16 }}>{stepText.promptHint}</div>
-
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.evidencePhotos.toUpperCase()}</div>
-            <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
-
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.notes.toUpperCase()}</div>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              style={{ ...body, width: "100%", boxSizing: "border-box", height: 64, borderRadius: 8, border: `1px solid ${C.line}`, padding: 10, fontSize: 13, resize: "none" }}
-            />
-
-            {info.next === "shipped_to_buyer" && (
-              <>
-                <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.trackingNumber.toUpperCase()}</div>
-                <input
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  style={{ ...body, width: "100%", boxSizing: "border-box", borderRadius: 8, border: `1px solid ${C.line}`, padding: "10px 12px", fontSize: 13 }}
-                />
-              </>
-            )}
-
-            {info.next === "inspected" && <InspectionMissing state={inspection} />}
-
-            {info.next === "packed" && <SupplierLabelTick checked={labelCovered} onChange={setLabelCovered} />}
-
-            <button
-              onClick={() => submitStep(info.next)}
-              disabled={isSubmitting || (info.next === "shipped_to_buyer" && !mayShip) || (info.next === "packed" && !labelCovered) || (info.next === "inspected" && !inspection.ready)}
-              style={{ ...body, width: "100%", marginTop: 18, padding: "13px 16px", borderRadius: 9, border: "none", background: isSubmitting || (info.next === "shipped_to_buyer" && !mayShip) || (info.next === "packed" && !labelCovered) || (info.next === "inspected" && !inspection.ready) ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: isSubmitting ? "default" : "pointer" }}
-            >
-              {isSubmitting ? t.detail.saving : stepText.actionLabel}
-            </button>
-            <button
-              onClick={() => { setShowFlagForm(true); setPhotos([]); setNotes(""); setDamageType(""); setErrorMessage(null); }}
-              style={{ ...body, width: "100%", marginTop: 8, padding: "11px 16px", borderRadius: 9, border: `1px solid ${C.red}`, background: "#fff", color: C.red, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-            >
-              {t.detail.flagInstead}
-            </button>
-          </div>
-        )}
-
-        {!isTerminal && showFlagForm && (
-          <div style={{ background: C.redBg, border: `1px solid ${C.red}44`, borderRadius: 12, padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <AlertTriangle size={17} color={C.red} />
-              <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink }}>{t.detail.flagTitle}</div>
-            </div>
-            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 16 }}>
-              {t.detail.flagDesc}
-            </div>
-
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.evidencePhotos.toUpperCase()}</div>
-            <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
-
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.damageTypeLabel.toUpperCase()}</div>
-            <select
-              aria-label={t.detail.damageTypeLabel}
-              value={damageType}
-              onChange={(e) => setDamageType(e.target.value)}
-              style={{ ...body, width: "100%", boxSizing: "border-box", borderRadius: 8, border: `1px solid ${C.line}`, padding: 10, fontSize: 13, background: "#fff" }}
-            >
-              <option value="">{t.detail.damageTypePlaceholder}</option>
-              {Object.entries(t.detail.damageTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.whatsWrong.toUpperCase()}</div>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              style={{ ...body, width: "100%", boxSizing: "border-box", height: 64, borderRadius: 8, border: `1px solid ${C.line}`, padding: 10, fontSize: 13, resize: "none" }}
-            />
-
-            <button
-              onClick={() => submitStep("flagged")}
-              disabled={isSubmitting}
-              style={{ ...body, width: "100%", marginTop: 18, padding: "13px 16px", borderRadius: 9, border: "none", background: isSubmitting ? "#D1D5DB" : C.red, color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: isSubmitting ? "default" : "pointer" }}
-            >
-              {isSubmitting ? t.detail.saving : t.detail.submitFlag}
-            </button>
-            <button onClick={() => setShowFlagForm(false)} style={{ ...body, width: "100%", marginTop: 8, padding: "11px 16px", borderRadius: 9, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-              {t.detail.cancel}
-            </button>
-          </div>
-        )}
-
-        {/* No "Confirm delivered" in the hub: the parcel becomes Delivered only with the buyer's code (the driver's QR scan at the door). */}
-        {(needsDeliveryConfirmation || shipment.status === "delivered") && <DeliveryStatusCard shipment={shipment} />}
-
-        {isTerminal && !needsFaultReturn && shipment.status !== "delivered" && (
-          <div style={{ background: shipment.status === "delivered" ? C.gaugeBg : C.redBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: shipment.status === "delivered" ? C.gauge : C.red, fontWeight: 700 }}>
-            {shipment.status === "delivered" ? t.detail.completedBanner
-              : shipment.status === "returned_to_supplier" ? t.detail.returnedBanner
-              : shipment.status === "discarded_at_hub" ? t.detail.discardedBanner
-              : shipment.resolution ? t.detail.resolvedBanners[shipment.resolution] : t.detail.flaggedBanner}
-            {shipment.faultCase && !needsFaultReturn && (
-              <div style={{ fontWeight: 500, marginTop: 6 }}>{t.detail.stage[shipment.faultCase.platformStage]}</div>
-            )}
-          </div>
-        )}
-
-        <HubDeliveryProof proof={shipment.deliveryProof} attempts={shipment.deliveryAttempts} />
-
-        {/* A real fault was confirmed by the platform: this hub has to deal with the faulty unit (migration 091). */}
-        {needsFaultReturn && (
-          <div style={{ background: C.redBg, border: `1px solid ${C.red}44`, borderRadius: 12, padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <AlertTriangle size={17} color={C.red} />
-              <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink }}>{t.detail.faultTitle}</div>
-            </div>
-            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{t.detail.faultDesc}</div>
-            <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.red, marginBottom: 12 }}>{t.detail.waitingOnHub}</div>
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{t.detail.faultItems.toUpperCase()}</div>
-            {shipment.faultCase.items.map((i) => (
-              <div key={i.productId} style={{ ...body, fontSize: 13, color: C.ink, padding: "2px 0" }}>{i.name || i.productId} × {i.quantity}</div>
-            ))}
-
-            {/* Where to send it (migration 092) -- only needed when the unit is going back, not when it is discarded here. */}
-            {returnMode === "return" && (
-              shipment.faultCase.returnAddress ? (
-                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#fff", border: `1px solid ${C.line}` }}>
-                  <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{t.detail.sendTo.toUpperCase()}</div>
-                  <div style={{ ...body, fontSize: 14, fontWeight: 700, color: C.ink }}>{shipment.faultCase.returnAddress.contactName}</div>
-                  <div style={{ ...body, fontSize: 13, color: C.ink }}>{shipment.faultCase.returnAddress.phone}</div>
-                  <div style={{ ...body, fontSize: 13, color: C.ink, marginTop: 4, whiteSpace: "pre-wrap" }}>{shipment.faultCase.returnAddress.address}</div>
-                  <button onClick={() => setShowLabel(true)} style={{ ...body, marginTop: 10, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.ink}`, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.detail.printLabel}</button>
-                </div>
-              ) : (
-                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: C.amberBg, color: C.amber, ...body, fontSize: 12.5, fontWeight: 700 }}>{t.detail.noReturnAddress}</div>
-              )
-            )}
-
-            <div style={{ display: "flex", gap: 8, margin: "16px 0 12px" }}>
-              {[["return", t.detail.returnOption], ["discard", t.detail.discardOption]].map(([mode, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => { setReturnMode(mode); setErrorMessage(null); }}
-                  style={{ ...body, flex: 1, padding: "10px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${returnMode === mode ? C.ink : C.line}`, background: returnMode === mode ? C.ink : "#fff", color: returnMode === mode ? "#fff" : C.ink }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.evidencePhotos.toUpperCase()}</div>
-            <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
-
-            {returnMode === "return" && (
-              <>
-                <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.returnTracking.toUpperCase()}</div>
-                <input
-                  aria-label={t.detail.returnTracking}
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  style={{ ...body, width: "100%", boxSizing: "border-box", borderRadius: 8, border: `1px solid ${C.line}`, padding: "10px 12px", fontSize: 13 }}
-                />
-              </>
-            )}
-
-            <button
-              onClick={() => submitStep(returnMode === "return" ? "returned_to_supplier" : "discarded_at_hub")}
-              disabled={isSubmitting}
-              style={{ ...body, width: "100%", marginTop: 16, padding: "13px 16px", borderRadius: 9, border: "none", background: isSubmitting ? "#D1D5DB" : C.red, color: "#fff", fontWeight: 700, fontSize: 14, cursor: isSubmitting ? "default" : "pointer" }}
-            >
-              {isSubmitting ? t.detail.saving : returnMode === "return" ? t.detail.submitReturn : t.detail.submitDiscard}
-            </button>
-          </div>
-        )}
-        {showLabel && shipment.faultCase && shipment.faultCase.returnAddress && <ReturnLabel shipment={shipment} onClose={() => setShowLabel(false)} />}
-
-        {/* A false alarm puts the shipment back in the flow, so it is no longer terminal -- tell the
-            hub why it is moving again, instead of silently reappearing. */}
-        {!isTerminal && shipment.resolution === "continue_processing" && (
-          <div style={{ background: C.gaugeBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: C.gauge, fontWeight: 700 }}>
-            {t.detail.resolvedBanners.continue_processing}
-          </div>
-        )}
-
-        <div>
-          <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 10 }}>{t.detail.history.toUpperCase()}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {shipment.events.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>{t.detail.noSteps}</div>}
-            {shipment.events.map((e) => {
-              const stepInfo = STEP_INFO[e.step];
-              const eventStepText = t.steps[e.step];
-              const Icon = stepInfo?.icon || ClipboardCheck;
-              return (
-                <div key={e.id} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <Icon size={14} color={e.step === "flagged" ? C.red : C.ink} />
-                    <span style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{eventStepText?.label || e.step}</span>
-                    <span style={{ ...body, fontSize: 11, color: C.muted, marginLeft: "auto" }}>{new Date(e.createdAt).toLocaleString()}</span>
+        {/* ---------------- the parcel ---------------- */}
+        <div style={{ flex: "0 1 300px", minWidth: 260, display: "flex", flexDirection: "column", gap: 14 }}>
+          {!(shipment.status === "opened" && !showFlagForm) && (
+            <div style={{ ...card, padding: 16 }}>
+              <div style={{ ...cardTitle, marginBottom: 10 }}>{t.detail.items}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {shipment.items.map((item, i) => (
+                  <div key={i} style={{ ...body, display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.ink }}>
+                    <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{item.name} × {item.quantity}</span>
                   </div>
-                  {e.notes && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginBottom: 8 }}>{e.notes}</div>}
-                  {e.trackingNumber && <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 8 }}>{t.detail.tracking(e.trackingNumber)}</div>}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {e.photos.map((url, i) => (
-                      <img key={i} src={`${import.meta.env.VITE_API_BASE_URL || "http://localhost:4000"}${url}`} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
-                    ))}
-                  </div>
-                  {e.performedBy && <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 6 }}>{t.detail.by(e.performedBy)}</div>}
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Where the parcel goes, IN ENGLISH (migration 094): hub staff cannot read an address typed in Arabic. */}
+          <div style={{ ...card, padding: 16 }}>
+            <div style={{ ...cardTitle, marginBottom: 10 }}>{t.detail.shipTo}</div>
+            {shipment.deliveryAddress ? (
+              <div style={{ ...body, fontSize: 13.5, color: C.ink, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 800 }}>{shipment.deliveryAddress.recipientName}</div>
+                <div>{shipment.deliveryAddress.streetAddress}</div>
+                <div>{[shipment.deliveryAddress.city, shipment.deliveryAddress.state, shipment.deliveryAddress.postalCode].filter(Boolean).join(", ")}</div>
+                <div>{shipment.deliveryAddress.country}</div>
+                {shipment.deliveryAddress.nationalAddress && <div>{shipment.deliveryAddress.nationalAddress}</div>}
+                <div style={{ color: C.muted }}>{shipment.deliveryAddress.phone}</div>
+                {shipment.deliveryAddress.englishSource === "auto" && (
+                  <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: C.amberBg, color: C.amberInk, fontSize: 12, fontWeight: 700 }}>{t.detail.shipToAuto}</div>
+                )}
+                <AddressLabelButtons shipmentId={shipmentId} orderId={shipment.orderId} token={getStoredToken()} onError={setErrorMessage} onSessionExpired={onSessionExpired} />
+              </div>
+            ) : (
+              <div style={{ ...body, fontSize: 13, color: C.muted }}>{t.detail.shipToNone}</div>
+            )}
           </div>
         </div>
       </div>
@@ -964,33 +1084,38 @@ function HubShell() {
   const [openShipmentId, setOpenShipmentId] = useState(null);
   const [focusSearch, setFocusSearch] = useState(0);      // "Scan parcel": the search box is ready for the scanner
   const shipments = useHubShipments();
-  const counts = menuCounts(shipments);
+  const returns = useIncomingReturns();
+  const conversations = useHubConversations();
+  const counts = { ...menuCounts(shipments), returns: returns.count + conversations.unread };
   const select = (id) => { setView(id); setOpenShipmentId(null); };
   const scan = () => { setView("shipments"); setOpenShipmentId(null); setFocusSearch((n) => n + 1); };
-  const pane = { overflowY: "auto", maxHeight: "calc(100vh - 34px)" };
+  const pane = { overflowY: "auto", maxHeight: "100vh" };
 
   let content;
   if (view === "board") {
     content = <HubBoard shipments={shipments} onOpen={(id) => { setView("shipments"); setOpenShipmentId(id); }} onScan={scan} />;
+  } else if (view === "returns") {
+    content = <HubReturns returns={returns} conversations={conversations} />;
   } else if (view === "settings") {
     content = <ChangePasswordPage onDone={() => setView("board")} onLogout={onLogout} />;
   } else {
     content = (
-      <div style={{ display: "flex", minHeight: "calc(100vh - 34px)" }}>
-        <div data-testid="workbench-list" style={{ ...pane, width: 380, flexShrink: 0, borderRight: `1px solid ${C.line}`, background: C.card }}>
+      <div style={{ display: "flex", minHeight: "100vh" }}>
+        <div data-testid="workbench-list" style={{ ...pane, width: 380, flexShrink: 0, borderRight: `1px solid ${C.line}`, background: C.card, overflowX: "hidden" }}>
           <QueueScreen key={view} presetFilter={WORKBENCH_FILTER[view] || "all"} onOpenShipment={setOpenShipmentId} selectedId={openShipmentId} focusSearch={focusSearch} />
         </div>
-        <div data-testid="workbench-parcel" style={{ ...pane, flex: 1, minWidth: 0 }}>
+        <div data-testid="workbench-parcel" style={{ ...pane, flex: 1, minWidth: 0, overflowX: "hidden" }}>
           {openShipmentId ? <ShipmentDetailScreen key={openShipmentId} shipmentId={openShipmentId} onBack={() => setOpenShipmentId(null)} /> : <HubEmptyPane />}
         </div>
       </div>
     );
   }
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#0F3B52" }}>
+    <div style={{ ...body, display: "flex", minHeight: "100vh", background: C.navy }}>
+      <style>{HUB_CSS}</style>
       <HubMenu view={view} onSelect={select} counts={counts} langToggle={<LangToggle />} />
-      <main style={{ flex: 1, minWidth: 0, background: "#E9ECF0", padding: 16, boxSizing: "border-box" }}>
-        <div style={{ background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 16, overflow: "hidden", minHeight: "calc(100vh - 34px)" }}>{content}</div>
+      <main style={{ flex: 1, minWidth: 0, background: C.canvas, boxSizing: "border-box" }}>
+        <div data-leap-page="" style={{ background: C.canvas, overflow: "hidden", minHeight: "100vh" }}>{content}</div>
       </main>
     </div>
   );

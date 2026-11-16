@@ -24,6 +24,13 @@ export default function QuotationPrintPage() {
     return () => { current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, lang]);
+  // "Save as PDF" names the file after the page's title: "Leap Q-2026-000214.pdf" (the tab shows it too); the site's title comes back on leaving.
+  useEffect(() => {
+    if (!quote) return;
+    const before = document.title;
+    document.title = `Leap ${quote.id}`;
+    return () => { document.title = before; };
+  }, [quote]);
   useEffect(() => {
     if (!quote) return;
     const id = window.setTimeout(() => window.print(), 400);      // after the QR code image has loaded

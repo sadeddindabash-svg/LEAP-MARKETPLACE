@@ -1,0 +1,41 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { t, type Lang } from "@/lib/i18n";
+
+/**
+ * The product page's deal countdown (confirmed with the person via mockup, option B): a highlighted strip, "Deal ends in", then days,
+ * hours, minutes and seconds in boxes, ticking every second. Shown under the price only while the discount runs; it disappears at the end.
+ * Drawn after the page has loaded in the browser, so the time always comes from the buyer's own clock.
+ */
+export default function DealCountdown({ endsAt, lang }: { endsAt: string; lang: Lang }) {
+  const end = Date.parse(endsAt);
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  if (now === null || !Number.isFinite(end)) return null;
+  const left = Math.max(0, Math.floor((end - now) / 1000));
+  if (left <= 0) return null;
+  const parts: [number, string][] = [
+    [Math.floor(left / 86400), t(lang, "deal_days")],
+    [Math.floor((left % 86400) / 3600), t(lang, "deal_hours")],
+    [Math.floor((left % 3600) / 60), t(lang, "deal_minutes")],
+    [left % 60, t(lang, "deal_seconds")],
+  ];
+  return (
+    <div data-testid="deal-countdown" role="timer" aria-live="off" className="mt-2 flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[10px] border border-[#f6c76a] bg-[#fff4e0] px-3 py-2">
+      <span className="text-sm font-extrabold text-[#8a5a00]">⏱ {t(lang, "deal_ends_in")}</span>
+      <span className="flex gap-1" dir="ltr">
+        {(lang === "ar" ? [...parts].reverse() : parts).map(([n, label]) => (
+          <span key={label} className="min-w-[38px] rounded-md bg-navy px-1 py-0.5 text-center leading-tight text-white">
+            <span className="block font-display text-base font-extrabold tabular-nums">{String(n).padStart(2, "0")}</span>
+            <span className="block text-[9px] font-semibold opacity-75">{label}</span>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}

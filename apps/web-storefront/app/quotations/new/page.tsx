@@ -1,43 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "@/components/LocLink";
+import SafeImage from "@/components/SafeImage";
 import SignInPrompt from "@/components/SignInPrompt";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
-import { useCart } from "@/components/CartProvider";
 import { useGarage } from "@/components/GarageProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { useLocRouter } from "@/components/useLocRouter";
+import { Price } from "@/components/Price";
 import VehicleCascade, { type VehicleChoice } from "@/components/VehicleCascade";
 import { MAX_GARAGE_VEHICLES } from "@/lib/garage";
-import { fetchMyAddresses, type SavedAddress } from "@/lib/api";
+import { fetchMyAddresses, resolveImageUrl, type ProductSummary, type SavedAddress } from "@/lib/api";
 import { countryName } from "@/lib/countries";
-import { pickName } from "@/lib/i18n";
-import { PARTY_KEY, PARTY_TYPES, createQuotation, quoteErrorText, sharesFor, type PartyType } from "@/lib/quotations";
+import { pickName, type DictKey } from "@/lib/i18n";
+import { PARTY_KEY, PARTY_TYPES, createQuotation, fetchFittingParts, fitCheck, quoteErrorText, sharesFor, type NewQuoteVehicle, type PartyType } from "@/lib/quotations";
 
 const input = "min-h-11 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white px-3 text-[15px] text-ink";
-const card = "rounded-[14px] border border-line bg-white p-5";
-const chip = (on: boolean) => `inline-flex min-h-10 items-center rounded-full border-[1.5px] px-3.5 text-sm font-semibold ${on ? "border-navy bg-navy text-white" : "border-line text-ink hover:border-navy"}`;
+const card = "rounded-[14px] border border-line bg-white p-3 shadow-[0_1px_0_#fff_inset,0_2px_4px_rgba(11,49,70,0.06),0_10px_24px_rgba(11,49,70,0.10)]";
+const row = (on: boolean) => `flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] bg-white p-3 shadow-[0_2px_6px_rgba(11,49,70,0.06)] ${on ? "border-signal ring-1 ring-signal" : "border-line hover:border-navy"}`;
+const gold = "inline-flex min-h-12 items-center justify-center rounded-full bg-gradient-to-b from-[#ffd567] via-signal to-signal-dark px-6 text-base font-extrabold text-on-signal shadow-[0_5px_12px_rgba(227,159,12,0.4)] hover:brightness-105 disabled:opacity-50";
 const NAME_KEY = { insurance: "quote_name_insurance", repair_shop: "quote_name_repair_shop", other_party: "quote_name_other_party", employer: "quote_name_employer", other: "quote_name_other" } as const;
+const PARTY_ICON: Record<PartyType, string> = { insurance: "🛡️", repair_shop: "🔧", other_party: "🚗", employer: "🏢", other: "👤" };
+const PARTY_SUB: Record<PartyType, DictKey> = { insurance: "quote_party_insurance_sub", repair_shop: "quote_party_repair_shop_sub", other_party: "quote_party_other_party_sub", employer: "quote_party_employer_sub", other: "quote_party_other_sub" };
+const STEP_KEY: DictKey[] = ["quote_step_car", "quote_step_for", "quote_step_parts", "quote_step_pays"];
 const OTHER_CAR = "__other__";
 
-// Get a quotation, from the parts ticked in the cart: the car (from My garage, or chosen from the catalogue, never typed), who it is for (insurance first), their reference numbers, who
-// pays (them, me, or split as an accident share), and where the parts go once ordered. The prices are the server's: nothing typed here changes them.
+type QItem = { productId: string; name: string; price: number; image: string | null; quantity: number; fits: boolean | null };
+
+/**
+ * Get a quotation, CAR FIRST, in 4 steps (confirmed with the person via mockup, like the app):
+ *   1 the car: My garage, or Brand > Model > Year > Version from the catalogue (never typed), "Save it to My garage", VIN optional;
+ *   2 who it is for (a list), its name, the policy number for an insurer, the police / Najm report and the plate (optional);
+ *   3 the parts: the shop filtered to that exact car and version, so every part shown fits it (the sellers' fitment); + adds it to the quotation;
+ *   4 who pays and where the parts go. Then the quotation (the server checks the car and that every part fits it, again).
+ * On a large screen the quotation's summary stays on the side; on a tablet or a phone it is a bar at the bottom.
+ * Every gap between the boxes is 8 px, the smallest (confirmed with the person via mockup).
+ */
 export default function NewQuotationPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const ctx = useCart();
   const { vehicles, add: addToGarage } = useGarage();
-  const { code: currencyCode, format } = useCurrency();
+  const { code: currencyCode } = useCurrency();
   const lang = useLang();
   const t = useT();
   const router = useLocRouter();
-  const chosen = ctx.selected ?? ctx.cart;
-  const items = chosen?.items ?? [];
 
+  const [step, setStep] = useState(0);
   const [carPick, setCarPick] = useState<string | null>(null);
-  const [otherCar, setOtherCar] = useState<VehicleChoice | null>(null);   // "Another car": Brand, Model, Year and Version from the catalogue
-  const [saveCar, setSaveCar] = useState(true);                             // and saved to My garage with the quotation
+  const [otherCar, setOtherCar] = useState<VehicleChoice | null>(null);
+  const [otherKey, setOtherKey] = useState(0);
+  const [saveCar, setSaveCar] = useState(true);
   const [vin, setVin] = useState("");
   const [plate, setPlate] = useState("");
   const [partyType, setPartyType] = useState<PartyType>("insurance");
@@ -48,8 +61,15 @@ export default function NewQuotationPage() {
   const [partyPercent, setPartyPercent] = useState(75);
   const [addresses, setAddresses] = useState<SavedAddress[] | null>(null);
   const [addressId, setAddressId] = useState<string | null>(null);
+  const [items, setItems] = useState<QItem[]>([]);
+  const category: string | null = null;   // step 3 shows only the parts that fit, with no sections (a search narrows them)
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<ProductSummary[] | null>(null);
+  const [resultsFailed, setResultsFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchTicket = useRef(0);
+  const checkedFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -60,153 +80,323 @@ export default function NewQuotationPage() {
     return () => { current = false; };
   }, [user]);
 
-  if (authLoading || ctx.isLoading) return <div className="mx-auto max-w-3xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
-  if (!user) return <SignInPrompt messageKey="login_for_quotations" next="/quotations/new" />;
-  if (items.length === 0) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-12 text-center sm:px-8">
-        <h1 className="text-3xl font-bold tracking-tight text-navy">{t("get_quotation")}</h1>
-        <p className="mb-6 mt-3 text-lg text-muted">{t("quote_none_chosen")}</p>
-        <Link href="/cart" className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("quote_back_cart")}</Link>
-      </div>
-    );
-  }
-
   const garageKey = (v: (typeof vehicles)[number]) => `${v.generationId}:${v.year}:${v.versionId ?? ""}`;
   const pick = carPick ?? (vehicles[0] ? garageKey(vehicles.find((v) => v.isDefault) ?? vehicles[0]) : OTHER_CAR);
   const garageCar = vehicles.find((v) => garageKey(v) === pick);
+  const car: NewQuoteVehicle | null = garageCar ? { generationId: garageCar.generationId, year: garageCar.year, versionId: garageCar.versionId ?? null }
+    : pick === OTHER_CAR && otherCar ? { generationId: otherCar.generationId, year: otherCar.year, versionId: otherCar.versionId ?? null } : null;
+  const carKey = car ? `${car.generationId}:${car.year}:${car.versionId ?? ""}` : null;
+  const garageVersion = garageCar?.version ? pickName(lang, garageCar.version.name, garageCar.version.nameAr) : null;
+  const carLabel = garageCar ? `${pickName(lang, garageCar.brand, garageCar.brandAr)} ${pickName(lang, garageCar.model, garageCar.modelAr)} ${garageCar.year}` : otherCar?.label ?? "";
+  const carSub = garageCar ? garageVersion : otherCar?.version ? pickName(lang, otherCar.version.name, otherCar.version.nameAr) : null;
   const address = addresses?.find((a) => a.id === (addressId ?? addresses.find((x) => x.isDefault)?.id ?? addresses[0]?.id));
+  const count = items.reduce((n, i) => n + i.quantity, 0);
   const estimate = items.reduce((n, i) => n + i.price * i.quantity, 0);
   const pct = Math.min(99, Math.max(1, Math.round(partyPercent || 0)));
+  const partyLabel = partyName.trim() || t(PARTY_KEY[partyType]);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // The parts step: the parts that fit the car (a search or a section), and the parts already chosen checked again when the car changed.
+  const runSearch = useMemo(() => async (vehicle: NewQuoteVehicle, text: string, cat: string | null) => {
+    const ticket = ++searchTicket.current;
+    setResults(null); setResultsFailed(false);
+    try {
+      const list = await fetchFittingParts(vehicle, { search: text.trim(), category: cat, lang });
+      if (ticket === searchTicket.current) setResults(list);
+    } catch {
+      if (ticket === searchTicket.current) { setResults([]); setResultsFailed(true); }
+    }
+  }, [lang]);
+  useEffect(() => {
+    if (step !== 2 || !car) return;
+    const timer = setTimeout(() => runSearch(car, search, category), search ? 350 : 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, carKey, search, category, runSearch]);
+  useEffect(() => {
+    if (step !== 2 || !car || checkedFor.current === carKey) return;
+    checkedFor.current = carKey;
+    const token = getAuthToken();
+    if (!token || items.length === 0) return;
+    setItems((list) => list.map((i) => ({ ...i, fits: null })));
+    fitCheck(token, car, items.map((i) => i.productId))
+      .then((fits) => setItems((list) => list.map((i) => ({ ...i, fits: fits.has(i.productId) }))))
+      .catch(() => setItems((list) => list.map((i) => ({ ...i, fits: true }))));           // not checked here: the server checks again when the quotation is made
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, carKey]);
+
+  if (authLoading) return <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  if (!user) return <SignInPrompt messageKey="login_for_quotations" next="/quotations/new" />;
+
+  const setQty = (p: { productId: string; name: string; price: number; image: string | null }, quantity: number) => {
     setError(null);
-    // The car of the catalogue (the server reads its make, model and version from the catalogue): a garage car, or the one chosen under "Another car".
-    const car = garageCar ? { generationId: garageCar.generationId, year: garageCar.year, versionId: garageCar.versionId ?? null }
-      : otherCar ? { generationId: otherCar.generationId, year: otherCar.year, versionId: otherCar.versionId ?? null } : null;
-    if (!car) return setError(t("err_quote_vehicle"));
-    const vehicle = { ...car, vin: vin.trim() || null, plate: plate.trim() || null };
-    if (!partyName.trim()) return setError(t("err_quote_party"));
+    setItems((list) => {
+      if (quantity <= 0) return list.filter((i) => i.productId !== p.productId);
+      if (list.some((i) => i.productId === p.productId)) return list.map((i) => (i.productId === p.productId ? { ...i, quantity } : i));
+      return [...list, { ...p, quantity, fits: true }];
+    });
+  };
+  const qtyOf = (id: string) => items.find((i) => i.productId === id)?.quantity ?? 0;
+
+  const next = () => {
+    setError(null);
+    if (step === 0 && !car) return setError(t("err_quote_vehicle"));
+    if (step === 1 && !partyName.trim()) return setError(t("err_quote_party"));
+    if (step === 2) {
+      if (items.length === 0) return setError(t("err_quote_items"));
+      if (items.some((i) => i.fits === false)) return setError(t("err_quote_not_fit"));
+      if (items.some((i) => i.fits === null)) return setError(t("quote_checking_fit"));
+    }
+    setStep((s) => Math.min(3, s + 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const submit = async () => {
+    setError(null);
+    if (!car) { setStep(0); return setError(t("err_quote_vehicle")); }
     if (!address) return setError(t("err_quote_address"));
     const token = getAuthToken();
     if (!token) return;
     setBusy(true);
     try {
       const q = await createQuotation(token, {
-        items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })), vehicle, partyType, partyName: partyName.trim(),
-        policyNumber: policy.trim() || undefined, reportNumber: report.trim() || undefined, shares: sharesFor(payMode, pct), addressId: address.id, lang, displayCurrency: currencyCode,
+        items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })), vehicle: { ...car, vin: vin.trim() || null, plate: plate.trim() || null },
+        partyType, partyName: partyName.trim(), policyNumber: partyType === "insurance" ? policy.trim() || undefined : undefined, reportNumber: report.trim() || undefined,
+        shares: sharesFor(payMode, pct), addressId: address.id, lang, displayCurrency: currencyCode,
       });
       // "Save it to My garage" (ticked): the car chosen under "Another car" joins My garage. The quotation is made either way.
       if (!garageCar && otherCar && saveCar && vehicles.length < MAX_GARAGE_VEHICLES) await addToGarage(otherCar.generationId, otherCar.year, otherCar.versionId).catch(() => {});
       router.push(`/quotations/${encodeURIComponent(q.id)}`);
     } catch (err) {
+      const notFit = err instanceof Error && "code" in err && (err as { code: unknown }).code === "quote_not_fit";
       setError(quoteErrorText(err, t));
       setBusy(false);
+      if (notFit) { checkedFor.current = null; setStep(2); }
     }
   };
 
-  return (
-    <form onSubmit={submit} noValidate className="mx-auto grid max-w-3xl gap-4 px-4 py-8 sm:px-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-navy">{t("get_quotation")}</h1>
-        <p className="mt-1 text-muted">{t("quote_new_lead")}</p>
+  const carBanner = (
+    <div className="mb-2 flex items-center gap-3 rounded-[14px] bg-gradient-to-br from-navy to-[#215a78] px-4 py-3 text-white shadow-[0_12px_26px_rgba(11,49,70,0.3)]">
+      <span aria-hidden="true" className="text-xl">🚙</span>
+      <span className="min-w-0 flex-1"><b className="block truncate"><bdi>{carLabel}</bdi></b>{carSub && <span className="block truncate text-sm text-[#f9d77a]"><bdi>{carSub}</bdi></span>}</span>
+      <button type="button" onClick={() => { setError(null); setStep(0); }} className="min-h-10 rounded-lg px-2 text-sm font-extrabold text-[#f9d77a] hover:bg-white/10">{t("quote_change")}</button>
+    </div>
+  );
+
+  const fitMark = (fits: boolean | null) => fits === null
+    ? <span className="text-xs text-muted">{t("quote_checking_fit")}</span>
+    : <span className={`inline-block self-start whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-extrabold text-white ${fits ? "bg-gradient-to-b from-[#34c785] to-[#0f6b49]" : "bg-gradient-to-b from-[#ef5350] to-[#c62828]"}`}>{fits ? `✓ ${t("quote_fits")}` : `✗ ${t("quote_not_fit")}`}</span>;
+
+  const stepper = (q: number, onSet: (n: number) => void) => (
+    <span role="group" aria-label={String(q)} className="flex items-center justify-between rounded-full bg-chalk p-0.5">
+      <button type="button" onClick={() => onSet(q - 1)} aria-label={t("decrease_quantity")} className="grid size-9 place-items-center rounded-full bg-white font-extrabold text-navy shadow">−</button>
+      <b className="min-w-8 text-center" aria-live="polite">{q}</b>
+      <button type="button" onClick={() => onSet(q + 1)} aria-label={t("increase_quantity")} className="grid size-9 place-items-center rounded-full bg-white font-extrabold text-navy shadow">+</button>
+    </span>
+  );
+
+  // ---- the steps
+  const carStep = (
+    <section className={card} aria-labelledby="qn-car">
+      <h2 id="qn-car" className="mb-2 text-lg font-bold text-navy">{t("quote_car")}</h2>
+      <div className="grid gap-2" role="radiogroup" aria-labelledby="qn-car">
+        {vehicles.map((v) => (
+          <label key={garageKey(v)} className={row(pick === garageKey(v))}>
+            <input type="radio" name="qn-car" className="size-5 accent-[#e39f0c]" checked={pick === garageKey(v)} onChange={() => setCarPick(garageKey(v))} />
+            <span className="min-w-0"><span className="block font-bold"><bdi>{pickName(lang, v.brand, v.brandAr)} {pickName(lang, v.model, v.modelAr)} {v.year}</bdi></span>
+              {v.version && <span className="block text-sm text-muted"><bdi>{pickName(lang, v.version.name, v.version.nameAr)}</bdi></span>}</span>
+          </label>
+        ))}
+        {vehicles.length > 0 && (
+          <label className={row(pick === OTHER_CAR)}>
+            <input type="radio" name="qn-car" className="size-5 accent-[#e39f0c]" checked={pick === OTHER_CAR} onChange={() => { if (pick !== OTHER_CAR) { setCarPick(OTHER_CAR); setOtherCar(null); setOtherKey((k) => k + 1); } }} />
+            <span className="font-bold">{t("quote_car_other")}</span>
+          </label>
+        )}
       </div>
-
-      <section className={card} aria-labelledby="qn-parts">
-        <h2 id="qn-parts" className="text-lg font-bold text-navy">{t("quote_parts_chosen", { n: items.length })}</h2>
-        <ul className="mt-2 grid gap-1 text-sm">
-          {items.map((i) => <li key={i.productId} className="flex justify-between gap-3"><span><bdi>{i.name}</bdi> × {i.quantity}</span><span className="text-muted">{format(i.price * i.quantity)}</span></li>)}
-        </ul>
-        <Link href="/cart" className="mt-2 inline-block text-sm font-semibold text-navy underline underline-offset-4">{t("quote_back_cart")}</Link>
-      </section>
-
-      <section className={card} aria-labelledby="qn-car">
-        <h2 id="qn-car" className="text-lg font-bold text-navy">{t("quote_car")}</h2>
-        <div className="mt-2 grid gap-2" role="radiogroup">
-          {vehicles.map((v) => (
-            <label key={garageKey(v)} className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3 ${pick === garageKey(v) ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
-              <input type="radio" name="qn-car" className="size-5 accent-[#0b3146]" checked={pick === garageKey(v)} onChange={() => setCarPick(garageKey(v))} />
-              <span className="font-semibold">{pickName(lang, v.brand, v.brandAr)} {pickName(lang, v.model, v.modelAr)} {v.year}</span>
-            </label>
-          ))}
-          {vehicles.length > 0 && (
-            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3 ${pick === OTHER_CAR ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
-              <input type="radio" name="qn-car" className="size-5 accent-[#0b3146]" checked={pick === OTHER_CAR} onChange={() => { setCarPick(OTHER_CAR); setOtherCar(null); }} />
-              <span className="font-semibold">{t("quote_car_other")}</span>
+      {pick === OTHER_CAR && (
+        <div className="mt-2">
+          <VehicleCascade key={otherKey} idPrefix="qn-car" onChange={setOtherCar} withVersions progressive />
+          {vehicles.length < MAX_GARAGE_VEHICLES && (
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" className="size-5 accent-[#e39f0c]" checked={saveCar} onChange={(e) => setSaveCar(e.target.checked)} />
+              {t("quote_save_garage")}
             </label>
           )}
         </div>
-        {pick === OTHER_CAR && (
-          <div className="mt-3">
-            <VehicleCascade idPrefix="qn-car" onChange={setOtherCar} withVersions progressive />
-            {vehicles.length < MAX_GARAGE_VEHICLES && (
-              <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" className="size-5 accent-[#0b3146]" checked={saveCar} onChange={(e) => setSaveCar(e.target.checked)} />
-                {t("quote_save_garage")}
-              </label>
-            )}
-          </div>
-        )}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm font-semibold">{t("quote_vin")}<input className={`${input} uppercase`} dir="ltr" maxLength={17} value={vin} onChange={(e) => setVin(e.target.value)} /></label>
-          <label className="grid gap-1 text-sm font-semibold">{t("quote_plate")}<input className={input} dir="ltr" value={plate} onChange={(e) => setPlate(e.target.value)} /></label>
-        </div>
-      </section>
+      )}
+      <label className="mt-2 grid max-w-md gap-1 text-sm font-semibold">{t("quote_vin")}<input className={`${input} uppercase`} dir="ltr" maxLength={17} value={vin} onChange={(e) => setVin(e.target.value)} /></label>
+    </section>
+  );
 
+  const forStep = (
+    <>
+      {carBanner}
       <section className={card} aria-labelledby="qn-for">
-        <h2 id="qn-for" className="text-lg font-bold text-navy">{t("quote_for")}</h2>
-        <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="qn-for">
+        <h2 id="qn-for" className="mb-2 text-lg font-bold text-navy">{t("quote_for")}</h2>
+        <div className="grid gap-2 lg:grid-cols-2" role="radiogroup" aria-labelledby="qn-for">
           {PARTY_TYPES.map((p) => (
-            <button key={p} type="button" role="radio" aria-checked={partyType === p} onClick={() => setPartyType(p)} className={chip(partyType === p)}>{t(PARTY_KEY[p])}</button>
-          ))}
-        </div>
-        <label className="mt-3 grid gap-1 text-sm font-semibold">{t(NAME_KEY[partyType])}<input className={input} value={partyName} onChange={(e) => setPartyName(e.target.value)} /></label>
-        <div className="mt-3 grid gap-3 items-start sm:grid-cols-2">
-          {partyType === "insurance" && <label className="grid gap-1 text-sm font-semibold">{t("quote_policy")}<input className={input} dir="ltr" value={policy} onChange={(e) => setPolicy(e.target.value)} /></label>}
-          <label className="grid gap-1 text-sm font-semibold">{t("quote_report")}<input className={input} dir="ltr" value={report} onChange={(e) => setReport(e.target.value)} /><span className="text-xs font-normal text-muted">{t("quote_report_hint")}</span></label>
-        </div>
-      </section>
-
-      <section className={card} aria-labelledby="qn-pay">
-        <h2 id="qn-pay" className="text-lg font-bold text-navy">{t("quote_who_pays")}</h2>
-        <div className="mt-2 grid gap-2" role="radiogroup">
-          {(["party", "buyer", "split"] as const).map((m) => (
-            <label key={m} className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3 ${payMode === m ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
-              <input type="radio" name="qn-pay" className="size-5 accent-[#0b3146]" checked={payMode === m} onChange={() => setPayMode(m)} />
-              <span className="font-semibold">{m === "party" ? t("quote_pays_party", { name: partyName.trim() || t(PARTY_KEY[partyType]) }) : m === "buyer" ? t("quote_pays_me") : t("quote_pays_split")}</span>
+            <label key={p} className={row(partyType === p)}>
+              <span aria-hidden="true" className={`grid size-9 flex-none place-items-center rounded-[10px] text-lg ${partyType === p ? "bg-gradient-to-b from-[#ffd567] to-signal-dark" : "bg-chalk"}`}>{PARTY_ICON[p]}</span>
+              <span className="min-w-0 flex-1"><span className="block font-bold">{t(PARTY_KEY[p])}</span><span className="block text-xs text-muted">{t(PARTY_SUB[p])}</span></span>
+              <input type="radio" name="qn-for" className="size-5 accent-[#e39f0c]" checked={partyType === p} onChange={() => setPartyType(p)} />
             </label>
           ))}
         </div>
-        {payMode === "split" && (
-          <div className="mt-3 grid gap-2 text-sm">
-            <label className="grid grid-cols-[1fr_88px_110px] items-center gap-2"><span><bdi>{partyName.trim() || t(PARTY_KEY[partyType])}</bdi></span>
-              <span className="relative"><input className={`${input} pe-7 text-center`} inputMode="numeric" dir="ltr" value={partyPercent} onChange={(e) => setPartyPercent(Number(e.target.value.replace(/\D/g, "").slice(0, 2)) || 0)} /><span className="absolute end-3 top-1/2 -translate-y-1/2 text-muted">%</span></span>
-              <span className="text-muted">{format((estimate * pct) / 100)}</span></label>
-            <p className="grid grid-cols-[1fr_88px_110px] items-center gap-2"><span>{t("quote_payer_buyer")}</span><span className="text-center font-semibold">{100 - pct}%</span><span className="text-muted">{format((estimate * (100 - pct)) / 100)}</span></p>
-          </div>
-        )}
+        <div className="mt-2 grid items-start gap-2 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm font-semibold">{t(NAME_KEY[partyType])}<input className={input} value={partyName} onChange={(e) => setPartyName(e.target.value)} /></label>
+          {partyType === "insurance" && <label className="grid gap-1 text-sm font-semibold">{t("quote_policy")}<input className={input} dir="ltr" value={policy} onChange={(e) => setPolicy(e.target.value)} /></label>}
+          <label className="grid gap-1 text-sm font-semibold">{t("quote_report")}<input className={input} dir="ltr" value={report} onChange={(e) => setReport(e.target.value)} /><span className="text-xs font-normal text-muted">{t("quote_report_hint")}</span></label>
+          <label className="grid gap-1 text-sm font-semibold">{t("quote_plate")}<input className={input} dir="ltr" value={plate} onChange={(e) => setPlate(e.target.value)} /></label>
+        </div>
       </section>
+    </>
+  );
 
-      <section className={card} aria-labelledby="qn-to">
-        <h2 id="qn-to" className="text-lg font-bold text-navy">{t("quote_delivery")}</h2>
-        {addresses === null ? <p className="mt-2 text-muted" aria-busy="true">{t("search_loading")}</p> : addresses.length === 0 ? (
-          <p className="mt-2 text-muted">{t("quote_no_address")} <Link href="/addresses" className="font-semibold text-navy underline underline-offset-4">{t("quote_add_address")}</Link></p>
-        ) : (
-          <div className="mt-2 grid gap-2" role="radiogroup">
-            {addresses.map((a) => (
-              <label key={a.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border-[1.5px] p-3 ${address?.id === a.id ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
-                <input type="radio" name="qn-to" className="mt-0.5 size-5 accent-[#0b3146]" checked={address?.id === a.id} onChange={() => setAddressId(a.id)} />
-                <span><span className="block font-semibold"><bdi>{a.label}</bdi> · <bdi>{a.recipientName}</bdi></span><span className="block text-sm text-muted"><bdi>{a.streetAddress}, {a.city}</bdi>, {countryName(lang, a.country)}</span></span>
+  const notFitItems = items.filter((i) => i.fits === false);
+  const partsStep = (
+    <>
+      {carBanner}
+      {notFitItems.length > 0 && (
+        <section className={`${card} mb-2`} aria-label={t("quote_not_fit")}>
+          <ul className="grid gap-2">
+            {notFitItems.map((i) => (
+              <li key={i.productId} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1"><b className="block truncate"><bdi>{i.name}</bdi></b>{fitMark(false)}</span>
+                <button type="button" onClick={() => setQty(i, 0)} className="min-h-10 rounded-lg px-3 text-sm font-bold text-[#a12a21] hover:bg-[#fbeceb]">{t("remove")}</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <input type="search" className={`${input} mb-2`} placeholder={t("quote_search_parts")} aria-label={t("quote_search_parts")} value={search} onChange={(e) => setSearch(e.target.value)} />
+      {results === null ? <p className="py-8 text-center text-muted" aria-busy="true">{t("search_loading")}</p> : results.length === 0 ? (
+        <p className="py-8 text-center text-muted">{t(resultsFailed ? "load_error_generic" : "quote_no_fitting")}</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {results.map((p) => {
+            const q = qtyOf(p.id);
+            const image = p.images[0] ? resolveImageUrl(p.images[0]) : null;
+            const info = { productId: p.id, name: p.name, price: p.price, image };
+            return (
+              <li key={p.id} className="flex flex-col overflow-hidden rounded-[14px] border border-line bg-white shadow-[0_2px_6px_rgba(11,49,70,0.06),0_10px_22px_rgba(11,49,70,0.08)]">
+                <Link href={`/products/${p.id}`} className="relative block h-24 bg-[#e6edf2] sm:h-28">{image && <SafeImage src={image} alt="" fill sizes="220px" className="object-cover" unoptimized />}</Link>
+                <div className="flex flex-1 flex-col gap-1 p-2.5">
+                  <b className="line-clamp-2 text-[13px] leading-snug"><bdi>{p.name}</bdi></b>
+                  <Price usd={p.price} className="text-[13px] font-extrabold text-signal-dark" />
+                  {fitMark(true)}
+                  <div className="mt-auto pt-1">
+                    {q > 0 ? stepper(q, (n) => setQty(info, n)) : (
+                      <button type="button" onClick={() => setQty(info, 1)} className="min-h-9 w-full rounded-full bg-gradient-to-b from-[#ffd567] to-signal-dark text-sm font-extrabold text-on-signal">+ {t("quote_add")}</button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {/* "Can't find a part? Ask the sellers" (My Requests, /part-requests) is hidden for now (the person: "we don't need it, later"). To bring it back, put back:
+          <p className="mt-2 text-center text-sm text-muted">{t("quote_cant_find")} <Link href="/part-requests" className="font-bold text-navy underline underline-offset-4">{t("quote_ask_sellers")}</Link></p> */}
+    </>
+  );
+
+  const payStep = (
+    <>
+      {carBanner}
+      <div className="grid items-start gap-2 lg:grid-cols-2">
+        <section className={card} aria-labelledby="qn-pay">
+          <h2 id="qn-pay" className="mb-2 text-lg font-bold text-navy">{t("quote_who_pays")}</h2>
+          <div className="grid gap-2" role="radiogroup" aria-labelledby="qn-pay">
+            {(["party", "buyer", "split"] as const).map((m) => (
+              <label key={m} className={row(payMode === m)}>
+                <input type="radio" name="qn-pay" className="size-5 accent-[#e39f0c]" checked={payMode === m} onChange={() => setPayMode(m)} />
+                <span className="font-bold"><bdi>{m === "party" ? t("quote_pays_party", { name: partyLabel }) : m === "buyer" ? t("quote_pays_me") : t("quote_pays_split")}</bdi></span>
               </label>
             ))}
           </div>
-        )}
-      </section>
+          {payMode === "split" && (
+            <div className="mt-3 grid gap-2 text-sm">
+              <label className="grid grid-cols-[1fr_88px_auto] items-center gap-2"><span><bdi>{partyLabel}</bdi></span>
+                <span className="relative"><input className={`${input} pe-7 text-center`} inputMode="numeric" dir="ltr" value={partyPercent} onChange={(e) => setPartyPercent(Number(e.target.value.replace(/\D/g, "").slice(0, 2)) || 0)} /><span className="absolute end-3 top-1/2 -translate-y-1/2 text-muted">%</span></span>
+                <Price usd={(estimate * pct) / 100} className="text-muted" /></label>
+              <p className="grid grid-cols-[1fr_88px_auto] items-center gap-2"><span>{t("quote_payer_buyer")}</span><span className="text-center font-semibold">{100 - pct}%</span><Price usd={(estimate * (100 - pct)) / 100} className="text-muted" /></p>
+            </div>
+          )}
+        </section>
+        <section className={card} aria-labelledby="qn-to">
+          <h2 id="qn-to" className="mb-2 text-lg font-bold text-navy">{t("quote_delivery")}</h2>
+          {addresses === null ? <p className="text-muted" aria-busy="true">{t("search_loading")}</p> : addresses.length === 0 ? (
+            <p className="text-muted">{t("quote_no_address")} <Link href="/addresses" className="font-semibold text-navy underline underline-offset-4">{t("quote_add_address")}</Link></p>
+          ) : (
+            <div className="grid gap-2" role="radiogroup" aria-labelledby="qn-to">
+              {addresses.map((a) => (
+                <label key={a.id} className={row(address?.id === a.id)}>
+                  <input type="radio" name="qn-to" className="size-5 accent-[#e39f0c]" checked={address?.id === a.id} onChange={() => setAddressId(a.id)} />
+                  <span className="min-w-0"><span className="block font-bold"><bdi>{a.label}</bdi> · <bdi>{a.recipientName}</bdi></span><span className="block truncate text-sm text-muted"><bdi>{a.streetAddress}, {a.city}</bdi>, {countryName(lang, a.country)}</span></span>
+                </label>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+      <p className="mt-2 text-center text-[12.5px] text-muted">{t("quote_prices_note")}</p>
+    </>
+  );
 
-      {error && <p role="alert" className="font-semibold text-[#a12a21]">{error}</p>}
-      <button type="submit" disabled={busy} className="flex min-h-13 w-full items-center justify-center rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark disabled:opacity-50">{busy ? t("quote_creating") : t("quote_create")}</button>
-      <p className="text-center text-[12.5px] text-muted">{t("quote_prices_note")}</p>
-    </form>
+  const action = step === 3
+    ? <button type="button" onClick={submit} disabled={busy} className={gold}>{busy ? t("quote_creating") : t("quote_create")}</button>
+    : <button type="button" onClick={next} className={gold}>{t("quote_next")}</button>;
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 pb-28 pt-2 sm:px-8 lg:pb-10">
+      <h1 className="text-2xl font-bold tracking-tight text-navy sm:text-3xl">{t("get_quotation")}</h1>
+      <p className="mb-2 mt-0.5 text-sm text-muted sm:text-base">{t("quote_new_lead_car")}</p>
+
+      {/* the steps: dots with names (a phone: a thin 4-part bar and "Step 2 of 4") */}
+      <ol className={`${card} mb-2 hidden items-center gap-2 py-3! sm:flex`} aria-label={t("quote_steps")}>
+        {STEP_KEY.map((k, i) => (
+          <li key={k} className={`flex items-center gap-2 ${i > 0 ? "flex-1" : ""}`} aria-current={i === step ? "step" : undefined}>
+            {i > 0 && <span aria-hidden="true" className={`h-[3px] flex-1 rounded ${i <= step ? "bg-signal" : "bg-line"}`} />}
+            <button type="button" disabled={i > step} onClick={() => { setError(null); setStep(i); }} className="flex items-center gap-2 whitespace-nowrap text-sm font-bold disabled:cursor-default">
+              <span className={`grid size-7 place-items-center rounded-full text-xs font-black ${i <= step ? "bg-gradient-to-b from-[#ffd567] to-signal-dark text-on-signal shadow" : "bg-chalk text-muted"}`}>{i < step ? "✓" : i + 1}</span>
+              <span className={`${i === step ? "text-navy" : "text-muted"} ${i === step ? "" : "max-lg:sr-only"}`}>{t(k)}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <div className="mb-2 sm:hidden">
+        <div className="flex gap-1" aria-hidden="true">{STEP_KEY.map((k, i) => <span key={k} className={`h-[5px] flex-1 rounded ${i <= step ? "bg-gradient-to-r from-[#ffd567] to-signal-dark" : "bg-line"}`} />)}</div>
+        <p className="mt-1.5 text-xs font-extrabold tracking-wide text-signal-dark">{t("quote_step_of", { n: step + 1, title: t(STEP_KEY[step]) })}</p>
+      </div>
+
+      <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_330px]">
+        <div className="min-w-0">{[carStep, forStep, partsStep, payStep][step]}</div>
+
+        {/* a large screen: the quotation so far, beside the step */}
+        <aside className={`${card} sticky top-28 hidden lg:block`} aria-labelledby="qn-sum">
+          <h2 id="qn-sum" className="mb-2 text-lg font-bold text-navy">{t("quote_this_quotation")}</h2>
+          {car && <p className="flex justify-between gap-3 py-1 text-sm"><span className="text-muted">{t("quote_car")}</span><b className="truncate"><bdi>{carLabel}</bdi></b></p>}
+          {step >= 2 && partyName.trim() && <p className="flex justify-between gap-3 py-1 text-sm"><span className="text-muted">{t("quote_for")}</span><b className="truncate"><bdi>{partyName.trim()}</bdi></b></p>}
+          <div className="my-2 border-t border-line" />
+          {items.length === 0 ? <p className="text-sm text-muted">{t("quote_no_parts_yet")}</p> : (
+            <ul className="grid gap-1 text-sm">
+              {items.map((i) => <li key={i.productId} className="flex justify-between gap-3"><span className="min-w-0 truncate"><bdi>{i.name}</bdi> × {i.quantity}</span><Price usd={i.price * i.quantity} /></li>)}
+            </ul>
+          )}
+          <p className="mt-2 flex justify-between border-t border-dashed border-muted pt-2 font-extrabold"><span>{t("quote_total_estimate")}</span><Price usd={estimate} /></p>
+          {error && <p role="alert" className="mt-3 text-sm font-semibold text-[#a12a21]">{error}</p>}
+          <div className="mt-2 grid">{action}</div>
+        </aside>
+      </div>
+
+      {/* a tablet or a phone: the bar at the bottom */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 px-4 py-3 shadow-[0_-8px_20px_rgba(11,49,70,0.12)] backdrop-blur max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] lg:hidden">
+        {error && <p role="alert" className="mb-2 text-center text-sm font-semibold text-[#a12a21]">{error}</p>}
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-navy">{count > 0 ? <>{t("quote_parts_count", { n: count })} · <Price usd={estimate} /></> : t("get_quotation")}</span>
+          {action}
+        </div>
+      </div>
+    </div>
   );
 }

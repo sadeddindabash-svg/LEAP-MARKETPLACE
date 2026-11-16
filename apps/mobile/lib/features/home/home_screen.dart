@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -52,7 +53,27 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  // The top bar (logo, name, Get a quote, support): 1 = shown, 0 = hidden. It slides away while the buyer scrolls down and comes back on the way up or at the
+  // top of the page; the search bar under it always stays (confirmed with the person via mockup).
+  late final AnimationController _top = AnimationController(vsync: this, duration: const Duration(milliseconds: 220), value: 1);
+
+  bool _onUserScroll(UserScrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;      // only the page itself (not the rows that slide sideways)
+    if (n.direction == ScrollDirection.reverse && n.metrics.pixels > 24) {
+      if (_top.value > 0 && _top.status != AnimationStatus.reverse) _top.reverse();
+    } else if (n.direction == ScrollDirection.forward || n.metrics.pixels <= 0) {
+      if (_top.value < 1 && _top.status != AnimationStatus.forward) _top.forward();
+    }
+    return false;
+  }
+
+  @override
+  void dispose() {
+    _top.dispose();
+    super.dispose();
+  }
+
   late Future<List<ProductCategory>> _categoriesFuture;
   Future<List<Vehicle>>? _garageFuture;
   // Real, new -- tracks the last GarageState.version this screen has
@@ -63,6 +84,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _lastSeenGarageVersion;
 
   String _feedFilter = 'newest'; // 'newest' | 'my_car'
+  // the Newest / My Car buttons: tapping one glides the page until they sit just under the search bar (patch-my-car-scroll)
+  final GlobalKey _filterKey = GlobalKey();
   Future<List<Product>>? _feedFuture;
   String? _loadedForFeedKey;
 
@@ -130,7 +153,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _scrollToFilters() {
+    final ctx = _filterKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic, alignment: 0);
+  }
+
   void _setFilter(String filter) {
+    _scrollToFilters();
     if (_feedFilter == filter) return;
     setState(() {
       _feedFilter = filter;
@@ -172,40 +202,91 @@ class _HomeScreenState extends State<HomeScreen> {
     _ensureGarageLoaded(auth, context.watch<GarageState>().version);
     _ensureRecentlyViewedLoaded(auth, language);
 
-    return Scaffold(
-      // Real, fixed app bar (new) -- matches the real Stitch reference
-      // design directly (a docked/fixed header, not scrolling away
-      // with the rest of the page). Also more idiomatic Flutter than
-      // the previous in-ListView Row.
+    // the page is built once; only the top bar follows the slide (_top)
+    return AnimatedBuilder(
+      animation: _top,
+      builder: (context, body) => Scaffold(
+      // The top bar slides away while scrolling down; the search bar (its bottom) always stays.
       appBar: AppBar(
         automaticallyImplyLeading: false,
         titleSpacing: 16,
+        toolbarHeight: kToolbarHeight * _top.value,
         // The website's search bar (a navy banner with the suggestions sliding up and a gold Search button), docked under the top bar.
         bottom: const PreferredSize(preferredSize: Size.fromHeight(HomeSearchBar.height), child: HomeSearchBar()),
-        title: Row(
+        // while it slides away the bar's content fades with it (nothing is drawn once it is almost gone)
+        title: _top.value < 0.05 ? null : Opacity(opacity: _top.value, child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            Flexible(
+              child: Row(
+                children: [
+                  // the logo, drawn like an engraving when Home opens (the same as the opening screen, the portals and the website)
+                  const LeapLogoAnimation(size: 38),
+                  const SizedBox(width: 8),
+                  // the name on ONE line, filling the space it has: 17 px, a little smaller on a narrow phone (never two lines, never cut)
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(
+                        isAr ? 'ليب لقطع السيارات' : 'LEAP Auto Parts',
+                        maxLines: 1,
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, height: 1.15, color: palette.ink),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Confirmed with the person via mockup (idea C): a gold "Get a quote" button with its words, and support as a navy round button with a headset (both smaller).
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // the logo, drawn like an engraving when Home opens (the same as the opening screen, the portals and the website)
-                const LeapLogoAnimation(size: 32),
+                Tooltip(
+                  message: isAr ? 'اطلب عرض سعر' : 'Get a quotation',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(99),
+                    onTap: () => context.push('/quotations/new'),
+                    child: Container(
+                      height: 30,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: Premium.goldRaised(radius: 99),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.task_outlined, size: 15, color: Color(0xFF0B3146)),
+                          const SizedBox(width: 4),
+                          Text(isAr ? 'اطلب عرض سعر' : 'Get a quote', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0B3146))),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Text(
-                  isAr ? 'ليب لقطع السيارات' : 'LEAP Auto Parts',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
+                Tooltip(
+                  message: tr(context, 'support_label'),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => context.push('/support'),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: Premium.navyRaised(radius: 16),
+                      child: Icon(Icons.headset_mic_outlined, size: 17, color: palette.signal),
+                    ),
+                  ),
                 ),
               ],
             ),
-            Row(
-              children: [
-                IconButton(icon: Icon(Icons.request_quote_outlined, color: palette.signal), tooltip: isAr ? 'اطلب عرض سعر' : 'Get a quotation', onPressed: () => context.push('/quotations/new')),
-                IconButton(icon: Icon(Icons.chat_bubble_outline, color: palette.signal), tooltip: tr(context, 'support_label'), onPressed: () => context.push('/support')),
-              ],
-            ),
           ],
-        ),
+        )),
       ),
-      body: SafeArea(
+      body: body,
+      ),
+      child: NotificationListener<UserScrollNotification>(
+        onNotification: _onUserScroll,
+        child: SafeArea(
         // Real, branded pull-to-refresh (#121) -- renders the real
         // logo (assets/images/leap_logo.png) instead of Flutter's
         // generic spinner, since RefreshIndicator itself only
@@ -265,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // spacer would show as an unexplained extra gap.
             const BrandLogoMarquee(),
             // 2.6. Shop by category
-            Text(tr(context, 'shop_by_category'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            Text(isAr ? 'الأقسام' : 'Categories', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 10),
             FutureBuilder<List<ProductCategory>>(
               future: _categoriesFuture,
@@ -286,25 +367,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 // there's genuinely more to see (more than 7 real
                 // categories exist); otherwise every real category
                 // already fits and the tile would be pointless.
-                final visibleCategories = categories.take(7).toList();
-                final showMoreTile = categories.length > 7;
-                return GridView.count(
-                  clipBehavior: Clip.none,      // the icons' shadows show at the edges
-                  crossAxisCount: 4,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
+                // Confirmed with the person via mockup: every category in ONE row that slides sideways, the gold "All" always last (Arabic slides the other way).
+                final visibleCategories = categories;
+                // every name on ONE line (confirmed with the person via mockup): 66 px for each, and a name still too long gets a little smaller
+                return SizedBox(
+                  height: 72,
+                  child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,      // the icons' shadows show, and the row runs on to the screen's edge
+                  padding: const EdgeInsets.only(top: 2),
                   children: [
                     ...visibleCategories.map((c) {
                       final label = c.displayName(isAr);
-                      return PressDown(child: GestureDetector(
+                      return Padding(padding: const EdgeInsetsDirectional.only(end: 10), child: SizedBox(width: 66, child: PressDown(child: GestureDetector(
                         onTap: () => context.push('/category-browse/${c.id}'),
                         child: Column(
                           children: [
                             Container(
-                              width: 52,
-                              height: 52,
+                              width: 48,
+                              height: 48,
                               decoration: Premium.round(context),
                               clipBehavior: Clip.antiAlias,
                               // Real category photo (new) -- closes a
@@ -314,33 +395,36 @@ class _HomeScreenState extends State<HomeScreen> {
                               // it. Falls back to the existing icon when
                               // a real category genuinely has none yet.
                               child: c.photoUrl != null
-                                  ? ClipOval(child: CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 31)))
-                                  : Icon(_iconForCategory(c.id), color: palette.signal, size: 31),
+                                  ? ClipOval(child: CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 28)))
+                                  : Icon(_iconForCategory(c.id), color: palette.signal, size: 28),
                             ),
-                            const SizedBox(height: 6),
-                            Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                            const SizedBox(height: 5),
+                            FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, style: const TextStyle(fontSize: 10, height: 1.2), textAlign: TextAlign.center, textScaler: TextScaler.noScaling)),
                           ],
                         ),
-                      ));
+                      ))));
                     }),
-                    if (showMoreTile)
-                      GestureDetector(
+                    SizedBox(
+                      width: 66,
+                      child: GestureDetector(
                         onTap: () => context.go('/categories'),
                         child: Column(
                           children: [
                             Container(
-                              width: 52,
-                              height: 52,
+                              width: 48,
+                              height: 48,
                               // All sections: a raised gold button with a navy arrow (light and dark mode)
-                              decoration: Premium.goldRaised(radius: 26),
-                              child: const Icon(Icons.arrow_forward_rounded, color: Color(0xFF0B3146), size: 26),
+                              decoration: Premium.goldRaised(radius: 24),
+                              child: const Icon(Icons.arrow_forward_rounded, color: Color(0xFF0B3146), size: 24),
                             ),
-                            const SizedBox(height: 6),
-                            Text(isAr ? 'الكل' : 'All', style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                            const SizedBox(height: 5),
+                            Text(isAr ? 'الكل' : 'All', maxLines: 1, style: const TextStyle(fontSize: 10, height: 1.2), textAlign: TextAlign.center, textScaler: TextScaler.noScaling),
                           ],
                         ),
                       ),
+                    ),
                   ],
+                  ),
                 );
               },
             ),
@@ -380,6 +464,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             // 4. Filter: Newest / My car
             Row(
+              key: _filterKey,
               children: [
                 _FilterChip(label: tr(context, 'filter_newest'), selected: _feedFilter == 'newest', onTap: () => _setFilter('newest')),
                 const SizedBox(width: 10),
@@ -432,32 +517,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     // AND a real vehicle is selected -- never a
                     // decorative placeholder.
                     if (_feedFilter == 'my_car' && firstVehicle != null)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: palette.card,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border(left: BorderSide(color: palette.signal, width: 4)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isAr ? 'المركبة النشطة' : 'ACTIVE VEHICLE',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 1),
-                                ),
-                                const SizedBox(height: 2),
-                                Text('${firstVehicle.labelFor(isAr)} · ${firstVehicle.subLabel}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink)),
-                              ],
-                            ),
-                            Icon(Icons.check_circle, color: palette.signal),
-                          ],
-                        ),
-                      ),
+                      // Active vehicle: built exactly like "Shopping for" (same height, text place, slanted photo panel with the car's real photo), in navy 3D
+                      // (patch-active-vehicle-navy, confirmed with the person via mockup)
+                      _ActiveVehicleCard(vehicle: firstVehicle, isAr: isAr),
                     FutureBuilder<List<Product>>(
                       future: _feedFuture,
                       builder: (context, feedSnapshot) {
@@ -515,6 +577,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -676,6 +739,82 @@ class _DiagonalClipper extends CustomClipper<Path> {
   bool shouldReclip(covariant _DiagonalClipper oldClipper) => oldClipper.mirrored != mirrored;
 }
 
+/// "Active vehicle" on Home with My Car on: the same shape as the Shopping for card, in LEAP navy (a navy gradient, a shine across the top, a deep
+/// shadow), with the car's real photo in the slanted panel (Vehicle.heroPhotoUrl), or a car icon when it has none (patch-active-vehicle-navy).
+class _ActiveVehicleCard extends StatelessWidget {
+  final Vehicle vehicle;
+  final bool isAr;
+  const _ActiveVehicleCard({required this.vehicle, required this.isAr});
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = vehicle.heroPhotoUrl;
+    const icon = Icon(Icons.directions_car, size: 20, color: Color(0xB3FFFFFF));
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      height: 76,
+      clipBehavior: Clip.antiAlias,
+      decoration: Premium.navyRaised(radius: 12),
+      foregroundDecoration: Premium.gloss(radius: 12),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: FractionallySizedBox(
+              widthFactor: 0.315,
+              alignment: isAr ? Alignment.centerLeft : Alignment.centerRight,
+              child: ClipPath(
+                clipper: _DiagonalClipper(mirrored: isAr),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1F5574), Color(0xFF2D6F92)]),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 75,
+                      height: 75,
+                      padding: const EdgeInsets.all(5),
+                      child: photo != null
+                          ? CachedNetworkImage(
+                              imageUrl: ApiClient.resolveMediaUrl(photo),
+                              fit: BoxFit.contain,
+                              fadeInDuration: const Duration(milliseconds: 300),
+                              errorWidget: (context, url, error) => icon,
+                            )
+                          : icon,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: isAr ? 100 : 14,
+            right: isAr ? 8 : 100,
+            top: 14,
+            child: Directionality(
+              textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(isAr ? 'المركبة النشطة' : 'ACTIVE VEHICLE', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1, color: Color(0xFFF2C14A))),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${vehicle.labelFor(isAr)} · ${vehicle.subLabel}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700, fontSize: 10.5, letterSpacing: 0.6, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -705,3 +844,4 @@ class _FilterChip extends StatelessWidget {
     ));
   }
 }
+

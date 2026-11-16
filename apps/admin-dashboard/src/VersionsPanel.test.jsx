@@ -74,8 +74,8 @@ describe('the Versions panel under a year', () => {
       expect(screen.getByText(`${label} is required.`)).toBeInTheDocument();
       partial[key] = FULL[key]; fillForm(partial); fireEvent.click(addButton());
     }
-    expect(await screen.findByText('Seats must be a whole number from 1 to 12.')).toBeInTheDocument();
-    for (const bad of ['0', '13', 'five', '5.5']) { fillForm({ ...FULL, seats: bad }); fireEvent.click(addButton()); expect(screen.getByText('Seats must be a whole number from 1 to 12.')).toBeInTheDocument(); }
+    expect(await screen.findByText('Seats must be a whole number from 1 to 60.')).toBeInTheDocument();
+    for (const bad of ['0', '61', 'five', '5.5']) { fillForm({ ...FULL, seats: bad }); fireEvent.click(addButton()); expect(screen.getByText('Seats must be a whole number from 1 to 60.')).toBeInTheDocument(); }
     fillForm(FULL); fireEvent.click(addButton());
     expect(await screen.findByText('A photo is required.')).toBeInTheDocument();
     expect(writes()).toEqual([]);

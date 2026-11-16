@@ -205,6 +205,13 @@ export function refuseSubOrder(token, subOrderId, { reason, note }) {
 
 // The supplier's own return address (migration 092): where the inspection hub sends a faulty unit back to.
 // null until they have entered one; saving replaces it.
+// patch-supplier-verification (migration 152): the documents that show Leap this is a real shop or warehouse
+export function fetchMyVerification(token) {
+  return authedGet("/supplier/me/verification", token);
+}
+export function saveMyVerification(token, form) {
+  return authedMutate("PUT", "/supplier/me/verification", token, form);
+}
 export function fetchMyReturnAddress(token) {
   return authedGet("/supplier/me/return-address", token);
 }
@@ -230,6 +237,11 @@ export function fetchMyReturnCaseById(token, caseId) {
 
 export function replyToReturnCase(token, caseId, message) {
   return authedMutate("POST", `/returns/supplier/me/${caseId}/messages`, token, { message });
+}
+
+// patch-returns-supplier-answer (migration 147): after checking the buyer's photos, the supplier accepts the return or says why not
+export function answerMyReturnCase(token, caseId, answer, note) {
+  return authedMutate("POST", `/returns/supplier/me/${caseId}/answer`, token, { answer, note });
 }
 
 // ---------------- Real category + part reference lists (new) ----------------

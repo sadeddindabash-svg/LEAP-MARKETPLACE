@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { X, Trash2, EyeOff } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken, checkProductDelete, deleteProducts, bulkModerateProducts, sendProductsToReview } from "./auth";
@@ -8,7 +9,7 @@ import { SessionExpiredError, getStoredToken, checkProductDelete, deleteProducts
 export const DELETE_PHRASE = "DELETE PRODUCTS";
 const SHOWN = 8;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const button = (primary, danger) => ({ ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: danger ? "#B42318" : primary ? C.ink : C.line, background: danger ? "#B42318" : primary ? C.ink : "#fff", color: danger || primary ? "#fff" : C.ink });
+const button = (primary, danger) => ({ ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: danger ? "#B42318" : primary ? C.ink : C.line, background: danger ? "#B42318" : primary ? C.navy : "#fff", color: danger || primary ? "#fff" : C.ink });
 const names = (list) => (list.length <= SHOWN ? list : list.slice(0, SHOWN)).map((p) => p.name).join(", ") + (list.length > SHOWN ? ` and ${list.length - SHOWN} more` : "");
 
 export default function ProductDeleteDialog({ ids, onClose, onChanged, onSessionExpired }) {
@@ -123,7 +124,7 @@ export function SelectAllBox({ ids, picked, onToggleAll }) {
 /** Live products or Hidden products (the ones that were hidden: they leave every other list, so this is where they are found again). */
 export function ProductViewSwitch({ view, onChange }) {
   const tab = (id, label) => <button type="button" aria-pressed={view === id} onClick={() => view !== id && onChange(id)} style={{ ...button(view === id), borderRadius: 99, padding: "5px 14px" }}>{label}</button>;
-  return <div role="group" aria-label="Which products" style={{ display: "flex", gap: 8, marginBottom: 12 }}>{tab("live", "Live products")}{tab("hidden", "Hidden products")}</div>;
+  return <div role="group" aria-label="Which products" data-leap-segments="" style={{ display: "flex", gap: 8, marginBottom: 14 }}>{tab("live", "Live products")}{tab("hidden", "Hidden products")}</div>;
 }
 /** Sends hidden products back to the moderation queue (never straight to live: a product that was rejected for bad text must pass the review again). */
 export function ProductReviewDialog({ ids, onClose, onChanged, onSessionExpired }) {

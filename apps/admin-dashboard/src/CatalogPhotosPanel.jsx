@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
 import { fetchCoverage, fetchBatches, undoBatch, saveFallback, uploadPhotos, downloadShotList } from "./catalogPhotosApi";
@@ -8,11 +9,11 @@ import { classify, tally, inBatches, newBatchId, prepareImage, WILL_SAVE, PROBLE
 //   1. what has a picture and what is still waiting, and a SHOT LIST to give whoever makes the pictures;
 //   2. a bulk IMPORT: choose the pictures (named by code, e.g. BRK.jpg, BRK-001.jpg), check the preview, press Import. Nothing is saved before that, and an import can be undone;
 //   3. an optional switch: show a product's own photo for a section or part that has none yet.
-const card = { background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, marginBottom: 16 };
+const card = { background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18, marginBottom: 16 };
 const h2 = { ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 };
 const hint = { ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 12px", lineHeight: 1.5 };
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 const CHIP = { new: ["#16794F", "#E7F6EE"], replaces: ["#8A5A12", "#FDF3E1"], kept: [C.muted, "#EEF1F4"] };
 const chipColors = (s) => CHIP[s] || ["#A32D2D", "#FCEBEB"];
 const Bar = ({ done, total, label }) => <div role="progressbar" aria-label={label} aria-valuenow={done} aria-valuemin={0} aria-valuemax={total} style={{ height: 8, borderRadius: 4, background: "#EEF1F4", overflow: "hidden" }}><div style={{ width: `${total ? Math.round((done / total) * 100) : 0}%`, height: "100%", background: C.ink }} /></div>;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
 import { fetchHomeText, saveHomeText } from "./homeTextApi";
@@ -17,7 +18,7 @@ const blank = (name) => EMPTY[name];
 
 const field = { ...body, width: "100%", boxSizing: "border-box", fontSize: 13, padding: "8px 10px", borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: C.line, color: C.ink, background: "#fff" };
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 /** What the server sends (null for "no text") as what the fields show (""). */
 const toDraft = (text) => {
   const d = {};
@@ -94,7 +95,7 @@ export default function HomeTextSection({ onSessionExpired }) {
   );
 
   return (
-    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
       <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Home page text</h2>
       <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 14px", lineHeight: 1.5 }}>The message at the very top of the website, and the headline and sub-headline of the home page. An empty text means the website uses its own wording.</p>
       {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}

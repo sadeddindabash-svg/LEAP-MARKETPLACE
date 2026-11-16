@@ -105,6 +105,15 @@ async function sendPushToUser({ userId, type, title, body, titleAr, bodyAr, link
     body = chosen.body;
   }
 
+  // Arabic text: keep codes such as LP-10482 together, left to right (patch-push-banners)
+  const isolateCodes = (t) => (typeof t === 'string' && /[\u0600-\u06FF]/.test(t) ? t.replace(/[A-Z]{2,}-[A-Z0-9-]+/g, (m) => `\u2066${m}\u2069`) : t);
+  title = isolateCodes(title);
+  body = isolateCodes(body);
+  // orders: wake the phone, banner, sound, full text on the lock screen; updates (price drops, back in stock): quiet (confirmed with the person via mockup, choice A)
+  const channel = channelIdForType(type);
+  const loud = channel === 'orders';
+  const androidNotification = loud ? { channelId: channel, visibility: 'public', defaultSound: true } : { channelId: channel, visibility: 'private' };
+
   const admin = require('firebase-admin');
   getFirebaseApp();
   const resolvedImageUrl = resolveAbsoluteImageUrl(imageUrl);
@@ -125,8 +134,10 @@ async function sendPushToUser({ userId, type, title, body, titleAr, bodyAr, link
           // Real Android channel routing (#87) -- matches whichever
           // real channel this notification type maps to (see
           // channelIdForType's own header comment).
-          android: { notification: { channelId: channelIdForType(type) } },
-          data: { linkType: linkType || '', linkId: linkId || '' },
+          android: { priority: loud ? 'high' : 'normal', notification: androidNotification },
+          apns: { headers: { 'apns-priority': loud ? '10' : '5' }, payload: { aps: loud ? { sound: 'default', 'interruption-level': 'active' } : { 'interruption-level': 'passive' } } },
+          // `channel` tells the app whether to show its own gold strip while it is open (orders only)
+          data: { linkType: linkType || '', linkId: linkId || '', channel },
         });
       } catch (err) {
         // A real stale/invalid token (e.g. the app was uninstalled) is

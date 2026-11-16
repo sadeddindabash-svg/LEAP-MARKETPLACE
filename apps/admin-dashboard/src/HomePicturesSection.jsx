@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { Image as ImageIcon, X } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
@@ -11,7 +12,7 @@ import { OUTPUT_PX, MIN_SOURCE_PX, FRAME_PX, MIN_ZOOM, MAX_ZOOM, scaleFor, clamp
 const LABELS = { parts: "Parts", brands: "Brands", models: "Models", countries: "Countries" };
 const KEY_STEP_PX = 10;
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 
 export default function HomePicturesSection({ onSessionExpired }) {
   const [pictures, setPictures] = useState(null);
@@ -60,7 +61,7 @@ export default function HomePicturesSection({ onSessionExpired }) {
 
   const scale = crop ? scaleFor(crop.width, crop.height, crop.zoom) : 1;
   return (
-    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
       <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Home page pictures</h2>
       <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 14px", lineHeight: 1.5 }}>
         Shown beside Parts, Brands, Models and Countries on the home page. Choose a picture that is at least {MIN_SOURCE_PX} × {MIN_SOURCE_PX} px (JPG, PNG or WebP); you crop it to a square and it is saved at {OUTPUT_PX} × {OUTPUT_PX}.

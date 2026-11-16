@@ -8,12 +8,13 @@ import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useLocRouter } from "@/components/useLocRouter";
+import { useOptionalCart } from "@/components/CartProvider";
 import QuotationDocument from "@/components/QuotationDocument";
 import QuotationShares from "@/components/QuotationShares";
 import QuotationStateBanner from "@/components/QuotationStateBanner";
 import { fetchMyQuotation, quoteErrorText, renewQuotation, type Quotation } from "@/lib/quotations";
 
-const outline = "inline-flex min-h-11 items-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
+const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50 max-sm:flex-1";
 
 // One of the buyer's quotations: the link to send (copy or share), the PDF, how often the link was opened, each share (the buyer can confirm their own
 // here too), and, when it has expired, a new one with the same parts at today's prices.
@@ -25,6 +26,7 @@ export default function MyQuotationPage() {
   const t = useT();
   const { code: currencyCode } = useCurrency();
   const router = useLocRouter();
+  const cart = useOptionalCart();
   const [quote, setQuote] = useState<Quotation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -56,23 +58,39 @@ export default function MyQuotationPage() {
     try { const next = await renewQuotation(token, quote.id, lang, currencyCode); router.push(`/quotations/${encodeURIComponent(next.id)}`); }
     catch (e) { setError(quoteErrorText(e, t)); setBusy(false); }
   };
+  // "Order these parts": they go to the basket with the quotation's quantities, marked as its parts (grouped under it there), and only they are ticked.
+  const orderParts = async () => {
+    if (!cart) return;
+    setBusy(true);
+    try {
+      await cart.addFromQuotation(quote.id, quote.items.map((i) => ({ productId: i.productId, quantity: i.quantity })));
+      router.push("/cart");
+    } catch (e) { setError(e instanceof Error && e.message ? e.message : t("generic_error")); setBusy(false); }
+  };
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 px-4 py-8 sm:px-8">
+    // [&>*]:min-w-0: nothing in it may grow wider than the screen (a phone)
+    <div className="mx-auto grid max-w-5xl gap-2 px-4 pb-8 pt-2 sm:px-8 [&>*]:min-w-0">
       <Link href="/quotations" className="text-sm font-semibold text-navy underline underline-offset-4">{t("my_quotations")}</Link>
       <QuotationStateBanner quote={quote} orderLink />
       {quote.state === "open" && (
-        <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="quote-send">
+        <section className="rounded-[14px] border border-line bg-white p-3" aria-labelledby="quote-send">
           <h2 id="quote-send" className="text-lg font-bold text-navy">{t("quote_send_title")}</h2>
           <p className="mt-1 text-sm text-muted">{t("quote_send_lead")}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <code data-testid="quotation-link" className="min-w-0 flex-1 truncate rounded-lg bg-[#f4f6f8] px-3 py-2.5 text-sm" dir="ltr">{link}</code>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <code data-testid="quotation-link" className="min-w-0 flex-1 truncate rounded-lg bg-[#f4f6f8] px-3 py-2.5 text-sm max-sm:basis-full" dir="ltr">{link}</code>
             <button type="button" onClick={copy} className={outline}>{copied ? t("quote_link_copied") : t("quote_copy_link")}</button>
             {canShare && <button type="button" onClick={share} className={outline}>{t("quote_share_link")}</button>}
-            <Link href={`/q/${encodeURIComponent(quote.code)}/print`} target="_blank" className={outline}>{t("quote_download_pdf")}</Link>
+            <Link href={`/q/${encodeURIComponent(quote.code)}/print`} target="_blank" className={`${outline} max-sm:basis-full`}>{t("quote_download_pdf")}</Link>
           </div>
           {typeof quote.openCount === "number" && <p className="mt-2 text-xs text-muted">{t("quote_opened", { n: quote.openCount })}</p>}
         </section>
+      )}
+      {quote.state === "open" && !quote.orderId && cart && (
+        <div className="grid justify-items-start gap-1">
+          <button type="button" onClick={orderParts} disabled={busy} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-gradient-to-b from-[#ffd567] via-signal to-signal-dark px-6 font-extrabold text-on-signal shadow-[0_5px_12px_rgba(227,159,12,0.4)] hover:brightness-105 disabled:opacity-50"><span aria-hidden="true">🛒</span>{t("quote_order_parts")}</button>
+          <p className="text-[12.5px] text-muted">{t("quote_order_parts_sub")}</p>
+        </div>
       )}
       {quote.state === "expired" && (
         <button type="button" onClick={renew} disabled={busy} className="inline-flex min-h-12 items-center justify-self-start rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark disabled:opacity-50">{t("quote_renew")}</button>

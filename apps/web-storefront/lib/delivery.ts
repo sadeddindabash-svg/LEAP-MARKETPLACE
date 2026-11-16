@@ -20,7 +20,12 @@ export function deliveryDateLabel(days: number | null | undefined, lang: Lang, n
   return lang === "ar" ? `${day} ${MONTHS_AR[month]}` : `${MONTHS_EN[month]} ${day}`;
 }
 /** "Delivery: Oct. 29" / "التسليم: 29 أكتوبر", or null when there is no estimate. */
-export function deliveryLine(days: number | null | undefined, lang: Lang, now?: Date): string | null {
+export function deliveryLine(days: number | null | undefined, lang: Lang, now?: Date, range?: number | null): string | null {
+  // a range (Delivery Rules > How it works > "Show the buyer: a range"): "Nov. 16 – Nov. 18"
+  if (range && days != null && Number.isFinite(days)) {
+    const from = deliveryDateLabel(Math.max(0, days - range), lang, now); const to = deliveryDateLabel(days + range, lang, now);
+    return from && to ? t(lang, "delivery_date", { date: `${from} – ${to}` }) : null;
+  }
   const date = deliveryDateLabel(days, lang, now);
   return date ? t(lang, "delivery_date", { date }) : null;
 }

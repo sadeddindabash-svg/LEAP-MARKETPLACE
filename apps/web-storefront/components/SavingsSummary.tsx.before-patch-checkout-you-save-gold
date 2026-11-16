@@ -1,0 +1,55 @@
+"use client";
+
+import { useT } from "@/components/LangProvider";
+import { useCurrency } from "@/components/CurrencyProvider";
+import { Price } from "@/components/Price";
+
+/**
+ * Every saving in the order summary (confirmed with the person via mockup): the parts' own discount (a discount rule, or a price held at
+ * checkout), the promo or loyalty discount, and the free shipping, added up in one "You save". The total itself never changes here.
+ */
+type Savings = { itemsBefore?: number; partsSaved?: number; discount: number; shippingSaved: number; saved: number; source: string };
+
+/** "Items before discounts" and "Discount on parts", only when a part is cheaper than its normal price. */
+export function PartsDiscountRows({ summary }: { summary: Savings }) {
+  const t = useT();
+  if (!((summary.partsSaved ?? 0) > 0.004)) return null;
+  return (
+    <>
+      <div data-testid="items-before-discounts" className="flex justify-between border-t border-line py-2"><span>{t("items_before_discounts")}</span><Price usd={summary.itemsBefore ?? 0} /></div>
+      <div data-testid="parts-discount" className="flex justify-between py-2 font-semibold text-[#0f6b49]"><span>{t("parts_discount")}</span><span>−<Price usd={summary.partsSaved ?? 0} /></span></div>
+    </>
+  );
+}
+
+/** "36 parts discount + 10 loyalty + 21 free shipping" (in the buyer's currency). */
+export function useSavedBreakdown(summary: Savings): string {
+  const t = useT();
+  const { format } = useCurrency();
+  const parts: string[] = [];
+  if ((summary.partsSaved ?? 0) > 0.004) parts.push(t("saved_part_parts", { amount: format(summary.partsSaved ?? 0) }));
+  if (summary.discount > 0.004) parts.push(t(summary.source === "loyalty" ? "saved_part_loyalty" : "saved_part_promo", { amount: format(summary.discount) }));
+  if (summary.shippingSaved > 0.004) parts.push(t("saved_part_shipping", { amount: format(summary.shippingSaved) }));
+  return parts.join(" + ");
+}
+
+/** The basket: the line under "You saved", now with every saving. */
+export function SavedDetail({ summary }: { summary: Savings }) {
+  const text = useSavedBreakdown(summary);
+  const pieces = [(summary.partsSaved ?? 0) > 0.004, summary.discount > 0.004, summary.shippingSaved > 0.004].filter(Boolean).length;
+  if (pieces < 2) return null;
+  return <p data-testid="you-saved-detail" className="text-[12.5px] text-muted">{text}</p>;
+}
+
+/** The checkout: a green "You save" box under the total, with what it is made of. */
+export function YouSaveBox({ summary }: { summary: Savings }) {
+  const t = useT();
+  const text = useSavedBreakdown(summary);
+  if (!(summary.saved > 0.004)) return null;
+  return (
+    <div data-testid="you-save-box" className="mt-3 rounded-[10px] border-[1.5px] border-[#9ed9b7] bg-[#e8f6ef] px-3 py-2.5 text-[#0f6b49]">
+      <div className="flex justify-between text-[15px] font-extrabold"><span>🎉 {t("you_save")}</span><Price usd={summary.saved} /></div>
+      {text && <p className="mt-0.5 text-[12px] font-semibold opacity-90">{text}</p>}
+    </div>
+  );
+}

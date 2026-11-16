@@ -12,6 +12,7 @@ import '../core/fly_to_cart.dart';
 import '../core/discount_display.dart';
 import '../core/language_state.dart';
 import '../models/product.dart';
+import 'product_title.dart';
 import '../services/api_client.dart';
 
 /// Real, generously-sized height for a ProductCard placed in a fixed-
@@ -58,7 +59,9 @@ double productCardHeightFor(double cardWidth) {
   // same real height regardless of whether that specific product is
   // discounted. +18px generous allowance for this new second line.
   // -12: the 12 px padding that used to sit below the card is gone (the rows are now the grid's spacing apart).
-  return imageHeight + 181;
+  // Every line under the photo now has a fixed height (confirmed with the person via mockup: no empty space under the delivery date): padding 8 + 6 +
+  // name 33.2 + 4 + stars 14 + 4 + stock box 18 + 6 + price row 34 + 4 + delivery 16 + padding 8 = 155.2.
+  return imageHeight + 156;
 }
 
 // Confirmed with the person via a full mockup showing all 4 tiers in
@@ -182,7 +185,10 @@ class _ProductCardState extends State<ProductCard> {
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     // The card fills its grid cell, so the rows are exactly the grid's spacing apart, the same as the columns (it used to sit at the top of
     // a taller cell with 12 px more below it). Every list that shows a card gives it a fixed height (productCardHeightFor).
-    return SizedBox.expand(
+    // the card's text does not grow with the phone's font size: every line has a fixed place (above), so a larger font could not fit
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.0,
+      child: SizedBox.expand(
       child: Container(
         decoration: Premium.card(context, radius: 12),
         child: Card(
@@ -310,44 +316,57 @@ class _ProductCardState extends State<ProductCard> {
               // size/line-height actually occupy.
               SizedBox(
                 height: 12 * 1.3 * 2 + 2,
-                child: Text(
-                  _truncatedName(p.name),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.3),
+                // name · car · version · part number in 2 rows; the second row slides when it does not fit (patch-name-car-part)
+                child: ProductTitle(title: p.fitTitle, name: _truncatedName(p.name), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.3)),
+              ),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 14,
+                child: Row(
+                  children: [
+                    Icon(p.rating > 0 ? Icons.star : Icons.star_border, size: 13, color: const Color(0xFFF5A623)),
+                    const SizedBox(width: 3),
+                    Flexible(
+                      child: Text(
+                        p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : tr(context, 'no_reviews_yet'),
+                        style: TextStyle(fontSize: 10.5, height: 1.2, color: palette.muted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(p.rating > 0 ? Icons.star : Icons.star_border, size: 13, color: const Color(0xFFF5A623)),
-                  const SizedBox(width: 3),
-                  Text(
-                    p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : tr(context, 'no_reviews_yet'),
-                    style: TextStyle(fontSize: 10.5, color: palette.muted),
-                    overflow: TextOverflow.ellipsis,
+              // The stock in a coloured box with white text, as on the website: green in stock, red out of stock, orange when only a few are left.
+              SizedBox(
+                height: 18,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: !inStock ? const Color(0xFFC62F26) : (p.stockQuantity <= 5 ? const Color(0xFFC2410C) : const Color(0xFF0F6B49)),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      // Real low-stock countdown (#8), same real threshold
+                      // and treatment as Product Detail's own.
+                      !inStock
+                          ? tr(context, 'out_of_stock')
+                          : p.stockQuantity <= 5
+                              ? (isAr ? 'متبقٍ ${p.stockQuantity} فقط' : 'Only ${p.stockQuantity} left')
+                              : tr(context, 'in_stock'),
+                      maxLines: 1,
+                      style: const TextStyle(fontSize: 10.5, height: 1.2, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Row(
-                children: [
-                  Icon(Icons.circle, size: 6, color: !inStock ? Colors.red : (p.stockQuantity <= 5 ? palette.torque : palette.gauge)),
-                  const SizedBox(width: 4),
-                  Text(
-                    // Real low-stock countdown (#8), same real threshold
-                    // and treatment as Product Detail's own.
-                    !inStock
-                        ? tr(context, 'out_of_stock')
-                        : p.stockQuantity <= 5
-                            ? (isAr ? 'متبقٍ ${p.stockQuantity} فقط' : 'Only ${p.stockQuantity} left')
-                            : tr(context, 'in_stock'),
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: !inStock ? Colors.red : (p.stockQuantity <= 5 ? palette.torque : palette.gauge)),
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 6),
-              Row(
+              SizedBox(
+                height: 34,
+                child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Flexible(
@@ -357,7 +376,7 @@ class _ProductCardState extends State<ProductCard> {
                       children: [
                         Text(
                           formatPrice(context, p.price),
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, height: 1.2, color: palette.ink),
                           overflow: TextOverflow.ellipsis,
                         ),
                         // Confirmed with the person's own design: a
@@ -381,7 +400,7 @@ class _ProductCardState extends State<ProductCard> {
                               Flexible(
                                 child: Text(
                                   formatPrice(context, hasDiscount ? p.originalPrice! : (p.lastKnownPrice ?? p.price)),
-                                  style: TextStyle(fontSize: 11, color: palette.muted, decoration: TextDecoration.lineThrough),
+                                  style: TextStyle(fontSize: 11, height: 1.2, color: palette.muted, decoration: TextDecoration.lineThrough),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -396,8 +415,8 @@ class _ProductCardState extends State<ProductCard> {
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                   decoration: BoxDecoration(color: discountTagColor(discountPercent), borderRadius: BorderRadius.circular(4)),
                                   child: Text(
-                                    '-$discountPercent% off',
-                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: discountTagTextColor(discountPercent)),
+                                    isAr ? 'خصم $discountPercent%' : '-$discountPercent% off',
+                                    style: TextStyle(fontSize: 10, height: 1.2, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: discountTagTextColor(discountPercent)),
                                   ),
                                 ),
                               ],
@@ -435,25 +454,34 @@ class _ProductCardState extends State<ProductCard> {
                     ],
                   ),
                 ],
+                ),
               ),
-              const SizedBox(height: 5),
-              Visibility(
-                visible: inStock,
-                maintainSize: true,
-                maintainAnimation: true,
-                maintainState: true,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
-                  child: Text(
-                    isAr ? 'التسليم: ${p.deliveryDateLabel(true)}' : 'Delivery: ${p.deliveryDateLabel(false)}',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.gauge),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 16,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Visibility(
+                    visible: inStock,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
+                      child: Text(
+                        isAr ? 'التسليم: ${p.deliveryDateLabel(true)}' : 'Delivery: ${p.deliveryDateLabel(false)}',
+                        maxLines: 1,
+                        style: TextStyle(fontSize: 9, height: 1.2, fontWeight: FontWeight.w700, color: palette.gauge),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
+      ),
       ),
       ),
       ),

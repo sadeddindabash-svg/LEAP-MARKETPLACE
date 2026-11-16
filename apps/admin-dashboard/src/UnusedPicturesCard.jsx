@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { Trash2 } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken, fetchUnusedPictures, removeUnusedPictures } from "./auth";
@@ -7,7 +8,7 @@ import { SessionExpiredError, getStoredToken, fetchUnusedPictures, removeUnusedP
 // picture that no table mentions and that is more than a day old, and it looks again at the moment of removing, so an old list can never delete something that has become used.
 const sizeText = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const button = (primary) => ({ ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: primary ? C.ink : C.line, background: primary ? C.ink : "#fff", color: primary ? "#fff" : C.ink });
+const button = (primary) => ({ ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: primary ? C.ink : C.line, background: primary ? C.navy : "#fff", color: primary ? "#fff" : C.ink });
 
 export default function UnusedPicturesCard({ onSessionExpired }) {
   const [phase, setPhase] = useState("idle");       // idle | checking | found | asking | removing | done

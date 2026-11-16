@@ -28,8 +28,9 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
       <HeaderPin />
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-signal focus:px-4 focus:py-2 focus:font-bold focus:text-on-signal">{t(lang, "skip_to_content")}</a>
       <div data-topbar="" className="bg-navy-deep text-[13px] text-[#c9d6de]">
-        <div className="mx-auto flex min-h-9 max-w-7xl flex-wrap items-center justify-between gap-x-6 px-4 sm:px-8">
-          <span>{pickHomeText(homeText?.topBar, lang, t(lang, "util_tagline"))}</span>
+        <div className="mx-auto flex min-h-9 max-w-7xl flex-wrap items-center justify-between gap-x-6 px-4 max-md:min-h-7 max-md:justify-end sm:px-8">
+          {/* the top bar's message: not on a phone (support, currency and language stay) */}
+          <span className="max-md:hidden">{pickHomeText(homeText?.topBar, lang, t(lang, "util_tagline"))}</span>
           <span className="flex items-center gap-5">
             <Link href="/support" className="hover:underline">{t(lang, "support")}</Link>
             <CurrencySwitcher />
@@ -46,15 +47,20 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
             <span className="max-md:sr-only">{t(lang, "brand_lead")}<span className="font-medium"> {t(lang, "brand_rest")}</span></span>
           </Link>
           <HeaderSearch />
-          {/* a phone: only the wishlist and the cart, as icons (the account and the alerts are in the bottom menu) */}
+          {/* a phone: only the gold quotation icon, so the search is wider (the cart, the account and the alerts are in the bottom menu; the wishlist in Account) */}
           <nav aria-label={t(lang, "account_menu")} className="flex items-center justify-end gap-1 max-md:gap-0 max-md:[&>a>span:not([class])]:sr-only">
+            {/* Get a quotation, car first (a phone: the gold icon) */}
+            <Link href="/quotations/new" aria-label={t(lang, "get_quotation")} className="me-1 flex min-h-10 items-center gap-1.5 rounded-full bg-gradient-to-b from-[#ffd567] to-signal-dark px-3.5 text-sm font-extrabold text-on-signal shadow-[0_4px_10px_rgba(227,159,12,0.4)] hover:brightness-105 max-md:size-10 max-md:justify-center max-md:px-0">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+              <span className="max-md:sr-only">{t(lang, "get_quotation")}</span>
+            </Link>
             <span className="contents max-md:hidden"><AccountMenu /></span>
-            <Link href="/wishlist" className={actionClass}>
+            <Link href="/wishlist" className={`${actionClass} max-md:hidden`}>
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>
               <span>{t(lang, "wishlist")}</span>
             </Link>
             <span className="contents max-md:hidden"><NotificationBell /></span>
-            <CartIcon />
+            <span className="contents max-md:hidden"><CartIcon /></span>
           </nav>
         </div>
       </div>

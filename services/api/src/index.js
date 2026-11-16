@@ -70,7 +70,11 @@ const app = express();
 // real IP-based geolocation: without this, req.ip would reflect a
 // real reverse proxy/load balancer's own IP in production, not the
 // real client's.
-app.set('trust proxy', true);
+// Security (patch-security-hardening): only behind a real proxy / load balancer may the API trust X-Forwarded-For, or anyone could fake
+// their IP. TRUST_PROXY in .env: empty = off (your PC), a number = that many proxies in front (e.g. 1), "true" = any.
+const trustProxy = (process.env.TRUST_PROXY || '').trim();
+app.set('trust proxy', trustProxy === '' || trustProxy === 'false' ? false : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy === 'true' ? true : trustProxy);
+app.disable('x-powered-by');
 // Disabled alongside the real Cache-Control fix below -- Express
 // generates a weak ETag by default on every response, which invites
 // conditional-GET caching behavior this dynamic API doesn't want.
@@ -84,7 +88,10 @@ app.set('etag', false);
 // working fine in curl or a Node-based test (neither enforces this
 // browser-only restriction) -- exactly the kind of gap that's easy to
 // miss without specifically checking for it.
-app.use(cors({ exposedHeaders: ['X-Total-Count'] }));
+// Security: only your own websites may call the API from a browser. CORS_ORIGINS in .env, comma separated (e.g.
+// https://leapautoparts.com,https://admin.leapautoparts.com). Empty = any website (fine on your PC). The apps are not browsers: not affected.
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);
+app.use(cors({ exposedHeaders: ['X-Total-Count', 'Retry-After'], origin: corsOrigins.length ? (origin, cb) => cb(null, !origin || corsOrigins.includes(origin)) : true }));
 // The `verify` callback captures the exact real raw bytes of every
 // request body into req.rawBody, alongside express.json()'s normal
 // parsed req.body -- needed for real webhook signature verification
@@ -94,6 +101,7 @@ app.use(cors({ exposedHeaders: ['X-Total-Count'] }));
 // whitespace, etc. can differ) -- a common, real bug in webhook
 // implementations that this avoids from the start.
 app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(require('./modules/shared/requestContext').middleware);      // prices include the shipping to the buyer's own country (patch-delivery-prices)
 
 // REAL BUG FOUND AND FIXED HERE, reported by an actual person testing
 // on a real device: a genuinely saved vehicle (My Garage) didn't
@@ -111,8 +119,17 @@ app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 // globally rather than patching one route.
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
+  // Security headers on every answer: no guessing of the content type, never shown inside another site's frame, a short referrer,
+  // and HTTPS only once the API is served over HTTPS.
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.secure) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
+// Limits on repeated tries: sign-in, sign-up, password reset, codes, guest claim and lookup, promo codes, quotation shares, orders.
+app.use(require('./middleware/rateLimit').publicLimits);
 
 // Serves uploaded product images — see modules/uploads/routes.js header
 // comment for why this is local disk (real, working) rather than real
@@ -145,7 +162,9 @@ app.get('/health', async (req, res) => {
   try { pendingMigrations = await getPendingMigrations(); } catch (err) { database = { reachable: false, reason: describeDatabaseError(err) }; }
   // email.configured: whether SMTP is set up (false = emails are only printed in the backend window). No secrets are ever shown here.
   res.status(database.reachable ? 200 : 503).json({
-    status: database.reachable ? 'ok' : 'database_unreachable', env: env.nodeEnv, timestamp: new Date().toISOString(), database, pendingMigrations, email: { configured: isEmailConfigured() },
+    // Security: on the real server (NODE_ENV=production) only the status, nothing about the setup.
+    status: database.reachable ? 'ok' : 'database_unreachable', timestamp: new Date().toISOString(),
+    ...(env.nodeEnv === 'production' ? {} : { env: env.nodeEnv, database, pendingMigrations, email: { configured: isEmailConfigured() } }),
   });
 });
 
@@ -167,6 +186,7 @@ app.use('/config', configRoutes);
 app.use('/auth', authRoutes);
 app.use('/supplier/me/orders', orderResponse.supplierRouter);      // accept / refuse a new order
 app.use('/supplier-responses', orderResponse.adminRouter);              // the admin's list of refused / unanswered orders
+app.use('/order-cancellations', require('./modules/order/cancellation').adminRouter);      // Orders > Cancelled: every cancelled part and its refund
 app.use('/supplier', supplierRoutes);
 app.use('/support', supportRoutes);
 app.use('/bug-reports', require('./modules/bugReports/routes'));
@@ -207,6 +227,7 @@ app.use('/profits', require('./modules/profits/routes')); // Financial -> Profit
 app.use('/reviews', reviewsRoutes);
 app.use('/webhooks', webhooksRoutes);
 app.use('/pricing', pricingRoutes);
+app.use('/admin/discount-hold', require('./modules/discountHold/routes'));      // Pricing > Discount rules > Rules (migration 143)
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -250,6 +271,9 @@ if (require.main === module) {
   startScheduledDelayCheck();
   // The reminders for a supplier who has not answered a new order (every 4 hours, then to the admin after 24 hours).
   startScheduledResponseCheck();
+  require('./modules/discountHold/check').startScheduledDiscountHoldCheck();
+  require('./modules/returns/reminders').startScheduledReturnReminders();      // a supplier who has not answered a return in 48 hours (every 30 minutes)      // discount ended / ends soon / hold ended (every 15 minutes)
+  require('./modules/deliveryEstimate/summary').startDeliverySummaryCheck();      // Delivery Rules > How it works > step 6
 }
 
 module.exports = app;

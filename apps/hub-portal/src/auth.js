@@ -63,6 +63,25 @@ export function fetchMyShipments(token) {
   return authedGet("/hub/me/shipments", token);
 }
 
+// patch-returns-flow (migration 146): the returned parts buyers send to this hub, and "Received" (good = back to stock)
+// patch-returns-conversations (migration 149): the hub's conversations with Leap about the parcels it flagged
+export function fetchHubConversations(token) {
+  return authedGet("/returns/hub/me/conversations", token);
+}
+export function sendHubConversationMessage(token, caseId, message) {
+  return authedMutate("POST", `/returns/hub/me/conversations/${caseId}/messages`, token, { message });
+}
+export function markHubConversationRead(token, caseId) {
+  return authedMutate("POST", `/returns/hub/me/conversations/${caseId}/read`, token, {});
+}
+
+export function fetchIncomingReturns(token) {
+  return authedGet("/returns/hub/me", token);
+}
+export function markReturnReceivedAtHub(token, caseId, condition) {
+  return authedMutate("POST", `/returns/hub/me/${caseId}/received`, token, { condition });
+}
+
 export function fetchMyShipmentById(token, shipmentId) {
   return authedGet(`/hub/me/shipments/${shipmentId}`, token);
 }

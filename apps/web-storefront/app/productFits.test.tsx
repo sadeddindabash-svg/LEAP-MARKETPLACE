@@ -29,7 +29,7 @@ async function page(over: Partial<ProductDetail> = {}, lang: "en" | "ar" = "en")
 const columns = (root: El) => { const grid = (function f(el: El): El | null { if (typeof el.props.className === "string" && el.props.className.includes("md:grid-cols-2")) return el; for (const c of kids(el)) { const r = f(c); if (r) return r; } return null; })(root)!; const [left, right] = kids(grid); return { left, right }; };
 beforeEach(() => { m.lang.current = "en"; });
 
-const chipsEl = async (over: Record<string, unknown> = {}, lang: "en" | "ar" = "en") => { const { right } = columns(await page(over as never, lang)); const el = kids(kids(right)[1]).find((c) => c.type === ProductChips); return el as { props: { product: Record<string, unknown>; lang: string } } | undefined; };
+const chipsEl = async (over: Record<string, unknown> = {}, lang: "en" | "ar" = "en") => { const { right } = columns(await page(over as never, lang)); const el = kids(right).flatMap((d) => kids(d)).find((c) => c.type === ProductChips); return el as { props: { product: Record<string, unknown>; lang: string } } | undefined; };
 const grp = (model: string, ranges: Array<[number, number]>, extra: Record<string, unknown> = {}) => ({ brand: "BYD", model, ranges, vehicleCount: 1, ...extra });
 
 // The wording of the chips is tested where it is drawn (components/ProductChips.test.tsx); here: the page hands the chips area the product and the language.
@@ -40,5 +40,5 @@ describe("the chips under the name", () => {
   });
   it("on the Arabic page the language is Arabic", async () => { const el = await chipsEl({ fitGroups: [grp("Seal", [[2022, 2024]])] }, "ar"); expect(el!.props.lang).toBe("ar"); });
   it("a product from an older server (no groups, no part photo) is passed as it is", async () => { const el = await chipsEl({ brand: "BYD", model: "Seal", year: 2022, fitGroups: undefined }); expect(el!.props.product.fitGroups).toBeUndefined(); expect(el!.props.product.brand).toBe("BYD"); });
-  it("the chip is in the same place as before: second in the column (after the title), before the description and the stock box", async () => { const { right } = columns(await page({ fitGroups: [grp("Seal", [[2022, 2024]])], fitGroupCount: 1, description: "x" } as never)); expect(kids(right).map((c) => c.type).slice(0, 3)).toEqual(["div", "div", "p"]); });
+  it("the chips come after the name and the description, before the stock box", async () => { const { right } = columns(await page({ fitGroups: [grp("Seal", [[2022, 2024]])], fitGroupCount: 1, description: "x" } as never)); expect(kids(right).map((c) => c.type).slice(0, 3)).toEqual(["h1", "p", "div"]); });
 });

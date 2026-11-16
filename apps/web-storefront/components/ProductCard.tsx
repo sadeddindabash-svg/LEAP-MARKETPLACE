@@ -10,6 +10,7 @@ import { deliveryLine } from "@/lib/delivery";
 import { cardReviews } from "@/lib/review";
 import { t, type Lang } from "@/lib/i18n";
 import { Price } from "./Price";
+import ProductTitle from "./ProductTitle";
 
 /**
  * One product on a list (home, search, the rows of a product page): the photo with the brand's logo in one corner and the discount tag in the other, the name, a green "In stock" or red "Out of stock" box (with the delivery date),
@@ -19,7 +20,7 @@ import { Price } from "./Price";
 export default function ProductCard({ product: p, lang }: { product: ProductSummary; lang: Lang }) {
   const inStock = p.stockQuantity > 0;
   const percent = cardDiscount(p.price, p.originalPrice);
-  const delivery = inStock ? deliveryLine(p.estimatedDeliveryDays, lang) : null;
+  const delivery = inStock ? deliveryLine(p.estimatedDeliveryDays, lang, undefined, p.estimatedDeliveryRange) : null;
   return (
     <li className="group relative flex flex-col overflow-hidden rounded-[14px] border border-line bg-white transition-colors [contain-intrinsic-size:auto_440px] [content-visibility:auto] hover:border-navy">          {/* a long list: the browser draws a card only when it is near the screen */}
       <Link href={`/products/${p.id}`} className="flex flex-1 flex-col">
@@ -33,23 +34,30 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
             </div>
           )}
           {p.brandLogoUrl && <BrandBadge src={resolveImageUrl(p.brandLogoUrl)} name={p.brand ?? ""} />}
-          {percent !== null && <span data-testid="discount-tag" aria-label={t(lang, "percent_off", { n: percent })} className={`absolute end-2.5 top-2.5 rounded-lg px-2.5 py-1 text-sm font-extrabold shadow-sm ${cardDiscountTagClasses(percent)}`}><bdi dir="ltr">-{percent}%</bdi></span>}
+          {percent !== null && <span data-testid="discount-tag" aria-label={t(lang, "percent_off", { n: percent })} className={`absolute end-2.5 top-2.5 max-md:hidden rounded-lg px-2.5 py-1 text-sm font-extrabold shadow-sm ${cardDiscountTagClasses(percent)}`}><bdi dir="ltr">-{percent}%</bdi></span>}
         </div>
-        <div className="flex flex-1 flex-col gap-2 p-4">
-          <h3 className="line-clamp-2 text-base font-bold leading-snug">{p.name}</h3>
-          {p.oemNumber && <p className="font-plate text-[13px] text-muted">{p.oemNumber}</p>}
+        {/* a phone (confirmed with the person via mockup): every line in its own place, the same in every card: the name (2 lines), the stars, the stock box,
+            the delivery date, the price with the add-to-cart icon, the discount; a line a card does not have keeps its place, so the cards line up */}
+        <div className="flex flex-1 flex-col gap-2 p-4 max-md:grid max-md:flex-none max-md:grid-rows-[33px_16px_20px_16px_32px_16px] max-md:gap-[3px] max-md:p-2">
+          <h3 className="text-base font-bold leading-snug max-md:text-[13px] max-md:leading-[16.5px]"><ProductTitle title={p.fitTitle} name={p.name} lang={lang} /></h3>
+          {p.oemNumber && !p.fitTitle && <p className="font-plate text-[13px] text-muted max-md:hidden">{p.oemNumber}</p>}
           <CardReviews rating={p.rating} count={p.reviewCount} lang={lang} />
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-muted">
-            <span data-testid="stock-box" data-stock={inStock ? "in" : "out"} className={`rounded-md px-2.5 py-0.5 text-[12.5px] font-bold text-white ${inStock ? "bg-[#0f6b49]" : "bg-[#c62f26]"}`}>{t(lang, inStock ? "in_stock" : "out_of_stock")}</span>
-            {delivery ? <span>{delivery}</span> : null}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-muted max-md:contents">
+            <span data-testid="stock-box" data-stock={inStock ? "in" : "out"} className={`rounded-md px-2.5 py-0.5 text-[12.5px] font-bold text-white max-md:self-center max-md:justify-self-start max-md:rounded-[5px] max-md:px-[7px] max-md:text-[11px] ${inStock ? "bg-[#0f6b49]" : "bg-[#c62f26]"}`}>{t(lang, inStock ? "in_stock" : "out_of_stock")}</span>
+            {delivery ? <span className="max-md:truncate max-md:text-[11.5px] max-md:leading-4">{delivery}</span> : <span aria-hidden="true" className="md:hidden">&nbsp;</span>}
           </p>
-          <p className="mt-auto flex flex-wrap items-baseline gap-x-2 pt-3 pe-14">
-            <span className="text-[22px] font-extrabold text-navy"><Price usd={p.price} /></span>
-            {percent !== null && p.originalPrice != null && <del className="text-sm text-muted"><Price usd={p.originalPrice} /></del>}
+          <p className="mt-auto flex flex-wrap items-baseline gap-x-2 pt-3 pe-14 max-md:contents">
+            <span className="text-[22px] font-extrabold text-navy max-md:self-center max-md:pe-10 max-md:text-base"><Price usd={p.price} /></span>
+            {percent !== null && p.originalPrice != null ? (
+              <span className="inline-flex items-baseline gap-1.5 max-md:items-center max-md:text-[11.5px]">
+                <span aria-hidden="true" className={`rounded-[5px] px-[5px] text-[11px] font-extrabold leading-4 md:hidden ${cardDiscountTagClasses(percent)}`}><bdi dir="ltr">-{percent}%</bdi></span>
+                <del className="text-sm text-muted max-md:text-[11.5px]"><Price usd={p.originalPrice} /></del>
+              </span>
+            ) : <span aria-hidden="true" className="md:hidden">&nbsp;</span>}
           </p>
         </div>
       </Link>
-      <div className="absolute bottom-4 end-4"><CardAddToCart productId={p.id} name={p.name} inStock={inStock} /></div>
+      <div className="absolute bottom-4 end-4 max-md:bottom-[27px] max-md:end-2 max-md:[&_button]:size-8 max-md:[&_button]:rounded-[9px] max-md:[&_svg]:size-4"><CardAddToCart productId={p.id} name={p.name} inStock={inStock} /></div>
       <WishlistHeart productId={p.id} name={p.name} variant="card" />
     </li>
   );
@@ -60,17 +68,20 @@ function CardReviews({ rating, count, lang }: { rating: number | null; count: nu
   const r = cardReviews(rating, count);
   if (!r) {
     return (
-      <p data-testid="card-reviews" className="flex items-center gap-1.5 text-[13px] text-muted">
-        <CardStar filled={false} />
-        <span>{t(lang, "card_no_reviews")}</span>
+      <p data-testid="card-reviews" className="flex items-center gap-1.5 text-[13px] text-muted max-md:h-4">
+        <span className="contents max-md:hidden"><CardStar filled={false} /></span>
+        <span className="max-md:hidden">{t(lang, "card_no_reviews")}</span>
+        {/* a phone: five grey stars, no words */}
+        <span className="flex md:hidden" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <CardStar key={i} filled={false} />)}</span>
       </p>
     );
   }
   return (
-    <p data-testid="card-reviews" className="flex items-center gap-1.5 text-[13px] text-muted">
+    <p data-testid="card-reviews" className="flex items-center gap-1.5 text-[13px] text-muted max-md:h-4">
       <span className="flex" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <CardStar key={i} filled={i < r.fullStars} />)}</span>
-      <bdi dir="ltr" className="font-bold text-navy">{r.average}</bdi>
-      <span>({r.count === 1 ? t(lang, "card_review_one") : t(lang, "reviews_count", { n: r.count })})</span>
+      {/* a phone: the stars only */}
+      <bdi dir="ltr" className="font-bold text-navy max-md:hidden">{r.average}</bdi>
+      <span className="max-md:hidden">({r.count === 1 ? t(lang, "card_review_one") : t(lang, "reviews_count", { n: r.count })})</span>
     </p>
   );
 }

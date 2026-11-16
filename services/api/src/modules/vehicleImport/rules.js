@@ -1,6 +1,6 @@
 // The checks on every row of the sheet, with no database: what each row must contain, that the three languages agree, that the same brand or model is not named two
 // ways, that no version appears twice, and that every picture is acceptable. Returns, for each row, whether it is usable and a list of plain-words messages.
-const { cleanLine, nameKey, parseYear, parseSeats, MAX_NAME_LENGTH } = require('../fitment/vehicleRules');
+const { cleanLine, nameKey, parseYear, parseSeats, MAX_NAME_LENGTH, MIN_SEATS, MAX_SEATS } = require('../fitment/vehicleRules');
 const { inspectImage, MIN_CATALOG_DIMENSION_PX } = require('../uploads/imageRules');
 const { FIELDS, LANGS } = require('./columns');
 
@@ -34,7 +34,7 @@ function validateRows(rows, { minPx = MIN_CATALOG_DIMENSION_PX } = {}) {
         const raw = row.values[key][lang];
         if (raw === '' || cleanLine(raw) === '') { err(`${label} (${langName}) is empty`); continue; }
         parsed[lang] = parse(raw);
-        if (parsed[lang] === null) err(key === 'year' ? `${label} (${langName}) "${cleanLine(raw)}" is not a valid year (four digits, 1950 to next year)` : `${label} (${langName}) "${cleanLine(raw)}" is not a whole number from 1 to 12`);
+        if (parsed[lang] === null) err(key === 'year' ? `${label} (${langName}) "${cleanLine(raw)}" is not a valid year (four digits, 1950 to next year)` : `${label} (${langName}) "${cleanLine(raw)}" is not a whole number from ${MIN_SEATS} to ${MAX_SEATS}`);
       }
       if (parsed.en != null && ((parsed.ar != null && parsed.ar !== parsed.en) || (parsed.zh != null && parsed.zh !== parsed.en))) {
         err(`The ${label.toLowerCase()} columns disagree (English ${parsed.en}${parsed.ar != null ? `, Arabic ${parsed.ar}` : ''}${parsed.zh != null ? `, Chinese ${parsed.zh}` : ''})`);

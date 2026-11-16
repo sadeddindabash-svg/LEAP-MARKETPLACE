@@ -159,7 +159,7 @@ describe("same part, other listings", () => {
   });
   it("CRITICAL: lists the same OEM number from other suppliers with price, stock, delivery and verified sellers, each linking to its part", () => {
     en(<OemComparison lang="en" products={[product("a", { price: 31, isVerifiedSeller: true }), product("b", { stockQuantity: 0, estimatedDeliveryDays: null })]} />);
-    expect(screen.getByRole("heading", { name: "Same part, other listings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Same part, other suppliers" })).toBeInTheDocument();
     expect(screen.getByText("Identical OEM part number")).toBeInTheDocument();
     const links = screen.getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/products/a", "/products/b"]);

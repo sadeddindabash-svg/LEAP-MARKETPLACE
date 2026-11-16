@@ -41,6 +41,8 @@ interface CartContextValue {
   addItem: (productId: string, quantity: number) => Promise<void>;
   updateQuantity: (productId: string, quantity: number) => Promise<void>;
   removeItem: (productId: string) => Promise<void>;
+  /** "Order these parts" on a quotation: its parts go in the basket with its quantities, marked as that quotation's (the basket groups them under it), and only they are ticked. */
+  addFromQuotation: (quotationId: string, items: { productId: string; quantity: number }[]) => Promise<void>;
   /** Freezes the prices for the checkout (like the app, the moment the checkout opens). */
   lockPrices: () => Promise<void>;
   /** Puts a promo code on the cart, or removes it with null. THROWS the server's reason when the code is not valid. */
@@ -148,6 +150,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [cartId, who]);
 
+  const addFromQuotation = useCallback(async (quotationId: string, items: { productId: string; quantity: number }[]) => {
+    if (!cartId) return;
+    setError(null);
+    let last: Cart | null = null;
+    for (const it of items) last = await setCartItemQuantity(cartIdRef.current, it.productId, it.quantity, who(), quotationId);
+    const done = last;
+    if (!done) return;
+    adopt(done);
+    const ours = new Set(items.map((i) => i.productId));
+    changeUnselected(() => new Set(done.items.map((i) => i.productId).filter((id) => !ours.has(id))));
+  }, [cartId, who, adopt, changeUnselected]);
+
   const lockPrices = useCallback(async () => {
     if (!cartId) return;
     try {
@@ -209,12 +223,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       cart, isLoading, error,
       itemCount: countOf(source), total: subtotalOf(source),
       summary: totalsOf({ items: source.items, appliedDiscountUsd: cart?.appliedDiscountUsd, appliedDiscountSource: cart?.appliedDiscountSource, loyaltyDiscountPercentage: cart?.loyaltyDiscountPercentage, appliedPromoCode: cart?.appliedPromoCode, shipping: cart?.shipping }),
-      addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder, mergeNotice, dismissMergeNotice,
+      addItem, updateQuantity, removeItem, addFromQuotation, lockPrices, applyPromo, refreshCart, clearAfterOrder, mergeNotice, dismissMergeNotice,
       unselected: liveUnselected, toggleSelected, setAllSelected,
       selected: chosen,
       selectedSummary: cart ? selectedSummaryOf(cart, liveUnselected) : totalsOf({ items: [] }),
     };
-  }, [cart, isLoading, error, addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder, mergeNotice, dismissMergeNotice, liveUnselected, toggleSelected, setAllSelected]);
+  }, [cart, isLoading, error, addItem, updateQuantity, removeItem, addFromQuotation, lockPrices, applyPromo, refreshCart, clearAfterOrder, mergeNotice, dismissMergeNotice, liveUnselected, toggleSelected, setAllSelected]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

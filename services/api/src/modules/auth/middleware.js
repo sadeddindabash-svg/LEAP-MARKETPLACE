@@ -173,4 +173,4 @@ async function requireOwner(req, res, next) {
   }
 }
 
-module.exports = { signToken, requireAuth, optionalAuth, requireRole, requirePageAccess, requirePageAccessIfAdmin, requireOwner };
+module.exports = { signToken, requireAuth, optionalAuth, requireRole, requirePageAccess, requirePageAccessIfAdmin, requireOwner, hasPageAccess };

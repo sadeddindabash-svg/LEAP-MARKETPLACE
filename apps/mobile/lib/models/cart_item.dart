@@ -1,10 +1,32 @@
 /// Mirrors the item shape returned by every services/api/cart endpoint
 /// (GET, POST, PATCH, DELETE all return this same shape — see that
 /// module's header comment for why).
+/// One price line of a basket part (Pricing > Discount rules > Rules): during a checkout hold a part can have two,
+/// the held units and the units added later at today's price.
+class CartPriceLine {
+  final int quantity;
+  final double price;
+  final bool held;
+  final bool lowered;
+  final bool isNew;
+  final double? originalPrice;
+  const CartPriceLine({required this.quantity, required this.price, this.held = false, this.lowered = false, this.isNew = false, this.originalPrice});
+  factory CartPriceLine.fromJson(Map<String, dynamic> j) => CartPriceLine(
+        quantity: (j['quantity'] as num).toInt(),
+        price: (j['price'] as num).toDouble(),
+        held: j['held'] as bool? ?? false,
+        lowered: j['lowered'] as bool? ?? false,
+        isNew: j['isNew'] as bool? ?? false,
+        originalPrice: (j['originalPrice'] as num?)?.toDouble(),
+      );
+}
+
 class CartItem {
   final String productId;
   final int quantity;
   final String name;
+  /// The title in parts (patch-name-car-part); null from an older server.
+  final Map<String, dynamic>? fitTitle;
   final double price;
   // Confirmed with the person: mirrors Product's own originalPrice --
   // null means no real discount rule currently matches this item.
@@ -33,11 +55,14 @@ class CartItem {
   final String? quotationId;
   final String? quotationParty;
   final String? quotationCar;
+  // its price lines; `price` is their average, so price x quantity is still the line total
+  final List<CartPriceLine> lines;
 
   const CartItem({
     required this.productId,
     required this.quantity,
     required this.name,
+    this.fitTitle,
     required this.price,
     this.originalPrice,
     this.priceChanged = false,
@@ -49,6 +74,7 @@ class CartItem {
     this.quotationId,
     this.quotationParty,
     this.quotationCar,
+    this.lines = const [],
   });
 
   double get lineTotal => price * quantity;
@@ -62,6 +88,7 @@ class CartItem {
         productId: json['productId'] as String,
         quantity: json['quantity'] as int,
         name: json['name'] as String,
+        fitTitle: json['fitTitle'] is Map ? Map<String, dynamic>.from(json['fitTitle'] as Map) : null,
         price: (json['price'] as num).toDouble(),
         originalPrice: json['originalPrice'] == null ? null : (json['originalPrice'] as num).toDouble(),
         priceChanged: json['priceChanged'] as bool? ?? false,
@@ -73,5 +100,6 @@ class CartItem {
         quotationId: (json['quotation'] as Map<String, dynamic>?)?['id'] as String?,
         quotationParty: (json['quotation'] as Map<String, dynamic>?)?['partyName'] as String?,
         quotationCar: (json['quotation'] as Map<String, dynamic>?)?['car'] as String?,
+        lines: (json['lines'] as List<dynamic>? ?? const []).map((l) => CartPriceLine.fromJson(l as Map<String, dynamic>)).toList(),
       );
 }

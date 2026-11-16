@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'auth_state.dart';
 import 'language_state.dart';
 import '../services/api_client.dart';
+import 'push_banner.dart';
 
 /// Real push notification registration.
 ///
@@ -87,6 +88,15 @@ class PushState {
       // real backend's own record current rather than going stale
       // silently.
       messaging.onTokenRefresh.listen((newToken) => _registerToken(authToken, newToken));
+      // While LEAP is open: no system banner on iPhone (Android shows none by itself); LEAP shows its own gold strip instead, for orders only (patch-push-banners)
+      await messaging.setForegroundNotificationPresentationOptions(alert: false, badge: true, sound: false);
+      FirebaseMessaging.onMessage.listen((message) {
+        if (message.data['channel'] != 'updates') PushBanner.show(message);
+      });
+      // A notification tapped on the lock screen or in the notification bar opens what it is about
+      FirebaseMessaging.onMessageOpenedApp.listen((message) => openPushLink(message.data));
+      final opened = await messaging.getInitialMessage();
+      if (opened != null) openPushLink(opened.data);
     } catch (err) {
       // Real, honest no-op: no real Firebase config files exist in
       // this repository yet (see this class's own header comment) --

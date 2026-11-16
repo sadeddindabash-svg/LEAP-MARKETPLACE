@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { ChevronDown } from "lucide-react";
 import { C, body } from "../theme";
 
@@ -116,7 +117,7 @@ export function fadeInAfter(el, { dx = 12, ms = 280 } = {}) {
 export const CONTROL_HEIGHT = 40;           // every button inside a page: the same height
 
 /** One tab: the label is the button's own text (no wrapper), so the tab's name is exactly its label. */
-function FolderTab({ tab, active, onSelect, marked }) {
+function FolderTab({ tab, active, onSelect, marked, dark = false }) {
   return (
     <button
       type="button"
@@ -125,14 +126,14 @@ function FolderTab({ tab, active, onSelect, marked }) {
       onClick={() => onSelect(tab.id)}
       style={{
         ...body, display: "inline-flex", alignItems: "center", gap: 6, height: TAB_HEIGHT, padding: "0 16px", fontSize: 13, fontWeight: active ? 700 : 600, cursor: "pointer", whiteSpace: "nowrap",
-        border: `1px solid ${active && !marked ? C.line : "transparent"}`, borderBottom: active && !marked ? `1px solid ${C.canvas}` : "1px solid transparent", borderRadius: "10px 10px 0 0", marginBottom: -1,
-        background: active && !marked ? C.canvas : "transparent", color: active ? C.ink : C.muted, position: "relative", transition: "color 200ms ease",
+        border: "none", borderBottom: `3px solid ${active && !marked ? C.signal : "transparent"}`, borderRadius: 0, marginBottom: -1,
+        background: "transparent", color: dark ? (active ? "#fff" : C.onNavyMuted) : (active ? C.ink : C.muted), position: "relative", transition: "color 200ms ease",
       }}
     >
       {tab.label}
       {/* a number on the tab (what is waiting there), when the page gives one */}
       {tab.count > 0 && (
-        <span title={tab.tip} aria-label={tab.tip} style={{ ...body, minWidth: 18, height: 18, padding: "0 6px", boxSizing: "border-box", borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 800, color: "#fff", background: tab.tone === "red" ? C.red : C.ink }}>{tab.count}</span>
+        <span title={tab.tip} aria-label={tab.tip} style={{ ...body, minWidth: 18, height: 18, padding: "0 6px", boxSizing: "border-box", borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 800, color: tab.tone === "red" ? "#fff" : dark ? C.onSignal : "#fff", background: tab.tone === "red" ? C.red : dark ? C.signal : C.navy }}>{tab.count}</span>
       )}
     </button>
   );
@@ -142,7 +143,7 @@ function FolderTab({ tab, active, onSelect, marked }) {
  * The main tabs under the header. tabs: [{ id, label }]. When there are more than `maxVisible`, the rest go under "More (n)"; the tab that is
  * chosen is always shown (it takes the last visible place when it is one of the others).
  */
-export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7 }) {
+export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7, dark = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef(null);
   useEffect(() => {
@@ -173,17 +174,19 @@ export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7 }) 
   const rest = tabs.filter((t) => !shown.has(t.id));
   const pick = (id) => { setMenuOpen(false); onSelect(id); };
   return (
-    <div ref={barRef} data-leap-tabbar="" style={{ display: "flex", alignItems: "flex-end", gap: 2, padding: "14px 28px 0", background: C.card, borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
-      <div ref={listRef} role="tablist" aria-label={label} style={{ display: "flex", alignItems: "flex-end", gap: 2, flexWrap: "wrap", position: "relative" }}>
+    <div ref={barRef} data-leap-tabbar="" style={dark
+      ? { position: "relative", display: "flex", alignItems: "flex-end", gap: 4, padding: "18px 0 0", background: "transparent", borderBottom: "none", flexWrap: "wrap" }
+      : { display: "flex", alignItems: "center", gap: 8, padding: "18px 24px 2px", background: "transparent", borderBottom: "none", flexWrap: "wrap" }}>
+      <div ref={listRef} role="tablist" aria-label={label} data-leap-segments={dark ? undefined : ""} style={{ display: "flex", alignItems: "flex-end", gap: 2, flexWrap: "wrap", position: "relative" }}>
         {/* the chosen tab's raised background: one shape that slides to the tab clicked (drawn first, so the labels sit on it) */}
-        {mark && (
+        {mark && dark && (
           <span aria-hidden="true" data-testid="tab-highlight" style={{
             position: "absolute", left: 0, top: 0, width: mark.w, height: mark.h, transform: `translate(${mark.x}px, ${mark.y}px)`, boxSizing: "border-box", pointerEvents: "none",
-            border: `1px solid ${C.line}`, borderBottom: `1px solid ${C.canvas}`, borderRadius: "10px 10px 0 0", background: C.canvas,
+            border: "none", borderBottom: `3px solid ${C.signal}`, borderRadius: 0, background: "transparent",
             transition: mark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}, width ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
           }} />
         )}
-        {visible.map((tab) => <FolderTab key={tab.id} tab={tab} active={tab.id === activeId} onSelect={pick} marked={Boolean(mark && mark.w)} />)}
+        {visible.map((tab) => <FolderTab key={tab.id} tab={tab} active={tab.id === activeId} onSelect={pick} marked={Boolean(dark && mark && mark.w)} dark={dark} />)}
       </div>
       {rest.length > 0 && (
         <div ref={wrapRef} style={{ position: "relative" }}>
@@ -192,12 +195,12 @@ export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7 }) 
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            style={{ ...body, display: "inline-flex", alignItems: "center", gap: 4, height: TAB_HEIGHT, padding: "0 14px", border: "none", background: "transparent", color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+            style={{ ...body, display: "inline-flex", alignItems: "center", gap: 4, height: TAB_HEIGHT, padding: "0 14px", border: "none", background: "transparent", color: dark ? "#fff" : C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
           >
             More ({rest.length}) <ChevronDown size={14} />
           </button>
           {menuOpen && (
-            <div role="menu" aria-label={`More ${label}`} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, minWidth: 200, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(20,23,28,0.12)", padding: 6, zIndex: 30 }}>
+            <div role="menu" aria-label={`More ${label}`} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, minWidth: 200, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", boxShadow: "0 8px 24px rgba(20,23,28,0.12)", padding: 6, zIndex: 30 }}>
               {rest.map((tab) => (
                 <button key={tab.id} type="button" role="menuitem" onClick={() => pick(tab.id)}
                   style={{ ...body, display: "block", width: "100%", textAlign: "left", height: CONTROL_HEIGHT, padding: "0 12px", border: "none", borderRadius: 8, background: "transparent", color: C.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
@@ -215,6 +218,7 @@ export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7 }) 
 /** The main tabs of the page's group (from the shell), for the header to show under itself. */
 export function useGroupTabs() { return useContext(PageTabsContext); }
 
+const FILTER_INK = { [C.red]: C.redInk, [C.torque]: C.torqueInk, [C.gauge]: C.gaugeInk, [C.amber]: C.amberInk };
 const TONES = {
   ink: { color: C.ink, bg: "#EEF0F3" },
   red: { color: C.red, bg: C.redBg },
@@ -230,7 +234,7 @@ const TONES = {
  */
 export function FilterButtons({ label, items, activeId, onSelect }) {
   return (
-    <div role="group" aria-label={label} style={{ display: "inline-flex", flexWrap: "wrap", paddingLeft: 1 }}>
+    <div role="group" aria-label={label} style={{ display: "inline-flex", flexWrap: "wrap", gap: 8 }}>
       {items.map((item, i) => {
         const active = item.id === activeId;
         const tone = TONES[item.alert ? "red" : item.tone || "ink"];
@@ -243,17 +247,18 @@ export function FilterButtons({ label, items, activeId, onSelect }) {
             title={hasCount ? `${item.label}: ${item.count}` : undefined}
             onClick={() => onSelect(item.id)}
             style={{
-              ...body, display: "inline-flex", alignItems: "center", gap: 8, height: CONTROL_HEIGHT, padding: `0 ${hasCount ? 8 : 16}px 0 16px`, marginLeft: -1, cursor: "pointer",
-              border: `1px solid ${C.line}`, borderRadius: i === 0 ? "10px 0 0 10px" : i === items.length - 1 ? "0 10px 10px 0" : 0,
-              background: active ? C.card : C.canvas, boxShadow: active ? `inset 0 -3px 0 ${C.signal}` : "none",
-              color: active ? C.ink : C.muted, fontSize: 13, fontWeight: 700, position: "relative", zIndex: active ? 1 : 0,
+              ...body, display: "inline-flex", alignItems: "center", gap: 8, height: 36, padding: `0 ${hasCount ? 6 : 16}px 0 16px`, cursor: "pointer",
+              border: `1px solid ${active ? C.signalDark : C.lineStrong}`, borderRadius: 999,
+              background: active ? C.signal : C.card, boxShadow: active ? "0 1px 0 rgba(255,255,255,0.45) inset, 0 2px 4px rgba(227,159,12,0.35)" : "none",
+              color: active ? C.onSignal : C.ink, fontSize: 13, fontWeight: 700, position: "relative",
             }}
           >
             {item.label}
             {hasCount && (
               <span aria-hidden="true" data-testid={item.countTestId} style={{
-                minWidth: 26, height: 24, padding: "0 6px", boxSizing: "border-box", borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 800, background: active || item.alert ? tone.color : tone.bg, color: active || item.alert ? "#fff" : tone.color,
+                minWidth: 26, height: 24, padding: "0 7px", boxSizing: "border-box", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, fontWeight: 700,
+                background: item.alert ? C.red : active ? "rgba(11,49,70,0.14)" : tone.bg, color: item.alert ? "#fff" : active ? C.onSignal : (FILTER_INK[tone.color] || tone.color),
               }}>{item.count}</span>
             )}
           </button>

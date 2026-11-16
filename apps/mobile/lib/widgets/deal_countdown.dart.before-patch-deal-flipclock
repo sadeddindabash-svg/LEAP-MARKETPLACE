@@ -1,0 +1,96 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+
+/// The product screen's deal countdown (confirmed with the person via mockup, option B): a highlighted strip, "Deal ends in",
+/// then days, hours, minutes and seconds in boxes, ticking every second. It disappears when the discount ends.
+/// Light: a soft gold strip with navy boxes. Dark: a deep gold strip with gold boxes.
+class DealCountdown extends StatefulWidget {
+  final DateTime endsAt;
+  final bool isAr;
+  const DealCountdown({super.key, required this.endsAt, required this.isAr});
+
+  @override
+  State<DealCountdown> createState() => _DealCountdownState();
+}
+
+class _DealCountdownState extends State<DealCountdown> {
+  Timer? _timer;
+  late Duration _left;
+
+  @override
+  void initState() {
+    super.initState();
+    _left = _compute();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final next = _compute();
+      setState(() => _left = next);
+      if (next <= Duration.zero) _timer?.cancel();
+    });
+  }
+
+  Duration _compute() {
+    final d = widget.endsAt.difference(DateTime.now());
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_left <= Duration.zero) return const SizedBox.shrink();
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final bg = dark ? const Color(0xFF3A2A08) : const Color(0xFFFFF4E0);
+    final border = dark ? const Color(0xFF7A5A12) : const Color(0xFFF6C76A);
+    final text = dark ? const Color(0xFFF8C75A) : const Color(0xFF8A5A00);
+    final boxBg = dark ? const Color(0xFFF9B317) : const Color(0xFF0B3146);
+    final boxText = dark ? const Color(0xFF0B3146) : Colors.white;
+    final ar = widget.isAr;
+    final parts = <List<Object>>[
+      [_left.inDays, ar ? 'يوم' : 'days'],
+      [_left.inHours % 24, ar ? 'ساعة' : 'hrs'],
+      [_left.inMinutes % 60, ar ? 'دقيقة' : 'min'],
+      [_left.inSeconds % 60, ar ? 'ثانية' : 'sec'],
+    ];
+    Widget box(int n, String label) => Container(
+          constraints: const BoxConstraints(minWidth: 38),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          decoration: BoxDecoration(color: boxBg, borderRadius: BorderRadius.circular(6)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(n.toString().padLeft(2, '0'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, height: 1.1, color: boxText, fontFeatures: const [FontFeature.tabularFigures()])),
+              Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, height: 1.1, color: boxText.withValues(alpha: 0.75))),
+            ],
+          ),
+        );
+    return Semantics(
+      label: ar ? 'ينتهي العرض خلال ${_left.inDays} يوم و ${_left.inHours % 24} ساعة' : 'Deal ends in ${_left.inDays} days ${_left.inHours % 24} hours',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(color: bg, border: Border.all(color: border), borderRadius: BorderRadius.circular(10)),
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 10,
+          runSpacing: 6,
+          children: [
+            Text('⏱ ${ar ? 'ينتهي العرض خلال' : 'Deal ends in'}', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: text)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < parts.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 4),
+                  box(parts[i][0] as int, parts[i][1] as String),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

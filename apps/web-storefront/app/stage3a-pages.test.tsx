@@ -234,7 +234,7 @@ describe("order detail: returns, address, receipt, reorder", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Please fill in both fields.");
     expect(m.api.createReturnCase).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Reason (e.g. wrong item, damaged)"), { target: { value: "Damaged" } });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "damaged" } });
     fireEvent.change(screen.getByLabelText("Details"), { target: { value: "Cracked on arrival" } });
     const picker = screen.getByLabelText("Attach photos (optional)", { selector: "input" });
     for (let i = 0; i < 3; i++) { await act(async () => { fireEvent.change(picker, { target: { files: [new File(["x"], `p${i}.jpg`, { type: "image/jpeg" })] } }); }); }
@@ -242,7 +242,7 @@ describe("order detail: returns, address, receipt, reorder", () => {
     expect(screen.queryByLabelText("Attach photos (optional)", { selector: "input" })).not.toBeInTheDocument();   // three is the limit
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
     await waitFor(() => expect(m.api.createReturnCase).toHaveBeenCalledTimes(1));
-    expect(m.api.createReturnCase.mock.lastCall).toEqual([{ subOrderId: 1, reason: "Damaged", message: "Cracked on arrival", photos: ["/uploads/x.jpg", "/uploads/x.jpg", "/uploads/x.jpg"] }, { token: "tok", guestEmail: null }]);
+    expect(m.api.createReturnCase.mock.lastCall).toEqual([{ subOrderId: 1, reasonCode: "damaged", message: "Cracked on arrival", photos: ["/uploads/x.jpg", "/uploads/x.jpg", "/uploads/x.jpg"] }, { token: "tok", guestEmail: null }]);
     expect(await screen.findByText(/Return request sent/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View your return request" }).getAttribute("href")).toBe("/returns/RC-9");
   });
@@ -252,7 +252,7 @@ describe("order detail: returns, address, receipt, reorder", () => {
     await detail();
     fireEvent.click(screen.getByRole("button", { name: "Request a return" }));
     expect(screen.getByText("Photos can be attached when you are signed in.")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Reason (e.g. wrong item, damaged)"), { target: { value: "Wrong" } });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "wrong_part" } });
     fireEvent.change(screen.getByLabelText("Details"), { target: { value: "Not what I ordered" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
     await waitFor(() => expect(m.api.createReturnCase).toHaveBeenCalled());
@@ -265,7 +265,7 @@ describe("order detail: returns, address, receipt, reorder", () => {
     m.api.createReturnCase.mockRejectedValue(new Error("The return window (7 days after delivery) has passed for this order."));
     await detail();
     fireEvent.click(screen.getByRole("button", { name: "Request a return" }));
-    fireEvent.change(screen.getByLabelText("Reason (e.g. wrong item, damaged)"), { target: { value: "Late" } });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "other" } });
     fireEvent.change(screen.getByLabelText("Details"), { target: { value: "Too late" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The return window (7 days after delivery) has passed");

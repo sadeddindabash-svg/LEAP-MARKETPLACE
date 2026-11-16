@@ -8,18 +8,23 @@
  *   tickets           support tickets still open
  *   shippingCosts     parcel shipping costs waiting for an admin (migration 127)
  */
+// a return with a supplier or buyer message the admins have not opened yet (patch-returns-messages, migration 148)
+const RETURN_UNREAD = `(EXISTS (SELECT 1 FROM return_case_supplier_messages m WHERE m.case_id = rc.id AND m.sender_role = 'supplier' AND m.created_at > COALESCE(rc.admin_read_at, '-infinity'::timestamptz))
+  OR EXISTS (SELECT 1 FROM return_case_buyer_messages m WHERE m.case_id = rc.id AND m.sender_role = 'buyer' AND m.created_at > COALESCE(rc.admin_read_at, '-infinity'::timestamptz))
+  OR EXISTS (SELECT 1 FROM return_case_hub_messages m WHERE m.case_id = rc.id AND m.sender_role = 'hub' AND m.created_at > COALESCE(rc.admin_read_at, '-infinity'::timestamptz)))`;      // + the hub (migration 149)
+
 async function countsFor(db) {
   const one = async (sql) => Number((await db.query(sql)).rows[0].n);
   const { rows: [o] } = await db.query(
     `SELECT COUNT(*) AS n,
             COUNT(*) FILTER (WHERE EXISTS (
               SELECT 1 FROM supplier_sub_orders so WHERE so.order_id = o.id AND so.status != 'cancelled' AND so.delay_notified = true
-                AND NOT EXISTS (SELECT 1 FROM hub_shipments hs WHERE hs.sub_order_id = so.id AND hs.status = 'delivered'))) AS late
+                AND NOT EXISTS (SELECT 1 FROM hub_shipments hs WHERE hs.sub_order_id = so.id AND (hs.status = 'delivered' OR (hs.resolved_at IS NOT NULL AND hs.status IN ('flagged', 'returned_to_supplier', 'discarded_at_hub')))))) AS late
      FROM orders o
      WHERE o.status != 'cancelled'
        AND EXISTS (
          SELECT 1 FROM supplier_sub_orders so WHERE so.order_id = o.id AND so.status != 'cancelled'
-           AND NOT EXISTS (SELECT 1 FROM hub_shipments hs WHERE hs.sub_order_id = so.id AND hs.status = 'delivered'))`
+           AND NOT EXISTS (SELECT 1 FROM hub_shipments hs WHERE hs.sub_order_id = so.id AND (hs.status = 'delivered' OR (hs.resolved_at IS NOT NULL AND hs.status IN ('flagged', 'returned_to_supplier', 'discarded_at_hub')))))`
   );
   return {
     orders: { notDelivered: Number(o.n), late: Number(o.late) },
@@ -27,7 +32,9 @@ async function countsFor(db) {
     supplierMessages: await one(
       `SELECT COUNT(*) AS n FROM supplier_messages sm JOIN suppliers s ON s.id = sm.supplier_id
        WHERE sm.sender_role = 'supplier' AND sm.created_at > COALESCE(s.admin_messages_read_at, '-infinity'::timestamptz)`),
-    returns: await one(`SELECT COUNT(*) AS n FROM return_cases WHERE status IN ('awaiting', 'in_progress')`),
+    returns: await one(`SELECT COUNT(*) AS n FROM return_cases rc WHERE status IN ('awaiting', 'in_progress') OR (refund_status IN ('pending', 'failed') AND refund_issued_at IS NULL) OR ${RETURN_UNREAD}`),
+    returnsUnread: await one(`SELECT COUNT(*) AS n FROM return_cases rc WHERE ${RETURN_UNREAD}`),      // patch-returns-messages
+    returnsOverdue: await one(`SELECT COUNT(*) AS n FROM return_cases WHERE status = 'awaiting' AND created_at < now() - interval '48 hours'`),      // patch-returns-flow
     flagged: await one(`SELECT COUNT(*) AS n FROM hub_shipments WHERE resolved_at IS NULL AND status IN ('flagged', 'returned_to_supplier', 'discarded_at_hub')`),
     tickets: await one(`SELECT COUNT(*) AS n FROM support_tickets WHERE status != 'resolved'`),
     shippingCosts: await one(`SELECT COUNT(*) AS n FROM hub_parcel_costs WHERE state IN ('needs_photo', 'waiting')`).catch(() => 0),

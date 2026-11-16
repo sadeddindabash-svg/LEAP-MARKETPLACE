@@ -20,11 +20,11 @@ export function pageBadge(counts, pageId, { flaggedCount = 0 } = {}) {
     n = c.orders.notDelivered; tip = `${n} ${n === 1 ? "order" : "orders"} not delivered yet${c.orders.late ? ` · ${c.orders.late} late` : ""}`;
   } else if (pageId === "suppliers") { n = c.suppliers || 0; tip = `${n} ${n === 1 ? "supplier" : "suppliers"} waiting for approval`; }
   else if (pageId === "supplierMessages") { n = c.supplierMessages || 0; tip = `${n} unread ${n === 1 ? "message" : "messages"} from suppliers`; }
-  else if (pageId === "returns") { n = c.returns || 0; tip = `${n} open ${n === 1 ? "return" : "returns"}`; }
+  else if (pageId === "returns") { n = c.returns || 0; tip = `${n} open ${n === 1 ? "return" : "returns"}${c.returnsOverdue ? ` · ${c.returnsOverdue} waiting over 48 hours` : ""}${c.returnsUnread ? ` · ${c.returnsUnread} with a new message` : ""}`; }
   else if (pageId === "flagged") { n = c.flagged ?? flaggedCount; tip = `${n} flagged ${n === 1 ? "shipment" : "shipments"} still open`; }
   else if (pageId === "tickets") { n = c.tickets || 0; tip = `${n} open ${n === 1 ? "ticket" : "tickets"}`; }
   else if (pageId === "shippingCosts") { n = c.shippingCosts || 0; tip = `${n} ${n === 1 ? "parcel's" : "parcels'"} shipping cost waiting for your approval`; }
-  return n > 0 ? { count: n, red: RED.has(pageId), tip } : { count: 0, red: false, tip: "" };
+  return n > 0 ? { count: n, red: RED.has(pageId) || (pageId === "returns" && (c.returnsOverdue || 0) > 0), tip } : { count: 0, red: false, tip: "" };
 }
 
 /** A side-menu entry: one page, or a group (the total of its pages this admin may open). */

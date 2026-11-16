@@ -29,13 +29,14 @@ class ResponseError extends Error {
 }
 
 // What the reminder job should do with a waiting order (pure: easy to test). Catch-up after the server was down sends ONE reminder, not one per missed slot.
-function nextStep({ status, respondBy, remindersSent = 0, escalatedAt = null, now = new Date() }) {
+function nextStep({ status, respondBy, remindersSent = 0, escalatedAt = null, now = new Date(), windowHours = ANSWER_WINDOW_HOURS, everyHours = REMINDER_EVERY_HOURS }) {      // windowHours: the wait set in Orders > Rules
   if (status !== 'pending' || escalatedAt || !respondBy) return { action: 'none' };
   const deadline = new Date(respondBy).getTime();
   const nowMs = new Date(now).getTime();
   if (nowMs >= deadline) return { action: 'escalate' };
-  const started = deadline - ANSWER_WINDOW_HOURS * HOUR;
-  const due = Math.min(MAX_REMINDERS, Math.floor((nowMs - started) / (REMINDER_EVERY_HOURS * HOUR)));
+  const started = deadline - windowHours * HOUR;
+  const maxReminders = Math.max(0, Math.ceil(windowHours / everyHours) - 1);      // every N hours (Orders > Rules), never at the deadline itself
+  const due = Math.min(maxReminders, Math.floor((nowMs - started) / (everyHours * HOUR)));
   if (due > remindersSent) return { action: 'remind', remindersDue: due, hoursLeft: Math.max(0, Math.ceil((deadline - nowMs) / HOUR)) };
   return { action: 'none' };
 }
@@ -124,21 +125,24 @@ async function announceRefusal({ subOrder, order, items, reason }) {
 // ---- the admin's side
 async function listForAdmin({ filter = 'open' } = {}) {
   const where = {
-    open: "((so.status = 'cancelled' AND so.refused_at IS NOT NULL) OR (so.status = 'pending' AND so.escalated_at IS NOT NULL)) AND so.refusal_handled_at IS NULL",
-    handled: 'so.refusal_handled_at IS NOT NULL',
+    open: "((so.status = 'cancelled' AND so.refused_at IS NOT NULL) OR (so.status = 'pending' AND so.escalated_at IS NOT NULL) OR (so.status = 'cancelled' AND so.refund_needed_amount IS NOT NULL AND so.cancelled_by IS NULL)) AND so.refusal_handled_at IS NULL",
+    working: "so.status = 'pending' AND so.resend_count > 0 AND so.escalated_at IS NULL AND so.accepted_at IS NULL",      // sent back to the same supplier, waiting for its answer
+    auto: "so.refusal_handled_at IS NOT NULL AND so.refusal_handled_by = 'automatic'",      // done by the rules: moved, or cancelled and refunded
+    handled: "so.refusal_handled_at IS NOT NULL AND so.refusal_handled_by IS DISTINCT FROM 'automatic'",
     all: "(so.refused_at IS NOT NULL OR so.escalated_at IS NOT NULL)",
   }[filter] || null;
-  if (!where) throw new ResponseError("filter must be 'open', 'handled' or 'all'");
+  if (!where) throw new ResponseError("filter must be 'open', 'working', 'auto', 'handled' or 'all'");
   const { rows } = await db.query(
     `SELECT so.*, s.name AS supplier_name, o.buyer_id, o.guest_email, o.status AS order_status, o.placed_at, u.email AS buyer_email
      FROM supplier_sub_orders so JOIN suppliers s ON s.id = so.supplier_id JOIN orders o ON o.id = so.order_id LEFT JOIN users u ON u.id = o.buyer_id
-     WHERE ${where} ORDER BY COALESCE(so.refused_at, so.escalated_at) DESC`
+     WHERE ${where} ORDER BY COALESCE(so.refused_at, so.no_answer_closed_at, so.escalated_at, so.respond_by) DESC`
   );
   const out = [];
   for (const r of rows) {
     const { rows: items } = await db.query('SELECT oli.product_id, oli.quantity, oli.unit_price, oli.supplier_unit_price_cny, p.name, p.oem_number FROM order_line_items oli JOIN products p ON p.id = oli.product_id WHERE oli.sub_order_id = $1', [r.id]);
     out.push({
-      subOrderId: r.id, orderId: r.order_id, kind: r.refused_at ? 'refused' : 'no_answer', status: r.status, orderStatus: r.order_status, placedAt: r.placed_at,
+      subOrderId: r.id, orderId: r.order_id, kind: r.refund_needed_amount != null ? 'refund' : r.refused_at ? 'refused' : 'no_answer',
+      refundAmountUsd: r.refund_needed_amount == null ? null : Number(r.refund_needed_amount), refundIssuedAt: r.refund_issued_at, refundReference: r.refund_reference, refundStatus: r.refund_status, refundError: r.refund_error, resendCount: r.resend_count || 0, waiting: r.status === 'pending' && !r.escalated_at, handledAutomatically: r.refusal_handled_by === 'automatic', status: r.status, orderStatus: r.order_status, placedAt: r.placed_at,
       supplierId: r.supplier_id, supplierName: r.supplier_name, buyerId: r.buyer_id, buyerContact: r.buyer_email || r.guest_email || null,
       reason: r.refusal_reason, reasonText: r.refusal_reason ? REASON_TEXT[r.refusal_reason].en : null, note: r.refusal_note, refusedAt: r.refused_at, respondBy: r.respond_by, escalatedAt: r.escalated_at,
       handledAt: r.refusal_handled_at, handledBy: r.refusal_handled_by, handledNote: r.refusal_handled_note, reassignedToSubOrderId: r.reassigned_to_sub_order_id,

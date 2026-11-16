@@ -50,7 +50,7 @@ function ledgerCte(where = 'TRUE') {
            EXISTS (SELECT 1 FROM order_line_items nl WHERE nl.sub_order_id = so.id AND nl.supplier_unit_price_cny IS NULL) AS unpriced,
            (SELECT pso.payout_id FROM payout_sub_orders pso WHERE pso.sub_order_id = so.id LIMIT 1) AS payout_id,
            (SELECT r.payout_id FROM supplier_recoveries r WHERE r.sub_order_id = so.id) AS recovered_in_payout_id,
-           EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id AND rc.status IN ('approved', 'completed')) AS returned,
+           EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id AND rc.status IN ('approved', 'completed') AND COALESCE(rc.cost_bearer, 'supplier') = 'supplier') AS returned,      -- Leap-paid returns: the supplier is paid (migration 150)
            EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id AND rc.status IN ('awaiting', 'in_progress')) AS return_open,
            EXISTS (SELECT 1 FROM fault_cases fc WHERE fc.sub_order_id = so.id AND fc.cost_bearer = 'supplier') AS supplier_fault,
            EXISTS (SELECT 1 FROM fault_cases fc WHERE fc.sub_order_id = so.id AND fc.cost_bearer <> 'supplier') AS leap_fault

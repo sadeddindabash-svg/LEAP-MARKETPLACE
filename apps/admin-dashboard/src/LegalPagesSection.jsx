@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
 import { fetchFooter, fetchPage, savePage, PAGE_KEYS, PAGE_NAMES } from "./footerApi";
@@ -10,7 +11,7 @@ import { bold, heading, bulletList, link } from "./pageEditorFormat";
 const MAX = { title: 120, body: 60000 };
 const field = { ...body, width: "100%", boxSizing: "border-box", fontSize: 13, padding: "8px 10px", borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: C.line, color: C.ink, background: "#fff" };
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 const draftOf = (p) => ({ title: { en: p?.title?.en || "", ar: p?.title?.ar || "" }, body: { en: p?.body?.en || "", ar: p?.body?.ar || "" } });
 const same = (a, b) => ["title", "body"].every((n) => ["en", "ar"].every((l) => a[n][l].trim() === b[n][l].trim()));
 const when = (iso) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -45,10 +46,10 @@ export default function LegalPagesSection({ onSessionExpired }) {
   };
 
   return (
-    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
       <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Pages</h2>
       <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 12px", lineHeight: 1.5 }}>The six pages the footer's "Useful links" open inside the website. Until a page has text, its link still opens the same page on the old website.</p>
-      <div role="tablist" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+      <div role="tablist" data-leap-segments="" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
         {PAGE_KEYS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={k === active} onClick={() => { setActive(k); setError(null); setMessage(null); }} style={k === active ? primary : button}>
             {PAGE_NAMES[k]}{unsaved(k) ? " ●" : ""}{flags[k] === false ? "" : ""}

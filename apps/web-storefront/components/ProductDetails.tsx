@@ -28,7 +28,7 @@ export default function ProductDetails({ product, lang }: { product: ProductDeta
   rows.push([t(lang, "detail_dimensions"), lengthCm != null && widthCm != null && heightCm != null ? `${clean(lengthCm)} × ${clean(widthCm)} × ${clean(heightCm)} cm${approx}` : none]);
   rows.push([t(lang, "detail_weight"), weightKg != null ? `${clean(weightKg)} kg${approx}` : none]);
   return (
-    <section aria-labelledby="product-details-h" className="mt-6 rounded-xl border border-line bg-white p-5">
+    <section aria-labelledby="product-details-h" className="rounded-xl border border-line bg-white p-5 md:mt-4">
       <h2 id="product-details-h" className="mb-3 text-lg font-bold">{t(lang, "product_details_title")}</h2>
       <dl className="divide-y divide-line text-sm">
         {rows.map(([label, value], i) => (

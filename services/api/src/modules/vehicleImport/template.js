@@ -31,7 +31,7 @@ async function buildTemplate() {
     ['• One row = one version of a vehicle in one year (for example AITO M5, 2022, "AWD Flagship"). The first row (the headers) must stay as it is.', false],
     ['• Fill all three language blocks: English (columns A to F), Arabic and Chinese. Brand, Model, Version and Engine are needed in all three languages. Year and Seats are numbers and must be the SAME in the three blocks.', false],
     [`• Brands, models and years are created for you. A brand that already exists gets its Arabic and Chinese names (and its logo, when the file has one) updated from the file. Brand logo (column "${LOGO_HEADER}"): place the logo over that cell on ANY one row of the brand; a new brand without a logo is saved marked "No logo yet". Years have no photo.`, false],
-    ['• Year: four digits, 1950 up to next year. Seats: a whole number from 1 to 12.', false],
+    ['• Year: four digits, 1950 up to next year. Seats: a whole number from 1 to 60.', false],
     [`• Version photo (column "${PHOTO_HEADER}"): place ONE picture over the cell of its row (Insert > Pictures > Place over cells), PNG, JPEG or WebP, at least 400 x 400 px. A row without a picture is fine: the version is saved marked "No photo yet" and you add the photo later in Vehicle Data.`, false],
     ['• Two rows with the same brand, model, year, version name, engine and seats are the same version: a file may not have it twice. A version that already exists in the system is skipped (or updated, if you choose "Update existing").', false],
     [`• Up to ${MAX_ROWS} rows per file. The file is checked first and NOTHING is saved until you press Import; then everything is saved together or nothing is.`, false],

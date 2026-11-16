@@ -32,7 +32,9 @@ class _AlternativesSectionState extends State<AlternativesSection> {
     return FutureBuilder<List<Product>>(
       future: _future,
       builder: (context, snapshot) {
-        final alternatives = snapshot.data ?? [];
+        final all = snapshot.data ?? [];
+        // only a multiple of 2 (confirmed with the person via mockup): an odd last part is left out, a single one shows nothing
+        final alternatives = all.take(all.length - all.length % 2).toList();
         // Real, deliberate empty-state handling: never shows a
         // section header with nothing real underneath it, whether
         // still loading, failed, or genuinely has zero real

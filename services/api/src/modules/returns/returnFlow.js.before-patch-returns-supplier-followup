@@ -1,0 +1,259 @@
+const db = require('../../../db/pool');
+const { refundPart } = require('../payment/refunds');
+const noAnswer = require('../orderResponse/noAnswer');
+const { createNotification } = require('../notifications/helpers');
+
+/**
+ * A buyer's return after the admin decides (migration 146, patch-returns-flow).
+ *   approve      the admin approves: how much to give back, whether the buyer sends the part back (to which hub) or keeps it, and whether the
+ *                money goes back now or when the part has arrived. The buyer gets the instructions (hub address + the case id as return code)
+ *                in their thread and as a notification; the supplier is told.
+ *   refund       by the same rule as a cancelled part (Orders > Rules > step 5): 'auto' refunds through the provider the buyer paid with
+ *                (../payment/refunds.js); 'manual' or a failure waits for the admin ("Mark refunded" / "Try again" on the case).
+ *   received     the hub (or the admin) received the part: in good condition it goes back to stock; a refund waiting for the part goes out.
+ *   completed    the case closes by itself once the money is back and (if it was sent back) the part has arrived.
+ * A return that comes from a hub-found fault (Flagged shipments, migration 091) keeps that flow: it is refused here.
+ */
+
+const REASONS = {
+  wrong_part: { en: 'Wrong part', ar: 'قطعة خاطئة', zh: '发错商品' },
+  damaged: { en: 'Arrived damaged', ar: 'وصلت تالفة', zh: '商品损坏' },
+  doesnt_fit: { en: "Doesn't fit my car", ar: 'لا تناسب سيارتي', zh: '不适配车辆' },
+  not_as_described: { en: 'Not as described', ar: 'غير مطابقة للوصف', zh: '与描述不符' },
+  other: { en: 'Other', ar: 'سبب آخر', zh: '其他' },
+};
+const OVERDUE_HOURS = 48;      // an "awaiting" case older than this is shown in red in the admin
+
+class ReturnFlowError extends Error { constructor(status, message) { super(message); this.status = status; } }
+
+const money = (n) => Number(n).toFixed(2);
+const r2 = (n) => Number(Number(n).toFixed(2));
+const both = ({ en, ar }) => `${en}\n${ar}`;
+const zhEn = ({ zh, en }) => `${zh}\n${en}`;
+
+const BUYER = {
+  approvedSendBack: (id, hub, amount, when) => ({
+    en: `Your return ${id} is approved. Please send the part to: ${hub.name}, ${hub.address}. Write the return code ${id} clearly on the parcel and keep your shipping receipt.`
+      + (amount > 0 ? (when === 'now' ? ` We are refunding $${money(amount)} now.` : ` We will refund $${money(amount)} as soon as the part arrives.`) : ''),
+    ar: `تمت الموافقة على الإرجاع ${id}. يرجى إرسال القطعة إلى: ${hub.name}، ${hub.address}. اكتب رمز الإرجاع ${id} بوضوح على الطرد واحتفظ بإيصال الشحن.`
+      + (amount > 0 ? (when === 'now' ? ` سنعيد إليك ${money(amount)}$ الآن.` : ` سنعيد إليك ${money(amount)}$ فور وصول القطعة.`) : ''),
+  }),
+  approvedKeep: (id, amount) => ({
+    en: `Your return ${id} is approved. You do not need to send the part back.` + (amount > 0 ? ` We are refunding $${money(amount)}.` : ''),
+    ar: `تمت الموافقة على الإرجاع ${id}. لا تحتاج إلى إعادة القطعة.` + (amount > 0 ? ` سنعيد إليك ${money(amount)}$.` : ''),
+  }),
+  received: (id) => ({ en: `We received the part for return ${id}. Thank you.`, ar: `استلمنا القطعة الخاصة بالإرجاع ${id}. شكرًا لك.` }),
+  refunded: (id, amount) => ({ en: `Return ${id}: $${money(amount)} is on its way back to you, through the way you paid. Banks can take a few days to show it.`, ar: `الإرجاع ${id}: تمت إعادة ${money(amount)}$ إليك بنفس طريقة الدفع. قد يستغرق ظهوره بضعة أيام لدى البنك.` }),
+  notCharged: (id) => ({ en: `Return ${id}: no payment had been taken for this part, so there is nothing to give back.`, ar: `الإرجاع ${id}: لم يُخصم أي مبلغ عن هذه القطعة، لذلك لا يوجد ما يُعاد.` }),
+  refundComing: (id, amount) => ({ en: `Return ${id}: we are refunding $${money(amount)}; we will tell you when it has been sent.`, ar: `الإرجاع ${id}: سنعيد إليك ${money(amount)}$، وسنبلغك عند إرساله.` }),
+};
+const SUPPLIER = {
+  filed: (id, orderId, reasonCode) => ({
+    title: '新的退货申请 · New return request',
+    body: zhEn({ zh: `订单 ${orderId} 的买家申请退货（${id}）：${REASONS[reasonCode || 'other'].zh}。平台会处理此申请，如需您的说明会在“退货/售后”页联系您。`, en: `The buyer of order ${orderId} asked to return a part (${id}): ${REASONS[reasonCode || 'other'].en}. Leap handles it and will write to you on the Returns page if needed.` }),
+  }),
+  approved: (id, orderId, sendBack) => ({
+    title: '退货已批准 · Return approved',
+    body: zhEn({
+      zh: `订单 ${orderId} 的退货 ${id} 已批准。${sendBack ? '买家会把商品寄回 Leap 质检中心。' : '买家无需寄回商品。'}此商品的货款不予结算。`,
+      en: `Return ${id} for order ${orderId} was approved. ${sendBack ? 'The buyer sends the part back to a Leap hub.' : 'The buyer does not send the part back.'} This part will not be paid out.`,
+    }),
+  }),
+};
+const ADMIN = {      // to the admins' bell (noAnswer.tellAdmins)
+  manual: (id, orderId, amount) => ({ title: `Refund needed for return ${id}`, body: `Return ${id} (order ${orderId}): refund $${money(amount)} by hand, then press "Mark refunded" on the case in Returns.` }),
+  failed: (id, orderId, amount, error) => ({ title: `Refund failed for return ${id}`, body: `Return ${id} (order ${orderId}): the automatic refund of $${money(amount)} failed (${error}). Open the case in Returns to try again or mark it refunded.` }),
+};
+
+async function notifyBuyer(rc, text, status = null) {
+  try {
+    if (!rc.buyer_id) return;
+    await createNotification({ userId: rc.buyer_id, type: 'return_status', title: 'Your return request was updated', body: text.en, titleAr: 'تم تحديث طلب الإرجاع الخاص بك', bodyAr: text.ar, linkType: 'order', linkId: rc.order_id });
+  } catch (err) { console.error('[returns] buyer notification failed (non-fatal):', err.message); }
+}
+async function notifySupplier(subOrderId, msg, caseId) {
+  try {
+    const { rows } = await db.query("SELECT u.id FROM users u JOIN supplier_sub_orders so ON so.supplier_id = u.supplier_id WHERE so.id = $1 AND u.role = 'supplier'", [subOrderId]);
+    for (const u of rows) await createNotification({ userId: u.id, type: 'return_status', title: msg.title, body: msg.body, linkType: 'return_case', linkId: caseId });
+  } catch (err) { console.error('[returns] supplier notification failed (non-fatal):', err.message); }
+}
+async function buyerMessage(q, caseId, text) {
+  await q.query("INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)", [caseId, both(text)]);
+}
+
+/** What the buyer paid for this part's items (USD); 0 for a free replacement order. */
+async function partValue(q, subOrderId) {
+  const { rows: [r] } = await q.query(
+    `SELECT o.replacement_of, COALESCE((SELECT SUM(oli.unit_price * oli.quantity) FROM order_line_items oli WHERE oli.sub_order_id = so.id), 0) AS total
+     FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id WHERE so.id = $1`, [subOrderId]);
+  if (!r) return 0;
+  return r.replacement_of ? 0 : r2(r.total);
+}
+
+/** The case comes from a hub-found fault (or the shipment is still flagged): Flagged shipments handles it. */
+async function isFaultCase(q, subOrderId) {
+  const { rows } = await q.query(
+    `SELECT 1 FROM fault_cases WHERE sub_order_id = $1
+     UNION ALL SELECT 1 FROM hub_shipments WHERE sub_order_id = $1 AND resolved_at IS NULL AND status IN ('flagged', 'returned_to_supplier', 'discarded_at_hub')
+     LIMIT 1`, [subOrderId]);
+  return rows.length > 0;
+}
+
+/** The buyer filed a return: tell the supplier. Never throws. */
+async function afterFiled({ id, orderId, subOrderId, reasonCode }) {
+  await notifySupplier(subOrderId, SUPPLIER.filed(id, orderId, reasonCode), id);
+}
+
+// POST /returns/:id/approve   inside a transaction
+async function approve(client, { caseId, adminId, amount, sendBack, hubId, refundWhen, note }) {
+  const { rows: [rc] } = await client.query('SELECT * FROM return_cases WHERE id = $1 FOR UPDATE', [caseId]);
+  if (!rc) throw new ReturnFlowError(404, 'Return case not found');
+  if (!['awaiting', 'in_progress'].includes(rc.status)) throw new ReturnFlowError(409, `This return is already ${rc.status}.`);
+  if (await isFaultCase(client, rc.sub_order_id)) throw new ReturnFlowError(409, 'This return comes from a fault the hub found. Decide it in Flagged shipments.');
+
+  const max = await partValue(client, rc.sub_order_id);
+  const want = amount === undefined || amount === null || amount === '' ? max : Number(amount);
+  if (!Number.isFinite(want) || want < 0) throw new ReturnFlowError(400, 'Enter the amount to refund (0 or more).');
+  if (want > max + 0.001) throw new ReturnFlowError(400, `The refund cannot be more than the part's value ($${money(max)}).`);
+  const refundAmount = r2(want);
+
+  const back = sendBack !== false;
+  let hub = null;
+  if (back) {
+    const { rows } = await client.query('SELECT id, name, address FROM hubs WHERE id = $1', [hubId || '']);
+    hub = rows[0];
+    if (!hub) throw new ReturnFlowError(400, 'Choose the hub the buyer sends the part to.');
+    if (!hub.address || !hub.address.trim()) throw new ReturnFlowError(400, `${hub.name} has no address yet. Add it in Hubs first, so the buyer knows where to send the part.`);
+  }
+  const when = back && refundWhen === 'on_receipt' ? 'on_receipt' : 'now';
+  const refundStatus = refundAmount > 0 ? (when === 'on_receipt' ? 'waiting_part' : 'pending') : null;
+
+  const { rows: [updated] } = await client.query(
+    `UPDATE return_cases SET status = 'approved', decided_at = now(), decided_by = $2, send_back = $3, return_hub_id = $4, refund_when = $5,
+       refund_amount = $6, refund_status = $7, updated_at = now() WHERE id = $1 RETURNING *`,
+    [caseId, adminId, back, hub ? hub.id : null, refundAmount > 0 ? when : null, refundAmount, refundStatus]
+  );
+  const text = back ? BUYER.approvedSendBack(caseId, hub, refundAmount, when) : BUYER.approvedKeep(caseId, refundAmount);
+  await buyerMessage(client, caseId, text);
+  if (typeof note === 'string' && note.trim()) await client.query("INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)", [caseId, note.trim().slice(0, 2000)]);
+  await client.query("INSERT INTO return_case_supplier_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)", [caseId, SUPPLIER.approved(caseId, rc.order_id, back).body]);
+  return { rc: updated, text, sendBack: back };
+}
+
+// After the commit: tell the buyer and the supplier, then the refund (when it goes now). Never throws.
+async function afterApprove({ rc, text, sendBack }) {
+  await notifyBuyer(rc, text);
+  await notifySupplier(rc.sub_order_id, SUPPLIER.approved(rc.id, rc.order_id, sendBack), rc.id);
+  if (rc.refund_status === 'pending') await refundReturn(rc.id);
+  else await maybeComplete(rc.id);
+}
+
+/** Gives the money back for a case whose refund is 'pending' (auto rule) or tells the admin (manual rule). Never throws. */
+async function refundReturn(caseId, { forceAuto = false, byAdmin = null } = {}) {
+  try {
+    const { rows: [rc] } = await db.query('SELECT * FROM return_cases WHERE id = $1', [caseId]);
+    if (!rc || !(Number(rc.refund_amount) > 0) || rc.refund_issued_at || !['pending', 'failed'].includes(rc.refund_status)) return { ok: false, error: 'There is no refund waiting for this return.' };
+    const amount = Number(rc.refund_amount);
+    const { refundMode } = await noAnswer.getRules();
+    if (refundMode !== 'auto' && !forceAuto) {
+      // the buyer is told when the money has gone (major), not that it is being prepared (patch-returns-conversations)
+      await noAnswer.tellAdmins('failure', ADMIN.manual(rc.id, rc.order_id, amount), rc.order_id);
+      return { ok: false, manual: true };
+    }
+    const r = await refundPart({ orderId: rc.order_id, amountUsd: amount });
+    if (r.ok) {
+      await db.query(`UPDATE return_cases SET refund_status = 'auto_done', refund_issued_at = now(), refund_reference = $2, refund_provider = $3, refund_error = NULL, refunded_by = $4, updated_at = now() WHERE id = $1`, [rc.id, r.reference, r.provider, byAdmin]);
+      const text = r.reference === 'no-payment-taken' ? BUYER.notCharged(rc.id) : BUYER.refunded(rc.id, amount);
+      await buyerMessage(db, rc.id, text);
+      await notifyBuyer(rc, text);
+      await maybeComplete(rc.id);
+      return { ok: true, reference: r.reference };
+    }
+    await db.query("UPDATE return_cases SET refund_status = 'failed', refund_error = $2, refund_provider = $3, updated_at = now() WHERE id = $1", [rc.id, String(r.error).slice(0, 300), r.provider || null]);
+    // no notification to the buyer here: they hear when the money has gone (patch-returns-conversations)
+    await noAnswer.tellAdmins('failure', ADMIN.failed(rc.id, rc.order_id, amount, r.error), rc.order_id);
+    return { ok: false, error: r.error };
+  } catch (err) {
+    console.error('[returns] refund step failed (non-fatal):', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+// POST /returns/:id/refunded { reference }   the admin refunded the buyer by hand
+async function markRefunded(client, { caseId, reference, adminId }) {
+  const ref = typeof reference === 'string' ? reference.trim().slice(0, 120) : '';
+  if (ref.length < 3) throw new ReturnFlowError(400, 'Enter the payment reference of the refund (from Stripe or PayPal).');
+  const { rows: [rc] } = await client.query('SELECT * FROM return_cases WHERE id = $1 FOR UPDATE', [caseId]);
+  if (!rc) throw new ReturnFlowError(404, 'Return case not found');
+  if (!(Number(rc.refund_amount) > 0) || rc.refund_issued_at) throw new ReturnFlowError(409, 'There is no refund waiting for this return.');
+  const { rows: [updated] } = await client.query(
+    `UPDATE return_cases SET refund_status = 'manual_done', refund_issued_at = now(), refund_reference = $2, refund_error = NULL, refunded_by = $3, updated_at = now() WHERE id = $1 RETURNING *`,
+    [caseId, ref, adminId]);
+  const text = BUYER.refunded(caseId, Number(rc.refund_amount));
+  await buyerMessage(client, caseId, text);
+  return { rc: updated, text };
+}
+
+// The part arrived (the hub, or the admin): back to stock when it is in good condition. Inside a transaction.
+async function markReceived(client, { caseId, condition, userId, hubId = null }) {
+  if (!['good', 'damaged'].includes(condition)) throw new ReturnFlowError(400, 'condition must be "good" or "damaged".');
+  const { rows: [rc] } = await client.query('SELECT * FROM return_cases WHERE id = $1 FOR UPDATE', [caseId]);
+  if (!rc || (hubId && rc.return_hub_id !== hubId)) throw new ReturnFlowError(404, 'Return not found');
+  if (rc.status !== 'approved' || rc.send_back !== true) throw new ReturnFlowError(409, 'This return is not waiting for a part.');
+  if (rc.received_at) throw new ReturnFlowError(409, 'This part was already received.');
+  let restocked = 0;
+  if (condition === 'good') {
+    const { rows: lines } = await client.query('SELECT product_id, quantity FROM order_line_items WHERE sub_order_id = $1', [rc.sub_order_id]);
+    for (const l of lines) {
+      const r = await client.query('UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2', [l.quantity, l.product_id]);
+      if (r.rowCount) restocked += l.quantity;
+    }
+  }
+  const nextRefund = rc.refund_status === 'waiting_part' ? 'pending' : rc.refund_status;
+  const { rows: [updated] } = await client.query(
+    `UPDATE return_cases SET received_at = now(), received_by = $2, received_condition = $3, restocked_qty = $4, refund_status = $5, updated_at = now() WHERE id = $1 RETURNING *`,
+    [caseId, userId, condition, restocked, nextRefund]);
+  await buyerMessage(client, caseId, BUYER.received(caseId));
+  return { rc: updated, restocked };
+}
+
+async function afterReceived({ rc }) {
+  // "we received the part" stays in the buyer's thread, without a notification: only major news is notified (patch-returns-conversations)
+  if (rc.refund_status === 'pending') await refundReturn(rc.id);
+  else await maybeComplete(rc.id);
+}
+
+/** Closes an approved case once the money is back (or there was none to give) and the part has arrived (when it was sent back). Never throws. */
+async function maybeComplete(caseId) {
+  try {
+    const { rows: [rc] } = await db.query(
+      `UPDATE return_cases SET status = 'completed', updated_at = now()
+       WHERE id = $1 AND status = 'approved'
+         AND (COALESCE(refund_amount, 0) = 0 OR refund_issued_at IS NOT NULL)
+         AND (send_back IS NOT TRUE OR received_at IS NOT NULL)
+       RETURNING *`, [caseId]);
+    if (rc) await notifyBuyer(rc, { en: `Return ${rc.id} is completed.`, ar: `اكتمل الإرجاع ${rc.id}.` });
+    return Boolean(rc);
+  } catch (err) { console.error('[returns] complete step failed (non-fatal):', err.message); return false; }
+}
+
+/** What the admin, the buyer and the hub see about the decision. */
+function decisionDto(row) {
+  return {
+    reasonCode: row.reason_code || null,
+    decidedAt: row.decided_at || null,
+    sendBack: row.send_back,
+    returnHub: row.return_hub_id ? { id: row.return_hub_id, name: row.return_hub_name || null, address: row.return_hub_address || null } : null,
+    refundWhen: row.refund_when || null,
+    refundAmount: row.refund_amount == null ? null : Number(row.refund_amount),
+    refundStatus: row.refund_status || null,
+    refundReference: row.refund_reference || null,
+    refundError: row.refund_error || null,
+    refundedAt: row.refund_issued_at || null,
+    receivedAt: row.received_at || null,
+    receivedCondition: row.received_condition || null,
+    restockedQty: row.restocked_qty == null ? null : Number(row.restocked_qty),
+  };
+}
+
+module.exports = { REASONS, OVERDUE_HOURS, ReturnFlowError, partValue, isFaultCase, afterFiled, approve, afterApprove, refundReturn, markRefunded, markReceived, afterReceived, maybeComplete, decisionDto, notifyBuyer };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
-import { FONT_IMPORT, C, disp, mono, useBodyFont } from "./theme";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
+import { FONT_IMPORT, C, disp, mono, useBodyFont, SHADOW } from "./theme";
 import { exportToExcel } from "./exportToExcel";
 import { STATUS_COLOR, PlateChip, Badge, KpiCard, Card, Th, Td } from "./components/ui";
 import { CountUpValue } from "./components/CountUp";      // the payout amounts count up from 0
@@ -23,7 +24,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices, bulkUpdateProducts,
-  fetchMyOrders, updateSubOrder, acceptSubOrder, refuseSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
+  fetchMyOrders, updateSubOrder, acceptSubOrder, refuseSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, answerMyReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
   fetchMyOverview,
   uploadProductImage, uploadProductVideo, fetchProductRequirements, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
@@ -41,6 +42,7 @@ import PartShippingBlock from "./PartShippingBlock";
 import { partShippingOf } from "./partShipping";
 import { useVehicleCascade } from "./vehicleCascade";
 import { setApiLanguage, apiMessage, uiLocale } from "./serverMessages";
+import VerificationPage from "./VerificationPage";      // patch-supplier-verification
 import HubInboundLabel from "./HubInboundLabel";      // the striped 4×4 in supplier -> hub label
 import { fetchMenuCounts, markMenuMessagesRead, menuBadge } from "./menuCounts";      // the numbers beside Orders, Returns and Messages in the side menu
 
@@ -373,25 +375,28 @@ function TopBar({ title, subtitle, tabs }) {
   const font = useBodyFont();
   const pageTab = useGroupTabs();
   const displayName = profile ? profile.name : "";
+  const hasTabs = Boolean((tabs && tabs.tabs.length > 0) || pageTab);
   return (
-    <>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        <div style={{ ...font, fontSize: 22, fontWeight: 700, color: C.ink }}>{title}</div>
-        {subtitle && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+    <div data-leap-header="" style={{ position: "relative", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)`, padding: hasTabs ? "24px 32px 0" : "24px 32px 26px" }}>
+    <span aria-hidden="true" style={{ position: "absolute", inset: "0 0 55% 0", background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0))", pointerEvents: "none" }} />
+    <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+        <div style={{ ...font, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal, marginBottom: 6 }}>{lang === "zh" ? "LEAP 供应商" : "LEAP supplier"}</div>
+        <div style={{ ...font, fontSize: 28, lineHeight: "34px", fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{title}</div>
+        {subtitle && <div style={{ ...font, fontSize: 13, lineHeight: "19px", color: C.onNavyMuted, marginTop: 4, maxWidth: 760 }}>{subtitle}</div>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 240 }}>
-          <Search size={15} color={C.muted} />
-          <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{t.searchPlaceholder}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "0 12px", width: 240 }}>
+          <Search size={15} color={C.onNavyMuted} />
+          <span style={{ ...font, fontSize: 12.5, color: C.onNavyMuted }}>{t.searchPlaceholder}</span>
         </div>
         <button
           type="button"
           aria-label={t.notifications.title}
-          style={{ position: "relative", width: 40, height: 40, boxSizing: "border-box", background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, cursor: onOpenNotifications ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+          style={{ position: "relative", width: 40, height: 40, boxSizing: "border-box", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, cursor: onOpenNotifications ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
           onClick={onOpenNotifications}
         >
-          <Bell size={17} color={C.ink} />
+          <Bell size={17} color="#fff" />
           {unreadNotificationCount > 0 && (
             <div style={{
               position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 999,
@@ -402,18 +407,18 @@ function TopBar({ title, subtitle, tabs }) {
           )}
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 700, fontSize: 12 }}>{displayName.charAt(0) || "?"}</div>
+          <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.signal, color: C.onSignal, boxShadow: "0 0 0 3px rgba(249,179,23,0.25)", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 800, fontSize: 13 }}>{displayName.charAt(0) || "?"}</div>
           <div>
-            <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{displayName}</div>
-            <div style={{ ...font, fontSize: 10.5, color: C.muted }}>{t.role}</div>
+            <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: "#fff" }}>{displayName}</div>
+            <div style={{ ...font, fontSize: 10.5, color: C.onNavyMuted }}>{t.role}</div>
           </div>
         </div>
       </div>
     </div>
     {tabs && tabs.tabs.length > 0
-      ? <FolderTabs label={tabs.label} tabs={tabs.tabs} activeId={tabs.activeId} onSelect={tabs.onSelect} maxVisible={tabs.maxVisible || 7} />
-      : pageTab && <FolderTabs label={pageTab.label} tabs={pageTab.tabs} activeId={pageTab.activeId} onSelect={pageTab.onSelect} />}
-    </>
+      ? <FolderTabs dark label={tabs.label} tabs={tabs.tabs} activeId={tabs.activeId} onSelect={tabs.onSelect} maxVisible={tabs.maxVisible || 7} />
+      : pageTab && <FolderTabs dark label={pageTab.label} tabs={pageTab.tabs} activeId={pageTab.activeId} onSelect={pageTab.onSelect} />}
+    </div>
   );
 }
 
@@ -642,6 +647,86 @@ function OrderOutcomesCard({ outcomes, lang, style }) {
   );
 }
 
+// ---------------------------------------------------------------- Answer countdown (confirmed with the person via mockup)
+// How long the supplier has left to accept or refuse a new order: from the moment it is assigned (or sent again) until respondBy,
+// out of answerWindowHours (Orders > Rules in the admin). Colours: more than 50% left = green; 50% to 10% = red; the last 10% = dark red, blinking;
+// time up = "Overdue". Shown in the orders list and, large, in the order's answer box. Ticks every second.
+const COUNTDOWN_COLORS = {
+  ok: { fg: "#17663a", bg: "#e3f6ea", t1: "#1f9d6b", t2: "#17663a" },
+  mid: { fg: "#d92d20", bg: "#fde7e7", t1: "#f04438", t2: "#d92d20" },
+  hot: { fg: "#ffffff", bg: "#7a0f0f", t1: "#9b1c1c", t2: "#7a0f0f" },
+  over: { fg: "#ffffff", bg: "#3d0707", t1: "#3d0707", t2: "#2a0505" },
+};
+const COUNTDOWN_TEXT = {
+  en: { hours: "hours", min: "min", sec: "sec", overdue: "Overdue", times: (n) => `${n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`} time`, by: "Answer by", after: "After that the order is given to another supplier.", hot: "Less than 10% of the time left: please answer now.", head: "Answer within" },
+  zh: { hours: "小时", min: "分", sec: "秒", overdue: "已超时", times: (n) => `第${n}次`, by: "请在此时间前答复", after: "超时后，订单将转给其他供应商。", hot: "剩余时间不足 10%：请立即答复。", head: "答复剩余" },
+};
+function useNowTick(enabled) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { if (!enabled) return undefined; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, [enabled]);
+  return now;
+}
+function answerLeft(order, now) {
+  if (!order || order.status !== "pending" || order.acceptedAt || order.refusedAt || !order.respondBy) return null;
+  const end = new Date(order.respondBy).getTime(); if (!Number.isFinite(end)) return null;
+  const windowMs = Math.max(1, Number(order.answerWindowHours || 24)) * 3600000;
+  const ms = end - now; const frac = Math.max(0, Math.min(1, ms / windowMs));
+  const level = ms <= 0 ? "over" : frac > 0.5 ? "ok" : frac > 0.1 ? "mid" : "hot";
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return { ms, frac, level, h: Math.floor(s / 3600), m: Math.floor((s % 3600) / 60), s: s % 60 };
+}
+const two = (n) => String(n).padStart(2, "0");
+// in the orders list
+function AnswerCountdownChip({ order }) {
+  const { lang } = useLang();
+  const T = COUNTDOWN_TEXT[lang === "zh" ? "zh" : "en"];
+  const now = useNowTick(Boolean(order && order.respondBy && order.status === "pending"));
+  const left = answerLeft(order, now);
+  if (!left) return <span style={{ color: "#9aa5b1" }}>—</span>;
+  const c = COUNTDOWN_COLORS[left.level];
+  return (
+    <div data-testid={`answer-countdown-${order.subOrderId}`}>
+      <span className={left.level === "hot" ? "leap-blink" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, padding: "4px 9px", fontWeight: 800, fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: c.fg, background: c.bg }}>
+        {left.level === "over" ? T.overdue : `⏱ ${two(left.h)}:${two(left.m)}:${two(left.s)}`}
+      </span>
+      {left.level !== "over" && <div style={{ width: 70, height: 4, borderRadius: 9, background: "#eef1f5", overflow: "hidden", marginTop: 4 }}><i style={{ display: "block", height: "100%", width: `${Math.round((1 - left.frac) * 100)}%`, background: c.t2 }} /></div>}
+    </div>
+  );
+}
+// large, in the order's answer box
+function AnswerCountdownBig({ order }) {
+  const { lang } = useLang();
+  const T = COUNTDOWN_TEXT[lang === "zh" ? "zh" : "en"];
+  const now = useNowTick(true);
+  const left = answerLeft(order, now);
+  if (!left) return null;
+  const c = COUNTDOWN_COLORS[left.level];
+  const tile = (n, label) => (
+    <span style={{ position: "relative", background: `linear-gradient(${c.t1} 50%, ${c.t2} 50%)`, color: "#fff", borderRadius: 8, minWidth: 58, padding: "8px 4px 5px", textAlign: "center", boxShadow: "0 3px 6px rgba(0,0,0,.2)" }}>
+      <b style={{ display: "block", fontSize: 28, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{two(n)}</b>
+      <small style={{ fontSize: 9.5, opacity: 0.8 }}>{label}</small>
+      <span aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(0,0,0,.35)" }} />
+    </span>
+  );
+  const colon = <span style={{ fontWeight: 900, color: c.t2, fontSize: 22, alignSelf: "center" }}>:</span>;
+  const deadline = new Date(order.respondBy).toLocaleString(lang === "zh" ? "zh-CN" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div data-testid="answer-countdown" role="timer" aria-live="off" style={{ marginTop: 10 }}>
+      {left.level === "over" ? (
+        <div style={{ textAlign: "center", fontWeight: 900, fontSize: 18, color: c.fg, background: c.bg, borderRadius: 8, padding: "10px 0" }}>{T.overdue}</div>
+      ) : (
+        <div className={left.level === "hot" ? "leap-blink" : undefined} dir="ltr" style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+          {tile(left.h, T.hours)}{colon}{tile(left.m, T.min)}{colon}{tile(left.s, T.sec)}
+        </div>
+      )}
+      {left.level !== "over" && <div style={{ height: 8, borderRadius: 9, background: "#f0e2c2", overflow: "hidden", marginTop: 8 }}><i style={{ display: "block", height: "100%", width: `${Math.round((1 - left.frac) * 100)}%`, background: c.t2 }} /></div>}
+      <div style={{ fontSize: 12, color: C.muted, textAlign: "center", marginTop: 6 }}>{T.by} <b style={{ color: C.ink }}>{deadline}</b>{order.timesSent > 1 ? ` · ${T.times(order.timesSent)}` : ""}. {T.after}</div>
+      {left.level === "hot" && <div style={{ marginTop: 8, fontSize: 12, background: "#fff", border: "1px solid #f2b8b2", color: "#7a0f0f", borderRadius: 8, padding: "8px 10px", fontWeight: 700 }}>{T.hot}</div>}
+      <style>{"@keyframes leapBlink{50%{opacity:.55}}.leap-blink{animation:leapBlink 1s infinite}"}</style>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Orders: a NEW order is accepted or refused (24 hours to answer)
 const ANSWER_TEXT = {
   en: {
@@ -677,7 +762,6 @@ function AnswerBlock({ order, onUpdated }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const hoursLeft = order.respondBy ? Math.ceil((new Date(order.respondBy).getTime() - Date.now()) / 3600000) : null;
   const run = async (call) => {
     setBusy(true);
     setError(null);
@@ -687,7 +771,8 @@ function AnswerBlock({ order, onUpdated }) {
   return (
     <div data-testid="answer-block" style={{ ...font, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, background: "#FFFBF0" }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{a.title}</div>
-      {hoursLeft !== null && <div data-testid="answer-deadline" style={{ fontSize: 12, color: hoursLeft <= 0 ? C.red : C.muted, marginTop: 3 }}>{hoursLeft <= 0 ? a.overdue : a.left(hoursLeft)}</div>}
+      {/* the live countdown (replaces "Please answer within N hours") */}
+      <AnswerCountdownBig order={order} />
       {!refusing && (
         <>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -835,7 +920,7 @@ function OverviewPage({ onSessionExpired }) {
         </div>
 
         <div style={{ display: "flex", gap: 16 }}>
-          <KpiCard label={l.totalOrders} value={String(data.totalOrders)} icon={ShoppingBag} accent={C.gauge} />
+          <KpiCard navy label={l.totalOrders} value={String(data.totalOrders)} icon={ShoppingBag} accent={C.gauge} />
           <KpiCard label={l.pendingOrders} value={String(data.pendingOrders)} icon={Truck} accent={C.amber} />
           <KpiCard label={l.totalListings} value={String(data.totalListings)} icon={PackageSearch} accent={C.torque} />
           <KpiCard label={l.pendingReturns} value={String(data.pendingReturns)} icon={AlertTriangle} accent={C.red} />
@@ -2133,7 +2218,7 @@ function DraftsPanel({ onCancel }) {
         {loadState === 'ready' && drafts.length > 0 && (
           <div data-testid="drafts-filter" style={{ display: 'flex', gap: 6, padding: '6px 8px 10px' }}>
             {[['all', cascadeLabel('全部', 'All'), drafts.length], ['rejected', cascadeLabel('被拒绝', 'Rejected'), rejectedCount], ['incomplete', cascadeLabel('待完善', 'Needs completion'), drafts.length - rejectedCount]].map(([key, label, n]) => (
-              <button key={key} onClick={() => setFilter(key)} style={{ ...font, padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${filter === key ? C.ink : C.line}`, background: filter === key ? C.ink : '#fff', color: filter === key ? '#fff' : (key === 'rejected' && n > 0 ? C.red : C.ink) }}>{label} ({n})</button>
+              <button key={key} onClick={() => setFilter(key)} style={{ ...font, padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${filter === key ? C.navy : C.line}`, background: filter === key ? C.ink : '#fff', color: filter === key ? '#fff' : (key === 'rejected' && n > 0 ? C.red : C.ink) }}>{label} ({n})</button>
             ))}
           </div>
         )}
@@ -2640,7 +2725,7 @@ function EditProductModal({ product, onClose, onSaved }) {
   const input = { width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box", background: "#fff" };
   const catLabel = (c) => (lang === "zh" ? c.nameZh || c.nameEn : c.nameEn);
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
       <div role="dialog" aria-label={L("编辑商品", "Edit product")} style={{ background: "#fff", borderRadius: 12, padding: 24, width: 440, maxWidth: "92vw" }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{lang === "zh" ? product.nameZh || product.name : product.name}</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{L("编辑价格、分类、部件类型、库存与库存预警阈值", "Edit price, category, classification, stock and low-stock threshold")}</div>
@@ -2731,11 +2816,11 @@ function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessi
     }
   };
 
-  const section = (on) => ({ border: `1px solid ${on ? C.ink : C.line}`, borderRadius: 10, padding: 12, marginBottom: 10 });
+  const section = (on) => ({ border: `1px solid ${on ? C.navy : C.line}`, borderRadius: 10, padding: 12, marginBottom: 10 });
   const tick = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" };
   const input = { width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginTop: 8, boxSizing: "border-box" };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
       <div role="dialog" aria-label={L("批量编辑", "Bulk edit")} style={{ background: "#fff", borderRadius: 12, padding: 24, width: 420, maxWidth: "92vw" }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{L("批量编辑", "Bulk edit")}</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>{t.products.bulkPriceSelected(selectedCount)} · {L("勾选要修改的内容", "tick what to change")}</div>
@@ -2746,7 +2831,7 @@ function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessi
             <>
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 {["percent", "flat"].map((type) => (
-                  <button key={type} onClick={() => setAdjustmentType(type)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${adjustmentType === type ? C.ink : C.line}`, background: adjustmentType === type ? C.ink : "#fff", color: adjustmentType === type ? "#fff" : C.ink }}>
+                  <button key={type} onClick={() => setAdjustmentType(type)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${adjustmentType === type ? C.navy : C.line}`, background: adjustmentType === type ? C.navy : "#fff", color: adjustmentType === type ? "#fff" : C.ink }}>
                     {type === "percent" ? t.products.bulkPricePercent : t.products.bulkPriceFlat}
                   </button>
                 ))}
@@ -2967,7 +3052,10 @@ function OrdersPage({ onOpen }) {
   }, [onSessionExpired]);
   useAutoRefresh(() => fetchMyOrders(getStoredToken()).then(setIfChanged(setOrders)), { enabled: loadState === "ready" });
 
-  const filtered = filterIdx === 0 ? orders : orders.filter(o => o.status === keys[filterIdx]);
+  // Pending: the order with the least time left to answer comes first
+  const filtered = filterIdx === 0 ? orders : keys[filterIdx] === "pending"
+    ? orders.filter(o => o.status === "pending").sort((x, y) => (x.respondBy ? new Date(x.respondBy).getTime() : Infinity) - (y.respondBy ? new Date(y.respondBy).getTime() : Infinity))
+    : orders.filter(o => o.status === keys[filterIdx]);
 
   return (
     <div>
@@ -3008,20 +3096,21 @@ function OrdersPage({ onOpen }) {
         {loadState === "ready" && (
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><Th>{t.orders.thId}</Th><Th>{t.orders.thItems}</Th><Th>{carHeader(lang)}</Th><Th align="right">{t.orders.thAmount}</Th><Th>{t.orders.thStatus}</Th><Th></Th></tr></thead>
+              <thead><tr><Th>{t.orders.thId}</Th><Th>{t.orders.thItems}</Th><Th>{carHeader(lang)}</Th><Th align="right">{t.orders.thAmount}</Th><Th>{t.orders.thStatus}</Th><Th>{COUNTDOWN_TEXT[lang === "zh" ? "zh" : "en"].head}</Th><Th></Th></tr></thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无订单" : "No orders yet."}</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无订单" : "No orders yet."}</td></tr>
                 )}
                 {filtered.map(o => {
                   const amount = o.items.reduce((sum, i) => sum + Number(i.unitPriceCny || 0) * i.quantity, 0);
                   return (
                     <tr key={o.subOrderId} onClick={() => onOpen(o)} style={{ cursor: "pointer" }}>
-                      <Td><PlateChip small>{o.orderId}</PlateChip></Td>
+                      <Td><PlateChip small>{o.orderId}</PlateChip>{o.status === "pending" && o.timesSent > 1 && <span style={{ fontSize: 10.5, fontWeight: 800, background: C.ink, color: "#f9b317", borderRadius: 5, padding: "1px 6px", marginLeft: 6 }}>{COUNTDOWN_TEXT[lang === "zh" ? "zh" : "en"].times(o.timesSent)}</span>}</Td>
                       <Td style={{ maxWidth: 260 }}>{o.items.map(i => i.name).join(lang === "zh" ? "，" : ", ")}</Td>
                       <Td style={{ minWidth: 300 }}><OrderVehicleCell items={o.items} /></Td>
                       <Td align="right" style={{ fontWeight: 700 }}>{cny(amount)}</Td>
                       <Td><Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} /></Td>
+                      <Td><AnswerCountdownChip order={o} /></Td>
                       <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
                     </tr>
                   );
@@ -3076,7 +3165,7 @@ function EvidencePhoto({ url }) {
 }
 
 function ReplacementCard({ faultCase, onAnswered }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
   const font = useBodyFont();
   const inputStyle = useInputStyle();
@@ -3109,7 +3198,7 @@ function ReplacementCard({ faultCase, onAnswered }) {
     <button
       type="button"
       onClick={() => { setCanReplace(value); setError(null); }}
-      style={{ ...font, flex: 1, padding: "9px 12px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1px solid ${canReplace === value ? C.ink : C.line}`, background: canReplace === value ? C.ink : "#fff", color: canReplace === value ? "#fff" : C.ink }}
+      style={{ ...font, flex: 1, padding: "9px 12px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1px solid ${canReplace === value ? C.navy : C.line}`, background: canReplace === value ? C.navy : "#fff", color: canReplace === value ? "#fff" : C.ink }}
     >
       {label}
     </button>
@@ -3125,6 +3214,14 @@ function ReplacementCard({ faultCase, onAnswered }) {
         <div style={{ ...font, fontSize: 12.5, color: C.ink }}>
           <strong>{r.itemsLabel}:</strong> {faultCase.items.map((i) => `${i.name || i.productId} × ${i.quantity}`).join(", ")}
         </div>
+
+        {/* patch-fault-overrule-reason: Leap confirmed the fault although the supplier did not accept the return -- say so, with the reason */}
+        {faultCase.overruleReason && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#F9B317", color: "#0B3146" }}>
+            <div style={{ ...font, fontSize: 12.5, fontWeight: 800 }}>{lang === "zh" ? "平台在您不同意退货后确认了质量问题" : "Leap confirmed the fault after you did not accept the return"}</div>
+            <div style={{ ...font, fontSize: 12.5, marginTop: 4, whiteSpace: "pre-line" }}>{lang === "zh" ? "理由：" : "Reason: "}{faultCase.overruleReason}</div>
+          </div>
+        )}
 
         {/* The replacement the supplier now has to ship (migration 095). */}
         {faultCase.replacementOrderId && (
@@ -3228,6 +3325,55 @@ function ReplacementRequests() {
   );
 }
 
+// Returns (patch-returns-supplier-answer, migration 147): each return shows the part, the reason and the buyer's photos, so the supplier can check
+// before answering "I accept the return" or "I don't accept" (with why). Leap still decides; the answer is shown to Leap beside the case.
+// The buyer's name and messages are never shown here: the supplier and the buyer only talk through Leap.
+const SUPPLIER_RETURN_TEXT = {
+  zh: {
+    reasons: { wrong_part: "发错商品", damaged: "商品损坏", doesnt_fit: "不适配车辆", not_as_described: "与描述不符", other: "其他" },
+    filed: (d) => `申请于 ${d}`, part: "退货商品", reason: "买家原因", photos: "买家上传的照片", noPhotos: "买家没有上传照片。", photoHint: "点击照片可放大查看",
+    question: "请查看照片后回复：您是否同意此退货？", accept: "同意退货", decline: "不同意", declineWhy: "请说明不同意的原因（平台会参考）",
+    declinePh: "例如：照片显示是安装造成的损坏 / 商品与订单一致…", acceptNote: "备注（可选）", send: "提交答复", cancel: "取消",
+    yourAnswer: "您的答复", accepted: "同意退货", declined: "不同意退货", change: "修改答复", decidedNote: "平台会参考您的答复作出决定。",
+    outcomeBack: "已批准：买家将商品寄回 Leap 质检中心。此商品的货款不予结算。", outcomeKeep: "已批准：买家无需寄回商品。此商品的货款不予结算。",
+    receivedGood: "退回的商品已到达质检中心，状态完好。", receivedDamaged: "退回的商品已到达质检中心，状态损坏。", rejectedNote: "平台已驳回此退货，货款照常结算。",
+    thread: "与平台的对话", noMessages: "暂无消息", openThread: "查看对话 / 回复平台", closeThread: "收起对话", leap: "平台", you: "您",
+    empty: "暂无售后案例", loading: "加载中…", needAnswer: (n) => `${n} 个退货等待您的答复`,
+    hubTitle: "质检中心发现的问题", hubReason: "质检中心检验时发现质量问题", hubNote: "质检备注", hubNoPhotos: "质检中心没有上传照片。",
+    damage: { physical_damage: "外观损坏", water_damage: "进水/受潮", missing_parts: "缺少零件", wrong_item: "发错商品", other: "其他问题" },
+  },
+  en: {
+    reasons: { wrong_part: "Wrong part", damaged: "Arrived damaged", doesnt_fit: "Doesn't fit the car", not_as_described: "Not as described", other: "Other" },
+    filed: (d) => `filed ${d}`, part: "Returned part", reason: "Buyer's reason", photos: "Buyer's photos", noPhotos: "The buyer did not attach photos.", photoHint: "Click a photo to see it larger",
+    question: "Check the photos, then answer: do you accept this return?", accept: "Accept the return", decline: "Don't accept", declineWhy: "Say why you don't accept it (Leap takes it into account)",
+    declinePh: "e.g. the photos show damage from fitting / the part matches the order…", acceptNote: "Note (optional)", send: "Send answer", cancel: "Cancel",
+    yourAnswer: "Your answer", accepted: "Accepts the return", declined: "Does not accept", change: "Change answer", decidedNote: "Leap takes your answer into account when deciding.",
+    outcomeBack: "Approved: the buyer sends the part back to a Leap hub. This part will not be paid out.", outcomeKeep: "Approved: the buyer does not send the part back. This part will not be paid out.",
+    receivedGood: "The returned part arrived at the hub in good condition.", receivedDamaged: "The returned part arrived at the hub damaged.", rejectedNote: "Leap rejected this return; the part is paid out as usual.",
+    thread: "Conversation with Leap", noMessages: "No messages yet.", openThread: "Conversation / reply to Leap", closeThread: "Hide conversation", leap: "Leap", you: "You",
+    empty: "No return cases.", loading: "Loading…", needAnswer: (n) => `${n} ${n === 1 ? "return waits" : "returns wait"} for your answer`,
+    hubTitle: "What the hub found", hubReason: "Quality issue found at hub inspection", hubNote: "Inspector's note", hubNoPhotos: "The hub did not attach photos.",
+    damage: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other problem" },
+  },
+};
+
+// Who wrote a message, by colour, everywhere (patch-message-colors): Leap golden yellow, supplier navy blue, hub red, buyer green.
+const MSG_COLORS = {
+  admin: { bg: "#F9B317", fg: "#0B3146", sub: "rgba(11,49,70,0.72)" },
+  supplier: { bg: "#0B3146", fg: "#FFFFFF", sub: "rgba(255,255,255,0.78)" },
+  hub: { bg: "#C0362C", fg: "#FFFFFF", sub: "rgba(255,255,255,0.8)" },
+  buyer: { bg: "#1E9D6B", fg: "#FFFFFF", sub: "rgba(255,255,255,0.8)" },
+  other: { bg: "#F5F6F8", fg: "#14171C", sub: "#636B78" },
+};
+const msgColor = (role) => MSG_COLORS[role] || MSG_COLORS.other;
+// Who wrote a message in the supplier's conversation (patch-returns-conversations): the hub's report and the buyer's first request open it.
+const SUPPLIER_THREAD_WHO = {
+  zh: { hub: "质检中心", buyer: "买家（退货申请）", supplier: "您", admin: "平台", sentToHub: "已通知质检中心把商品寄回您的退货地址。", buyerSays: "买家说明",
+    askedAgain: (n) => `平台第 ${n} 次请您答复：请查看对话中平台的说明后重新选择。`, leapPays: "此次退货的费用由 Leap 承担：此商品的货款照常结算。" },
+  en: { hub: "Hub", buyer: "Buyer (return request)", supplier: "You", admin: "Leap", sentToHub: "The hub has been told to send the part back to your return address.", buyerSays: "The buyer says",
+    askedAgain: (n) => `Leap asks you again (request ${n}): read Leap's note in the conversation, then answer again.`, leapPays: "Leap bears the cost of this return: you are paid for this part as usual." },
+};
+
 function ReturnsPage() {
   const [cases, setCases] = useState([]);
   const [detailCache, setDetailCache] = useState({});
@@ -3236,33 +3382,39 @@ function ReturnsPage() {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [isSending, setIsSending] = useState(false);
+  const [answering, setAnswering] = useState(null);      // { id, answer, note }
+  const [bigPhoto, setBigPhoto] = useState(null);
   const { t, lang } = useLang();
+  const x = SUPPLIER_RETURN_TEXT[lang] || SUPPLIER_RETURN_TEXT.en;
   const { onSessionExpired } = useSupplier();
   const font = useBodyFont();
   const inputStyle = useInputStyle();
 
+  const loadCases = () => fetchMyReturnCases(getStoredToken());
   useEffect(() => {
-    fetchMyReturnCases(getStoredToken())
+    loadCases()
       .then((data) => { setCases(data); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);
         setLoadState("error");
       });
-  }, [onSessionExpired]);
-  useAutoRefresh(() => fetchMyReturnCases(getStoredToken()).then(setIfChanged(setCases)), { enabled: loadState === "ready" });
+  }, [onSessionExpired]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => loadCases().then(setIfChanged(setCases)), { enabled: loadState === "ready" && !answering });
 
-  const openCase = async (id) => {
-    setOpenId(id);
-    if (!detailCache[id]) {
-      try {
-        const detail = await fetchMyReturnCaseById(getStoredToken(), id);
-        setDetailCache((prev) => ({ ...prev, [id]: detail }));
-      } catch (err) {
-        if (err instanceof SessionExpiredError) return onSessionExpired();
-        setErrorMessage(err.message);
-      }
+  const loadDetail = async (id) => {
+    try {
+      const detail = await fetchMyReturnCaseById(getStoredToken(), id);
+      setDetailCache((prev) => ({ ...prev, [id]: detail }));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
     }
+  };
+  const toggleThread = (id) => {
+    if (openId === id) { setOpenId(null); return; }
+    setOpenId(id); setReply("");
+    loadDetail(id);
   };
 
   const submitReply = async (id) => {
@@ -3270,10 +3422,25 @@ function ReturnsPage() {
     setIsSending(true);
     try {
       await replyToReturnCase(getStoredToken(), id, reply.trim());
-      const detail = await fetchMyReturnCaseById(getStoredToken(), id);
-      setDetailCache((prev) => ({ ...prev, [id]: detail }));
+      await loadDetail(id);
       setReply("");
-      setOpenId(null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const submitAnswer = async () => {
+    const a = answering;
+    if (!a || (a.answer === "decline" && a.note.trim().length < 3)) return;
+    setIsSending(true); setErrorMessage(null);
+    try {
+      const updated = await answerMyReturnCase(getStoredToken(), a.id, a.answer, a.note.trim());
+      setCases((cur) => cur.map((c) => (c.id === a.id ? { ...c, ...updated } : c)));
+      setAnswering(null);
+      if (openId === a.id) loadDetail(a.id);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
@@ -3283,62 +3450,168 @@ function ReturnsPage() {
   };
 
   const statusKeyMap = { awaiting: "awaiting", in_progress: "inProgress", approved: "approved", rejected: "rejected", completed: "completed" };
+  const day = (d) => new Date(d).toLocaleDateString(lang === "zh" ? "zh-CN" : "en-GB");
+  const photoSrc = (url) => (/^(https?:|data:|blob:)/.test(url) ? url : `${API_BASE_URL}${url}`);
+  const waiting = cases.filter((c) => c.canAnswer && !c.supplierAnswer).length;
+  const btn = (tone, disabled) => ({
+    ...font, height: 38, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.55 : 1,
+    display: "inline-flex", alignItems: "center", gap: 6,
+    ...(tone === "green" ? { border: `1px solid ${C.gauge}`, background: C.gauge, color: "#fff" }
+      : tone === "red" ? { border: `1px solid ${C.red}`, background: C.redBg, color: C.redInk }
+      : tone === "gold" ? { border: `1px solid ${C.signalDark}`, background: C.signal, color: C.onSignal, boxShadow: SHADOW.goldRaised }
+      : { border: `1px solid ${C.lineStrong}`, background: "#fff", color: C.ink }),
+  });
+  const label = { ...font, fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
 
   return (
     <div>
       <TopBar title={t.returns.title} subtitle={t.returns.subtitle} />
       <ReplacementRequests />
-      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+        {waiting > 0 && (
+          <div role="status" style={{ ...font, fontSize: 13, fontWeight: 700, color: C.amberInk, background: C.amberBg, border: `1px solid ${C.signalDark}`, borderRadius: 12, padding: "11px 16px" }}>{x.needAnswer(waiting)}</div>
+        )}
+        {errorMessage && loadState === "ready" && <div role="alert" style={{ ...font, fontSize: 13, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "10px 14px" }}>{errorMessage}</div>}
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{x.loading}</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card>}
         {loadState === "ready" && cases.length === 0 && (
-          <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "暂无售后案例" : "No return cases."}</div></Card>
+          <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{x.empty}</div></Card>
         )}
-        {loadState === "ready" && cases.map(c => {
+        {loadState === "ready" && cases.map((c) => {
           const open = openId === c.id;
           const detail = detailCache[c.id];
           const statusKey = statusKeyMap[c.status] || c.status;
+          const photos = c.photos || [];
+          const form = answering && answering.id === c.id ? answering : null;
           return (
             <Card key={c.id}>
-              <div style={{ padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <PlateChip small>{c.id}</PlateChip>
-                    <span style={{ ...font, fontSize: 11.5, color: C.muted }}>{t.returns.relatedOrder(c.orderId)}</span>
+                    <span style={{ ...font, fontSize: 12, color: C.muted }}>{t.returns.relatedOrder(c.orderId)} · {x.filed(day(c.createdAt))}</span>
                   </div>
                   <Badge label={t.statusReturn[statusKey] || c.status} statusKey={c.status} />
                 </div>
-                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{c.reason}</div>
 
-                {open && (
-                  <div style={{ background: C.canvas, borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                    <div style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>{t.returns.noteLabel}</div>
-                    {!detail && <div style={{ ...font, fontSize: 12, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
-                    {detail && detail.messages.length === 0 && <div style={{ ...font, fontSize: 12, color: C.muted }}>{lang === "zh" ? "暂无消息" : "No messages yet."}</div>}
-                    {detail && detail.messages.map((m, i) => (
-                      <div key={i} style={{ ...font, fontSize: 12.5, color: C.ink, marginBottom: 6 }}>{m.message}</div>
-                    ))}
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 18 }}>
+                  <div>
+                    <div style={label}>{x.part}</div>
+                    <div style={{ ...font, fontSize: 14, fontWeight: 800, color: C.ink, lineHeight: 1.45 }}>{(c.items || []).map((i) => `${i.name} × ${i.quantity}`).join("，") || "—"}</div>
+                    <div style={{ ...label, marginTop: 14 }}>{c.hubEvidence && !c.reasonCode ? (lang === "zh" ? "原因" : "Reason") : x.reason}</div>
+                    <div style={{ ...font, fontSize: 13.5, color: C.ink }}>{c.reasonCode ? x.reasons[c.reasonCode] : c.hubEvidence ? x.hubReason : c.reason}</div>
+                    {c.buyerRequest && <><div style={{ ...label, marginTop: 14 }}>{(SUPPLIER_THREAD_WHO[lang] || SUPPLIER_THREAD_WHO.en).buyerSays}</div><div dir="auto" style={{ ...font, fontSize: 13, color: C.ink, whiteSpace: "pre-line", background: C.amberBg, borderRadius: 10, padding: "8px 10px" }}>{c.buyerRequest}</div></>}
+                  </div>
+                  <div>
+                    {c.hubEvidence && (
+                      <div style={{ background: C.redBg, border: `1px solid ${C.red}`, borderRadius: 12, padding: 12, marginBottom: photos.length > 0 ? 14 : 0 }}>
+                        <div style={{ ...label, color: C.redInk }}>{x.hubTitle}{c.hubEvidence.damageType ? ` · ${x.damage[c.hubEvidence.damageType] || c.hubEvidence.damageType}` : ""}</div>
+                        {c.hubEvidence.photos.length === 0 ? <div style={{ ...font, fontSize: 12.5, color: C.muted }}>{x.hubNoPhotos}</div> : (
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            {c.hubEvidence.photos.map((url, i) => (
+                              <button key={i} type="button" onClick={() => setBigPhoto(photoSrc(url))} aria-label={`${x.hubTitle} ${i + 1}`} style={{ padding: 0, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", width: 104, height: 104, cursor: "zoom-in", background: "#fff" }}>
+                                <img src={photoSrc(url)} alt="" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {c.hubEvidence.notes && <div style={{ ...font, fontSize: 12.5, color: C.ink, marginTop: 10, whiteSpace: "pre-line" }}><b>{x.hubNote}{lang === "zh" ? "：" : ": "}</b>{c.hubEvidence.notes}</div>}
+                        {c.hubEvidence.photos.length > 0 && <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 6 }}>{x.photoHint}</div>}
+                      </div>
+                    )}
+                    {(photos.length > 0 || !c.hubEvidence) && <div style={label}>{x.photos}</div>}
+                    {photos.length === 0 ? (c.hubEvidence ? null : <div style={{ ...font, fontSize: 12.5, color: C.muted }}>{x.noPhotos}</div>) : (
+                      <>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          {photos.map((url, i) => (
+                            <button key={i} type="button" onClick={() => setBigPhoto(photoSrc(url))} aria-label={`${x.photos} ${i + 1}`} style={{ padding: 0, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", width: 104, height: 104, cursor: "zoom-in", background: C.canvas }}>
+                              <img src={photoSrc(url)} alt="" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 6 }}>{x.photoHint}</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* the supplier's answer */}
+                {c.hasFault && c.source === "hub" && c.supplierAnswer === "accept" && (
+                  <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 12, padding: "11px 14px" }}>✓ {(SUPPLIER_THREAD_WHO[lang] || SUPPLIER_THREAD_WHO.en).sentToHub}</div>
+                )}
+                {c.canAnswer && !c.supplierAnswer && c.askCount > 1 && (
+                  <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.amberInk, background: C.amberBg, borderRadius: 12, padding: "10px 14px" }}>{(SUPPLIER_THREAD_WHO[lang] || SUPPLIER_THREAD_WHO.en).askedAgain(c.askCount)}</div>
+                )}
+                {c.canAnswer && (form ? (
+                  <div style={{ background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ ...font, fontSize: 13, fontWeight: 800, color: form.answer === "accept" ? C.gaugeInk : C.redInk }}>{form.answer === "accept" ? x.accept : x.decline}</div>
+                    <div style={{ ...font, fontSize: 12.5, color: C.muted }}>{form.answer === "accept" ? x.acceptNote : x.declineWhy}</div>
+                    <textarea value={form.note} onChange={(e) => setAnswering({ ...form, note: e.target.value })} placeholder={form.answer === "decline" ? x.declinePh : ""} maxLength={1000} style={{ ...inputStyle, height: 70, resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" disabled={isSending} onClick={() => setAnswering(null)} style={btn()}>{x.cancel}</button>
+                      <button type="button" disabled={isSending || (form.answer === "decline" && form.note.trim().length < 3)} onClick={submitAnswer} style={btn("gold", isSending || (form.answer === "decline" && form.note.trim().length < 3))}>{x.send}</button>
+                    </div>
+                  </div>
+                ) : c.supplierAnswer ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: c.supplierAnswer === "accept" ? C.gaugeBg : C.redBg, borderRadius: 12, padding: "11px 14px" }}>
+                    <div style={{ ...font, fontSize: 13, color: c.supplierAnswer === "accept" ? C.gaugeInk : C.redInk, flex: 1, minWidth: 200 }}>
+                      <b>{x.yourAnswer}: {c.supplierAnswer === "accept" ? x.accepted : x.declined}</b>{c.supplierAnswerNote ? ` · ${c.supplierAnswerNote}` : ""}
+                      <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>{x.decidedNote}</div>
+                    </div>
+                    <button type="button" onClick={() => setAnswering({ id: c.id, answer: c.supplierAnswer, note: c.supplierAnswerNote || "" })} style={btn()}>{x.change}</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
+                    <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, flex: 1, minWidth: 220 }}>{x.question}</div>
+                    <button type="button" onClick={() => setAnswering({ id: c.id, answer: "accept", note: "" })} style={btn("green")}>✓ {x.accept}</button>
+                    <button type="button" onClick={() => setAnswering({ id: c.id, answer: "decline", note: "" })} style={btn("red")}>✕ {x.decline}</button>
+                  </div>
+                ))}
+
+                {/* what Leap decided */}
+                {(c.status === "approved" || c.status === "completed") && c.sendBack !== null && (
+                  <div style={{ ...font, fontSize: 12.5, color: C.ink, background: C.canvas, borderRadius: 10, padding: "10px 12px", lineHeight: 1.5 }}>
+                    {c.costBearer === "leap" ? <>{c.sendBack ? x.outcomeBack.split(/。|\. /)[0] : x.outcomeKeep.split(/。|\. /)[0]}{lang === "zh" ? "。" : ". "}{(SUPPLIER_THREAD_WHO[lang] || SUPPLIER_THREAD_WHO.en).leapPays}</> : (c.sendBack ? x.outcomeBack : x.outcomeKeep)}
+                    {c.receivedAt && <div style={{ marginTop: 4, fontWeight: 700 }}>{c.receivedCondition === "good" ? x.receivedGood : x.receivedDamaged}</div>}
                   </div>
                 )}
+                {c.status === "rejected" && <div style={{ ...font, fontSize: 12.5, color: C.ink, background: C.canvas, borderRadius: 10, padding: "10px 12px" }}>{x.rejectedNote}</div>}
 
-                {c.status !== "completed" && (
-                  open ? (
-                    <div>
-                      <textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={t.returns.replyPlaceholder} style={{ ...inputStyle, height: 70, resize: "none", marginBottom: 8 }} />
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => setOpenId(null)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.cancel}</button>
-                        <button disabled={isSending} onClick={() => submitReply(c.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>{t.returns.submitReply}</button>
+                {/* the conversation with Leap */}
+                <div>
+                  <button type="button" onClick={() => toggleThread(c.id)} style={{ ...font, background: "none", border: "none", padding: 0, color: C.navy, fontSize: 12.5, fontWeight: 800, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>{open ? x.closeThread : x.openThread}</button>
+                  {open && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ background: C.canvas, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={label}>{x.thread}</div>
+                        {!detail && <div style={{ ...font, fontSize: 12, color: C.muted }}>{x.loading}</div>}
+                        {detail && detail.messages.length === 0 && <div style={{ ...font, fontSize: 12, color: C.muted }}>{x.noMessages}</div>}
+                        {detail && detail.messages.map((m, i) => (
+                          <div key={i} style={{ ...font, fontSize: 12.5, color: C.ink, whiteSpace: "pre-line", background: msgColor(m.senderRole).bg, color: msgColor(m.senderRole).fg, border: "none", borderRadius: 8, padding: "8px 10px" }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: msgColor(m.senderRole).sub, marginBottom: 2 }}>{(SUPPLIER_THREAD_WHO[lang] || SUPPLIER_THREAD_WHO.en)[m.senderRole] || x.leap} · {new Date(m.createdAt).toLocaleString(lang === "zh" ? "zh-CN" : "en-GB")}</div>
+                            {m.message}
+                          </div>
+                        ))}
                       </div>
+                      {c.status !== "completed" && (
+                        <>
+                          <textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t.returns.replyPlaceholder} style={{ ...inputStyle, height: 70, resize: "none" }} />
+                          <div><button type="button" disabled={isSending || !reply.trim()} onClick={() => submitReply(c.id)} style={btn("gold", isSending || !reply.trim())}>{t.returns.submitReply}</button></div>
+                        </>
+                      )}
                     </div>
-                  ) : (
-                    <button onClick={() => openCase(c.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.replyButton}</button>
-                  )
-                )}
+                  )}
+                </div>
               </div>
             </Card>
           );
         })}
       </div>
+      {bigPhoto && (
+        <div onClick={() => setBigPhoto(null)} role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24, cursor: "zoom-out" }}>
+          <img src={bigPhoto} alt="" style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 12, boxShadow: "0 20px 50px rgba(0,0,0,0.4)", background: "#fff" }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -3505,7 +3778,7 @@ function MessagesPage() {
           const canToggle = !isMe && m.translationStatus === "success";
           return (
             <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-              <div style={{ ...font, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? C.onSignal : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
+              <div style={{ ...font, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: msgColor(isMe ? "supplier" : "admin").bg, color: msgColor(isMe ? "supplier" : "admin").fg, border: "none" }}>
                 {displayText}
               </div>
               {!isMe && m.translationStatus === "unavailable" && (
@@ -3624,7 +3897,7 @@ function FinancePage() {
               <div data-testid="payment-terms-banner" style={{ ...font, background: C.torqueBg || "#EAF1FA", color: C.torque, borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700 }}>{fi.termBanner(fi.terms[finance.paymentTerm](finance.paymentTermDays))}</div>
             )}
             <div style={{ display: "flex", gap: 16 }}>
-              <KpiCard label={fi.kpiReady} value={cny(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
+              <KpiCard navy label={fi.kpiReady} value={cny(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
               {finance.toRecover && finance.toRecover.amount > 0 && <KpiCard label={fi.kpiRecover} value={`− ${cny(finance.toRecover.amount)}`} sub={fi.kpiRecoverSub(finance.toRecover.count)} icon={RotateCcw} accent={C.red} />}
               <KpiCard label={fi.kpiWaiting} value={cny(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays, finance.inReturnWindow.nextDueAt ? new Date(finance.inReturnWindow.nextDueAt).toLocaleDateString(uiLocale()) : null)} icon={RotateCcw} accent={C.amber} />
               <KpiCard label={fi.kpiPaid} value={cny(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString(uiLocale()) : null)} icon={Check} accent={C.gauge} />
@@ -3840,11 +4113,12 @@ function SettingsPage() {
   const [toggles, setToggles] = useState([true, true, true, false]);
   const [tab, setTab] = useState("company");
   const font = useBodyFont();
-  const settingsTabs = [{ id: "company", label: s.companyTitle }, { id: "returnAddress", label: s.returnAddress.title }, { id: "notifications", label: s.notifTitle }];
+  const settingsTabs = [{ id: "company", label: s.companyTitle }, { id: "verification", label: lang === "zh" ? "认证资料" : "Verification documents" }, { id: "returnAddress", label: s.returnAddress.title }, { id: "notifications", label: s.notifTitle }];      // patch-supplier-verification: + verification
   return (
     <div>
       <TopBar title={s.title} subtitle={s.subtitle} tabs={{ label: s.title, tabs: settingsTabs, activeId: tab, onSelect: setTab }} />
-      <div style={{ padding: 24, display: "flex", gap: 16, maxWidth: 820 }}>
+      <div style={{ padding: 24, display: "flex", gap: 16, maxWidth: tab === "verification" ? 940 : 820 }}>
+        {tab === "verification" && <VerificationPage />}
         {tab === "company" && <Card style={{ flex: 1 }}>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Real profile data only. A business license number and a "main categories" list used to
@@ -3890,15 +4164,50 @@ const ORDER_FILTER_TONES = { pending: "amber", preparing: "amber", shipped: "blu
 // the page's color whose curved corners make it flow into the page; collapsible to icons only (the name shows on hover); it stays in view while a long
 // page scrolls.
 const MENU = {
-  bg: C.navy, text: "#C5D3DC", strong: "#FFFFFF", soft: "#8FA8B6", line: "#1D4A60", badge: C.signal,
-  activeBg: "#E9ECF0", activeText: C.ink, activeIcon: "#A86F00", expanded: 240, collapsed: 76,
+  bg: C.navy, text: C.onNavyMuted, strong: "#FFFFFF", soft: C.onNavyMuted, line: "rgba(255,255,255,0.12)", badge: C.signal,
+  activeBg: C.navyDeep, activeText: "#FFFFFF", activeIcon: C.signal, expanded: 240, collapsed: 76,
 };
 // The page: a light panel beside the menu (the chosen item flows into it), and everything in the page, the title too, in one rounded container inside it.
-const PANEL = { bg: MENU.activeBg, inset: 16, boxRadius: 16 };
+const PANEL = { bg: C.canvas, inset: 0, boxRadius: 0 };
+// Every page (patch-portals-redesign): the same fields, tables, tabs and focus rings as the admin portal.
+const PAGE_CSS = `
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):focus, select:focus, textarea:focus { outline: none; border-color: #2A5FD9 !important; box-shadow: 0 0 0 3px #E6EDFC; }
+button:focus-visible, a:focus-visible { outline: 2px solid #2A5FD9; outline-offset: 2px; }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: #0B3146; }
+::selection { background: #FDF3D8; color: #14171C; }
+[data-leap-header] input::placeholder { color: #9FB4C3; }
+[data-leap-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([data-leap-plain]), [data-leap-page] select, [data-leap-page] textarea { border-radius: 10px !important; border-color: #CFD4DB !important; color: #14171C; background-color: #fff; }
+[data-leap-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([data-leap-plain]), [data-leap-page] select { min-height: 38px; box-sizing: border-box; }
+[data-leap-page] input::placeholder, [data-leap-page] textarea::placeholder { color: #8A93A0; }
+[data-leap-page] select { cursor: pointer; }
+[data-leap-page] button { transition: background-color 150ms ease, box-shadow 150ms ease, transform 60ms ease, border-color 150ms ease; }
+[data-leap-page] button:not(:disabled):active { transform: translateY(1px); }
+[data-leap-page] button:disabled { cursor: not-allowed !important; }
+[data-leap-page] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-leap-page] ::-webkit-scrollbar-thumb { background: #C9D1DA; border-radius: 999px; border: 2px solid #F5F6F8; }
+[data-leap-page] table { border-collapse: separate !important; border-spacing: 0 !important; }
+[data-leap-page] th { background: #F6F8FA !important; color: #5B6472 !important; font-size: 11px !important; font-weight: 800 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; padding: 13px 18px !important; border-bottom: 1px solid #E4E6EA !important; white-space: nowrap; vertical-align: middle; }
+[data-leap-page] tbody td { padding: 15px 18px !important; border-bottom: 1px solid #EEF0F3 !important; vertical-align: middle !important; line-height: 1.45; font-variant-numeric: tabular-nums; }
+[data-leap-page] tbody tr { transition: background-color 120ms ease; }
+[data-leap-page] tbody tr:last-child > td { border-bottom: none !important; }
+[data-leap-page] tbody tr:nth-child(even):not([style*="background"]) > td { background: #FBFCFD; }
+[data-leap-page] tbody tr[style*="background"] > td { background: transparent; }
+[data-leap-page] tbody tr:hover > td { background: #FDF6E3 !important; }
+[data-leap-page] tbody tr[aria-selected="true"] > td { background: #FDF3D8 !important; }
+[data-leap-page] tbody tr > td:first-child { font-weight: 700; }
+[data-leap-page] tbody td[style*="text-align: right"], [data-leap-page] th[style*="text-align: right"] { white-space: nowrap; }
+[data-leap-page] tbody td[colspan]:only-child:not(:has(*)) { padding: 48px 18px 44px !important; text-align: center !important; color: #636B78 !important; font-size: 13.5px !important; font-weight: 600 !important; background: #fff !important; }
+[data-leap-page] tbody td[colspan]:only-child:not(:has(*))::before { content: ""; display: block; width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 12px; background: #F1F4F7 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23636B78' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / 20px no-repeat; }
+[data-leap-page] [data-leap-segments] { display: inline-flex !important; flex-wrap: wrap; align-items: center; gap: 2px !important; padding: 4px !important; background: #EEF1F4 !important; border: 1px solid #E4E6EA !important; border-radius: 12px !important; box-shadow: inset 0 1px 2px rgba(11,49,70,0.05) !important; width: fit-content; max-width: 100%; }
+[data-leap-page] [data-leap-segments] > button { display: inline-flex !important; align-items: center; gap: 6px; height: 34px !important; border: none !important; background: transparent !important; padding: 0 16px !important; margin: 0 !important; border-radius: 9px !important; font-size: 13px !important; font-weight: 700 !important; box-shadow: none !important; cursor: pointer; white-space: nowrap; }
+[data-leap-page] [data-leap-segments] > button:not([aria-selected="true"]):not([aria-pressed="true"]) { color: #5B6472; }
+[data-leap-page] [data-leap-segments] > button:hover:not([aria-selected="true"]):not([aria-pressed="true"]) { background: rgba(255,255,255,0.65) !important; color: #14171C; }
+[data-leap-page] [data-leap-segments] > button[aria-selected="true"], [data-leap-page] [data-leap-segments] > button[aria-pressed="true"] { background: #fff !important; color: #0B3146 !important; box-shadow: 0 1px 2px rgba(11,49,70,0.14), 0 3px 8px rgba(11,49,70,0.08) !important; }
+`;
 const MENU_CSS = `
 .leap-menu-item:hover:not([aria-current="page"]) { background: rgba(255, 255, 255, 0.09) !important; color: #FFFFFF !important; }
 .leap-menu-item:focus-visible { outline: 2px solid ${C.signal}; outline-offset: -2px; }
-.leap-menu-curve { position: absolute; right: 0; width: 20px; height: 20px; pointer-events: none; clip-path: inset(0); }
+.leap-menu-curve { display: none; position: absolute; right: 0; width: 20px; height: 20px; pointer-events: none; clip-path: inset(0); }
 .leap-menu-curve.top { bottom: 100%; border-bottom-right-radius: 20px; box-shadow: 10px 10px 0 10px ${MENU.activeBg}; }
 .leap-menu-curve.bottom { top: 100%; border-top-right-radius: 20px; box-shadow: 10px -10px 0 10px ${MENU.activeBg}; }
 .leap-menu-tip { display: none; position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); height: 30px; padding: 0 10px; border-radius: 8px;
@@ -3976,8 +4285,9 @@ function PortalShell() {
   return (
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: MENU.bg, ...font }}>
       <style>{FONT_IMPORT}</style>
-      <style>{`tbody tr:hover { background: ${C.canvas}; }`}</style>
+      <style>{`tbody tr:hover { background: ${C.surfaceHigh}; }`}</style>
       <style>{MENU_CSS}</style>
+      <style>{PAGE_CSS}</style>
       {/* the menu stays in view while a long page scrolls, so the name and Log out at its bottom are always there */}
       <nav aria-label={lang === "zh" ? "主菜单" : "Main menu"} style={{ width: menuCollapsed ? MENU.collapsed : MENU.expanded, transition: "width 160ms ease", background: MENU.bg, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", minHeight: 600, alignSelf: "flex-start", zIndex: 5 }}>
         <div style={menuCollapsed ? { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "16px 0 10px" } : { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "16px 12px 10px 18px" }}>
@@ -3988,7 +4298,7 @@ function PortalShell() {
                 <BrandLogo size={36} />
                 <div style={{ minWidth: 0, lineHeight: 1.15 }}>
                   <div style={{ ...font, fontSize: 14.5, fontWeight: 800, color: MENU.strong, whiteSpace: "nowrap" }}>Leap Auto Parts</div>
-                  <div style={{ ...font, fontSize: 11, fontWeight: 600, color: MENU.soft, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.portalName}</div>
+                  <div style={{ ...font, fontSize: 10.5, fontWeight: 800, color: C.signal, marginTop: 3, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.portalName}</div>
                 </div>
               </div>}
           <button type="button" onClick={toggleMenu} aria-expanded={!menuCollapsed}
@@ -4001,12 +4311,12 @@ function PortalShell() {
         <div style={menuCollapsed ? { display: "flex", justifyContent: "center", padding: "0 0 8px" } : { padding: "0 16px 10px 24px" }}>
           <LangToggle compact={menuCollapsed} />
         </div>
-        <div ref={menuBoxRef} style={{ flex: 1, padding: "6px 0 6px 12px", position: "relative" }}>
+        <div ref={menuBoxRef} style={{ flex: 1, padding: "6px 12px", position: "relative", overflowY: "auto", overflowX: "hidden" }}>
           {/* the chosen item's background (with its curved corners): one shape that slides to the item clicked (drawn first, so the items sit on it) */}
           {menuMark && (
             <span aria-hidden="true" data-testid="menu-highlight" style={{
-              position: "absolute", left: menuMark.x, right: 0, top: 0, height: menuMark.h, transform: `translateY(${menuMark.y}px)`, pointerEvents: "none",
-              background: MENU.activeBg, borderRadius: "20px 0 0 20px", transition: menuMark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
+              position: "absolute", left: menuMark.x, right: 12, top: 0, height: menuMark.h, transform: `translateY(${menuMark.y}px)`, pointerEvents: "none",
+              background: MENU.activeBg, borderRadius: 8, boxShadow: `inset 4px 0 0 ${C.signal}`, transition: menuMark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
             }}>
               <span className="leap-menu-curve top" />
               <span className="leap-menu-curve bottom" />
@@ -4019,8 +4329,8 @@ function PortalShell() {
             return (
               <button key={id} onClick={() => { setPage(id); setOpenOrder(null); }} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? (badge ? `${t.nav[id]} · ${badge.tip}` : t.nav[id]) : undefined} style={{
                 position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: menuCollapsed ? "center" : "flex-start", gap: 12, height: 40,
-                padding: menuCollapsed ? 0 : "0 14px 0 18px", margin: "1px 0", borderRadius: "20px 0 0 20px", border: "none", cursor: "pointer", textAlign: "left",
-                background: active && !menuSlides ? MENU.activeBg : "transparent", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
+                padding: menuCollapsed ? 0 : "0 10px", margin: "1px 0", borderRadius: 8, border: "none", cursor: "pointer", textAlign: "left",
+                background: active && !menuSlides ? MENU.activeBg : "transparent", boxShadow: active && !menuSlides ? `inset 4px 0 0 ${C.signal}` : "none", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
               }}>
                 {/* the curved corners above and below the chosen item: it flows into the page (drawn by the sliding shape once it is in place) */}
                 {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve top" />}
@@ -4030,7 +4340,7 @@ function PortalShell() {
                 {badge && <span data-testid={`menu-count-${id}`} title={badge.tip} aria-label={menuCollapsed ? undefined : badge.tip} style={{
                   ...font, ...(menuCollapsed ? { position: "absolute", top: 3, left: "calc(50% + 3px)", minWidth: 16, height: 16, padding: "0 4px", fontSize: 10, boxShadow: `0 0 0 2px ${active ? MENU.activeBg : MENU.bg}` } : { marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", fontSize: 11 }),
                   boxSizing: "border-box", borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, lineHeight: 1,
-                  background: badge.late ? "#C0362C" : "#F2A71B", color: badge.late ? "#FFFFFF" : "#241A05",      // gold, or red when an order is late
+                  background: badge.late ? "#C0362C" : C.signal, color: badge.late ? "#FFFFFF" : C.onSignal,      // gold, or red when an order is late
                 }}>{badge.text}</span>}
                 {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{badge ? `${t.nav[id]} · ${badge.tip}` : t.nav[id]}</span>}
               </button>
@@ -4039,7 +4349,7 @@ function PortalShell() {
         </div>
         {menuCollapsed ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "14px 0", borderTop: `1px solid ${MENU.line}` }}>
-            <span title={profile ? profile.name : ""} style={{ width: 36, height: 36, borderRadius: "50%", background: MENU.activeBg, color: MENU.activeText, display: "flex", alignItems: "center", justifyContent: "center", ...font, fontSize: 12, fontWeight: 800 }}>{profile && profile.name ? profile.name.slice(0, 1).toUpperCase() : "S"}</span>
+            <span title={profile ? profile.name : ""} style={{ width: 36, height: 36, borderRadius: "50%", background: MENU.activeBg, color: C.signal, display: "flex", alignItems: "center", justifyContent: "center", ...font, fontSize: 12, fontWeight: 800 }}>{profile && profile.name ? profile.name.slice(0, 1).toUpperCase() : "S"}</span>
             <button type="button" onClick={onLogout} aria-label={lang === "zh" ? "退出登录" : "Log out"} title={lang === "zh" ? "退出登录" : "Log out"} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
               <LogOut size={16} />
             </button>
@@ -4064,7 +4374,7 @@ function PortalShell() {
       </nav>
       <main style={{ flex: 1, minWidth: 0, display: "flex", background: PANEL.bg }}>
         <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: PANEL.inset }}>
-          <div ref={pageBoxRef} style={{ minHeight: "100%", boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: PANEL.boxRadius, overflow: "hidden", boxShadow: "0 1px 2px rgba(20, 23, 28, 0.05)" }}>
+          <div ref={pageBoxRef} data-leap-page="" style={{ minHeight: "100%", boxSizing: "border-box", background: C.canvas, borderRadius: PANEL.boxRadius, overflow: "hidden" }}>
             <SupplierContext.Provider value={{ ...outerSupplierContext, unreadNotificationCount: unreadCount, onOpenNotifications: () => setPage("notifications") }}>
               {/* every page has a tab: its own name (the common page design) */}
               <PageTabsContext.Provider value={pageTab}>

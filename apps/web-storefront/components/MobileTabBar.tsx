@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "@/components/LocLink";
 import PhotoBox from "@/components/PhotoBox";
+import AccountMenuList from "@/components/AccountMenuList";
 import { useAuth } from "@/components/AuthProvider";
 import { useCart } from "@/components/CartProvider";
 import { useT } from "@/components/LangProvider";
@@ -12,7 +13,8 @@ import { splitLang } from "@/lib/i18n";
 /**
  * The bottom menu on a phone (under 768 px; confirmed with the person via mockup, design B "like the app"): Home · Sections · Search · Cart · Account, always on screen.
  * "Sections" opens a panel above the menu with every section (4 per line, with its photo) and "All sections"; it closes when a section is chosen, on the dimmed
- * background, with Escape, or when the page changes. The cart shows its number. Account opens the account (or Sign in when signed out).
+ * background, with Escape, or when the page changes. The cart shows its number. Account opens the account menu from the side, the same list as beside the account
+ * pages (or goes to Sign in when signed out).
  * Not shown from 768 px up (the header's own menu is there). Right to left in Arabic by itself.
  * The liquid indicator (confirmed with the person via mockup): the bar is navy and bulges up under the chosen tab like a drop; the drop stretches as it slides
  * to the next tab and the gold circle under it shrinks and pops back, holding that tab's icon. On a page that is none of the five, there is no drop.
@@ -45,8 +47,9 @@ export default function MobileTabBar({ sections }: { sections: Section[] }) {
   const { itemCount } = useCart();
   const here = splitLang(usePathname() || "/").path;
   const [open, setOpen] = useState(false);
+  const [acct, setAcct] = useState(false);          // the account menu, from "Account" (signed in): the same list as beside the account pages
 
-  useEffect(() => { setOpen(false); }, [here]);
+  useEffect(() => { setOpen(false); setAcct(false); }, [here]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
@@ -54,12 +57,21 @@ export default function MobileTabBar({ sections }: { sections: Section[] }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  useEffect(() => {
+    if (!acct) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setAcct(false); };
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";      // the page behind does not scroll while the menu is open
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = before; };
+  }, [acct]);
+
   const color = (on: boolean) => (on ? "text-signal" : "text-[#9fb3c2]");
   // the icon of the chosen tab rises into the gold circle
   const lift = (on: boolean, node: React.ReactNode) => <span className={`leap-liquid-icon transition-transform duration-[164ms] ease-[cubic-bezier(.65,0,.25,1)] ${on ? "-translate-y-[13px] text-navy" : ""}`}>{node}</span>;
   const is = (p: string) => (p === "/" ? here === "/" : here === p || here.startsWith(`${p}/`));
   const accountHref = user ? "/account" : "/login";
-  const active = open ? 1 : is("/") ? 0 : is("/search") ? 2 : is("/cart") ? 3 : is("/account") ? 4 : -1;
+  const active = acct ? 4 : open ? 1 : is("/") ? 0 : is("/search") ? 2 : is("/cart") ? 3 : is("/account") ? 4 : -1;
 
   return (
     <div data-testid="mobile-tab-bar" className="md:hidden">
@@ -82,6 +94,19 @@ export default function MobileTabBar({ sections }: { sections: Section[] }) {
           </div>
         </>
       )}
+      {/* "Account" (signed in): the account menu opens from the side, above the bottom bar; closes on ✕, a tap outside, Escape or a page */}
+      {acct && user && (
+        <>
+          <button type="button" aria-label={t("cancel")} data-testid="tab-account-backdrop" onClick={() => setAcct(false)} className="fixed inset-x-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-[45] bg-[#07202f]/45" />
+          <nav id="mobile-account-menu" aria-label={t("account_sidebar")} className="fixed start-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-50 w-[min(85vw,320px)] overflow-y-auto bg-white px-3 pb-4 pt-4 shadow-[0_0_30px_rgba(7,32,47,0.3)]">
+            <div className="mb-2 flex items-center justify-between px-2">
+              <span className="text-lg font-extrabold text-ink">{t("account_hub_title")}</span>
+              <button type="button" aria-label={t("cancel")} onClick={() => setAcct(false)} className="grid size-10 place-items-center rounded-full text-[#6b7a86] hover:bg-chalk"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+            </div>
+            <AccountMenuList onPick={() => setAcct(false)} />
+          </nav>
+        </>
+      )}
       <nav aria-label={t("nav_sections") + " · " + t("account")} className="fixed inset-x-0 bottom-0 z-50 flex bg-navy pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_10px_rgba(7,32,47,0.18)]">
         <style>{LIQUID_CSS}</style>
         {/* the liquid drop and the gold circle under the chosen tab */}
@@ -94,13 +119,17 @@ export default function MobileTabBar({ sections }: { sections: Section[] }) {
           </div>
         </div>
         <Link href="/" aria-current={is("/") ? "page" : undefined} className={`${tab} ${color(active === 0)}`}>{lift(active === 0, ICONS.home)}<span>{t("nav_home")}</span></Link>
-        <button type="button" aria-expanded={open} aria-controls="mobile-sections" onClick={() => setOpen(!open)} className={`${tab} ${color(active === 1)}`}>{lift(active === 1, ICONS.sections)}<span>{t("nav_sections")}</span></button>
+        <button type="button" aria-expanded={open} aria-controls="mobile-sections" onClick={() => { setAcct(false); setOpen(!open); }} className={`${tab} ${color(active === 1)}`}>{lift(active === 1, ICONS.sections)}<span>{t("nav_sections")}</span></button>
         <Link href="/search" aria-current={is("/search") ? "page" : undefined} className={`${tab} ${color(active === 2)}`}>{lift(active === 2, ICONS.search)}<span>{t("search_button")}</span></Link>
-        <Link href="/cart" aria-current={is("/cart") ? "page" : undefined} className={`${tab} ${color(active === 3)}`}>
+        <Link href="/cart" data-cart-target="" aria-current={is("/cart") ? "page" : undefined} className={`${tab} ${color(active === 3)}`}>          {/* a phone: added parts fly here (the header has no cart there) */}
           {lift(active === 3, ICONS.cart)}<span>{t("cart")}</span>
           {itemCount > 0 && <span className={`leap-liquid-icon absolute top-1.5 start-[calc(50%+4px)] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#d93025] px-1 text-[10.5px] font-extrabold text-white ring-2 ring-navy transition-transform duration-[164ms] ${active === 3 ? "-translate-y-[13px]" : ""}`}>{itemCount}</span>}
         </Link>
-        <Link href={accountHref} aria-current={is("/account") ? "page" : undefined} className={`${tab} ${color(active === 4)}`}>{lift(active === 4, ICONS.account)}<span>{t("account")}</span></Link>
+        {user ? (
+          <button type="button" aria-expanded={acct} aria-controls="mobile-account-menu" data-testid="tab-account" onClick={() => { setOpen(false); setAcct(!acct); }} className={`${tab} ${color(active === 4)}`}>{lift(active === 4, ICONS.account)}<span>{t("account")}</span></button>
+        ) : (
+          <Link href={accountHref} className={`${tab} ${color(active === 4)}`}>{lift(active === 4, ICONS.account)}<span>{t("account")}</span></Link>
+        )}
       </nav>
     </div>
   );

@@ -18,6 +18,7 @@ import '../../core/draft_order_queue.dart';
 import '../../services/api_client.dart';
 import '../../widgets/step_progress_indicator.dart';
 import '../../widgets/free_shipping.dart';
+import '../../widgets/cart_price_lines.dart';
 
 /// BUY-034: guided checkout flow. Guest checkout is enabled by default per
 /// the product decision in the Charter — buyers are prompted to create an
@@ -384,6 +385,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         address: inlineAddress,
         waitForAllShipments: _waitForAllShipments,
         displayCurrency: context.read<CurrencyState>().currencyCode,
+        cartId: cart.cartId,
       );
       // Real guest-email autofill save (#20) -- device-local only,
       // best-effort, never blocks a real successful order over a
@@ -868,6 +870,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  // during a checkout hold: the held units and the units added later (two prices)
+                                  if (item.lines.length > 1) CartPriceLines(item: item, compact: true),
                                   // a part from a quotation (migration 141): its number
                                   if (item.quotationId != null)
                                     Text('📄 ${item.quotationId}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFFC98A00))),

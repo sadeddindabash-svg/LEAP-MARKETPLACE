@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { Lock } from "lucide-react";
 import { login } from "./auth";
 import { useLang } from "./langContext";
@@ -60,8 +61,8 @@ export default function LoginPage({ onLoginSuccess }) {
   };
 
   return (
-    <div style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, background: C.canvas }}>
-      <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
+    <div style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "radial-gradient(circle at 20% 10%, #1F5574, #0B3146 45%, #07202F)" }}>
+      <form onSubmit={handleSubmit} style={{ width: 380, background: C.card, border: "1px solid #07202F", borderRadius: 16, padding: 32, boxShadow: "0 16px 40px rgba(0,0,0,0.35)" }}>
         {/* the logo, drawn like an engraving when the page opens (public/brand/leap-logo-animated.svg); the still logo if that file is missing */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <img src="/brand/leap-logo-animated.svg" alt="Leap Auto Parts" width={104} height={104} style={{ display: "block" }}
@@ -69,7 +70,7 @@ export default function LoginPage({ onLoginSuccess }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>Leap Auto Parts</div>
+            <div style={{ ...disp, fontFamily: "'Manrope', 'Noto Sans SC', sans-serif", fontSize: 24, fontWeight: 800, color: C.ink }}>Leap Auto Parts</div>
             <span style={{ fontSize: 10, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "2px 6px" }}>
               {lang === "zh" ? "供应商" : "Supplier"}
             </span>
@@ -112,7 +113,7 @@ export default function LoginPage({ onLoginSuccess }) {
           style={{
             width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             marginTop: 8, padding: "11px 16px", borderRadius: 8, border: "none",
-            background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontWeight: 700, fontSize: 14, cursor: isSubmitting ? "default" : "pointer",
+            background: isSubmitting ? "#D1D5DB" : C.signal, color: "#0B3146", fontWeight: 800, fontSize: 14, cursor: isSubmitting ? "default" : "pointer", boxShadow: isSubmitting ? "none" : "0 1px 0 rgba(255,255,255,0.45) inset, 0 2px 4px rgba(227,159,12,0.35), 0 6px 14px rgba(227,159,12,0.25)",
             fontFamily: "inherit",
           }}
         >

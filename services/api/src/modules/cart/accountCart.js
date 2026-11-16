@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('node:crypto');
 const db = require('../../../db/pool');
 const { optionalAuth } = require('../auth/middleware');
+const { CAR_JOIN, CAR_COLUMNS, buyerName, withCar } = require('../shared/carName');      // buyer names: name + car brand + model
 
 /**
  * ONE CART PER ACCOUNT. The cart routes (routes.js) work on the cart id a device sends. This layer sits in front of them and, for a signed-in buyer, turns that id into the buyer's ACCOUNT cart:
@@ -31,23 +32,24 @@ async function followRedirects(client, cartId) {
 // Moves every line of `source` into `target` by the rules above and marks `source` as combined. Returns what happened, or null when the source had nothing in it.
 async function mergeInto(client, source, target, lang) {
   const { rows: sourceItems } = await client.query(
-    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.name_ar, p.stock_quantity FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1 ORDER BY ci.product_id`, [source.id]);
+    `SELECT ci.product_id, ci.quantity, ci.locked_price, ci.held_quantity, ci.extra_locked_price, p.name, p.name_ar, p.stock_quantity, ${CAR_COLUMNS} FROM cart_items ci JOIN products p ON p.id = ci.product_id ${CAR_JOIN} WHERE ci.cart_id = $1 ORDER BY ci.product_id`, [source.id]);
   const { rows: targetItems } = await client.query('SELECT product_id, quantity FROM cart_items WHERE cart_id = $1', [target.id]);
   const targetQty = new Map(targetItems.map((r) => [r.product_id, r.quantity]));
   const targetWasEmpty = targetItems.length === 0;
   const summary = { itemsAdded: 0, itemsCombined: 0, reduced: [], dropped: [] };
   const adoptLock = targetWasEmpty && source.checkout_locked_at && !target.checkout_locked_at;
   for (const item of sourceItems) {
-    const name = lang === 'ar' && item.name_ar ? item.name_ar : item.name;
+    const name = buyerName(item, lang);
     const had = targetQty.get(item.product_id) || 0;
     const combined = had + item.quantity;
     const quantity = Math.max(had, Math.min(combined, asNumber(item.stock_quantity)));
     if (quantity <= 0) { summary.dropped.push({ productId: item.product_id, name }); continue; }
     if (quantity < combined) summary.reduced.push({ productId: item.product_id, name, from: combined, to: quantity });
     await client.query(
-      `INSERT INTO cart_items (cart_id, product_id, quantity, locked_price) VALUES ($1, $2, $3, $4)
+      `INSERT INTO cart_items (cart_id, product_id, quantity, locked_price, held_quantity, extra_locked_price) VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
-      [target.id, item.product_id, quantity, adoptLock ? item.locked_price : null]);
+      // the held line and the line added during the hold move with the hold (Pricing > Discount rules > Rules)
+      [target.id, item.product_id, quantity, adoptLock ? item.locked_price : null, adoptLock && item.held_quantity !== null ? Math.min(item.held_quantity, quantity) : null, adoptLock ? item.extra_locked_price : null]);
     if (had > 0) summary.itemsCombined += 1; else summary.itemsAdded += 1;
   }
   if (source.applied_promo_code && !target.applied_promo_code) await client.query('UPDATE carts SET applied_promo_code = $1 WHERE id = $2', [source.applied_promo_code, target.id]);

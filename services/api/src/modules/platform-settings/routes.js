@@ -58,6 +58,43 @@ router.patch('/return-window', requireAuth, requireRole('admin'), async (req, re
   }
 });
 
+// patch-receipt-footer-api: the note printed at the bottom of every receipt PDF, in English and Arabic (keys receipt_footer_note_en / _ar,
+// read by GET /order/:id/receipt). Empty = no note in that language. Admin only.
+const RECEIPT_FOOTER_MAX = 500;
+router.get('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query("SELECT key, value FROM platform_settings WHERE key IN ('receipt_footer_note_en', 'receipt_footer_note_ar')");
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    res.json({ footerNoteEn: byKey.receipt_footer_note_en || '', footerNoteAr: byKey.receipt_footer_note_ar || '' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { footerNoteEn, footerNoteAr } = req.body || {};
+    const clean = {};
+    for (const [name, v] of [['footerNoteEn', footerNoteEn], ['footerNoteAr', footerNoteAr]]) {
+      if (v != null && typeof v !== 'string') return res.status(400).json({ error: `${name} must be text` });
+      const t = String(v ?? '').trim();
+      if (t.length > RECEIPT_FOOTER_MAX) return res.status(400).json({ error: `${name} can be at most ${RECEIPT_FOOTER_MAX} characters` });
+      clean[name] = t;
+    }
+    for (const [key, value] of [['receipt_footer_note_en', clean.footerNoteEn], ['receipt_footer_note_ar', clean.footerNoteAr]]) {
+      await db.query(
+        `INSERT INTO platform_settings (key, value, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()`,
+        [key, value]
+      );
+    }
+    await logAdminAction(req, 'receipt_footer_changed', 'platform_setting', 'receipt_footer', { en: clean.footerNoteEn.length, ar: clean.footerNoteAr.length });
+    res.json(clean);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // CONFIRMED SCOPE (migration 025): whether a review requires a real
 // verified purchase is admin-decided, not hardcoded either way.
 router.get('/require-verified-purchase-for-reviews', requireAuth, requireRole('admin'), async (req, res, next) => {

@@ -101,7 +101,8 @@ class _AccountScreenState extends State<AccountScreen> {
       (icon: Icons.card_giftcard_outlined, label: tr(context, 'referrals'), route: '/referrals'),
       (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
       (icon: Icons.description_outlined, label: qtr(context, 'my_quotations'), route: '/quotations'),
-      (icon: Icons.request_quote_outlined, label: tr(context, 'my_part_requests'), route: '/part-requests'),
+      // My Requests (/part-requests) is hidden for now (the person: "we don't need it, later"). To bring it back, put back:
+      // (icon: Icons.request_quote_outlined, label: tr(context, 'my_part_requests'), route: '/part-requests'),
       (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
       (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),
       (icon: Icons.shield_outlined, label: tr(context, 'two_factor_auth_label'), route: '/account/two-factor'),

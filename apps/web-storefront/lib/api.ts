@@ -18,6 +18,7 @@ import type { HomeText } from "./homeText";
 import type { FooterContent, LegalPageDto, PageKey } from "./footerContent";
 import { apiMessage } from "./serverMessages";
 import { NetworkError, netFetch } from "./net";
+import type { FitTitle } from "@/components/ProductTitle";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
@@ -34,6 +35,8 @@ export interface ProductSummary {
   reviewCount: number;
   stockQuantity: number;
   estimatedDeliveryDays: number | null;
+  /** ± days when the delivery date is shown as a range (Delivery Rules > How it works); null = one date. */
+  estimatedDeliveryRange?: number | null;
   weightKg: number | null;
   /** The size (cm) the shipping is worked out from, and whether it is only the part's typical size (shown as approximate). */
   lengthCm?: number | null;
@@ -51,8 +54,12 @@ export interface ProductSummary {
   shipsFromCountryAr?: string | null;
   /** Sent when a discount applies: the price before the discount (the price above is the one to pay). */
   originalPrice?: number | null;
+  /** When the discount ends (ISO time), sent only while the product page should show the countdown. */
+  discountEndsAt?: string | null;
   /** The vehicle brand's logo (the brand of the car the part fits), when the brand has one: shown in the corner of a product card's photo. */
   brandLogoUrl?: string | null;
+  /** The title in parts (name · car · version · part number); absent from an older server. */
+  fitTitle?: FitTitle | null;
 }
 
 /** One model a part fits: its brand and model (English and Arabic) and its years as ranges, [[2022, 2024], [2026, 2026]]. */
@@ -312,21 +319,39 @@ export function resolveImageUrl(url: string): string {
 // (services/api/src/modules/cart/routes.js) -- a client-generated
 // cart ID, no separate "create cart" call needed.
 
+/** One price line of a basket part: during a checkout hold a part can have two (the held units, and units added later at today's price). */
+export interface CartPriceLine {
+  quantity: number;
+  price: number;
+  held: boolean;
+  /** the price dropped during the hold */
+  lowered: boolean;
+  /** added after checkout was opened */
+  isNew: boolean;
+  originalPrice?: number | null;
+}
+
 export interface CartItem {
   productId: string;
   quantity: number;
   name: string;
+  fitTitle?: FitTitle | null;
   price: number;
   /** The price before a reduction, when the part is on sale (shown struck through). */
   originalPrice?: number | null;
   /** The live price moved since the buyer's prices were locked. */
   priceChanged?: boolean;
+  /** Its price lines (Pricing > Discount rules > Rules); `price` is their average, so price x quantity is the line total. */
+  lines?: CartPriceLine[];
+  lineTotal?: number;
   currencyCode: string;
   imageUrl?: string | null;
   supplierName: string | null;
   weightKg?: number | null;
   // Live stock quantity: an early warning, not a reservation (see services/api/src/modules/cart/routes.js).
   stockQuantity: number;
+  /** From a quotation ("Order these parts", migration 141): its number, who it is for and its car. Null: a part from the catalogue. */
+  quotation?: { id: string; partyName: string | null; car: string | null } | null;
 }
 
 /** What was combined when this device's basket joined the account basket (one cart per account): lines added, lines whose quantity was added to, quantities lowered for stock, lines dropped (no stock). */
@@ -388,7 +413,8 @@ async function cartApiCall<T>(path: string, options?: RequestInit, who: CartCall
 
 export const fetchCart = (cartId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}`, undefined, who);
 export const addCartItem = (cartId: string, productId: string, quantity: number, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items`, { method: "POST", body: JSON.stringify({ productId, quantity }) }, who);
-export const setCartItemQuantity = (cartId: string, productId: string, quantity: number, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "PATCH", body: JSON.stringify({ quantity }) }, who);
+/** `quotationId`: the part comes from that quotation of the buyer's (the basket groups it under the quotation). */
+export const setCartItemQuantity = (cartId: string, productId: string, quantity: number, who?: CartCallOptions, quotationId?: string) => cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "PATCH", body: JSON.stringify({ quantity, ...(quotationId ? { quotationId } : {}) }) }, who);
 export const removeCartItem = (cartId: string, productId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "DELETE" }, who);
 /** Freezes the prices for the checkout (the app does this the moment the checkout opens). A lock already running is left as it is. */
 export const lockCartPrices = (cartId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/lock-prices`, { method: "POST" }, who);
@@ -437,7 +463,7 @@ export interface PlaceOrderOptions {
 }
 
 export async function placeOrder(
-  items: Array<{ productId: string; quantity: number }>,
+  items: Array<{ productId: string; quantity: number; quotationId?: string }>,
   auth: { userId?: string; guestEmail?: string },
   addressInput: { addressId: string } | { address: PlaceOrderAddress },
   promoCode?: string,
@@ -589,6 +615,8 @@ export interface OrderSummary {
   id: string;
   status: string;
   displayStatus: string;
+  faultEnding?: "replaced" | "refunded" | "closed" | null;      // patch-orders-fault-done
+  replacementOrderIds?: string[];
   total: number;
   currencyCode: string;
   placedAt: string;
@@ -630,7 +658,11 @@ export interface OrderLineItem {
   imageUrl?: string | null;
 }
 
+// patch-buyer-fault-tracking: a part the inspection hub found a problem with
+export interface FaultOutcome { state: "checking" | "problem" | "replaced" | "refunding" | "refunded" | "closed"; replacementOrderId?: string; refundAmount?: number }
+
 export interface SupplierSubOrder {
+  faultOutcome?: FaultOutcome | null;
   subOrderId: number;
   supplierId: string;
   supplierName: string | null;
@@ -662,6 +694,8 @@ export interface EnglishAddress {
 }
 
 export interface OrderDetail {
+  /** The quotations this order came from (migration 141). */
+  quotations?: { id: string; partyName: string | null; partyType: string }[];
   id: string;
   isReplacement?: boolean;
   userId: string | null;
@@ -947,13 +981,25 @@ export interface ReturnCaseDetail {
   updatedAt: string;
   messages: ReturnCaseMessage[];
   photos: string[];
+  // patch-returns-flow (migration 146): the reason from the list, and once approved: where to send the part (the case id is the return code) and the refund
+  reasonCode?: ReturnReasonCode | null;
+  sendBack?: boolean | null;
+  returnHub?: { id: string; name: string | null; address: string | null } | null;
+  refundAmount?: number | null;
+  refundStatus?: "waiting_part" | "pending" | "auto_done" | "manual_done" | "failed" | null;
+  refundedAt?: string | null;
+  receivedAt?: string | null;
 }
+
+export const RETURN_REASON_CODES = ["wrong_part", "damaged", "doesnt_fit", "not_as_described", "other"] as const;
+export type ReturnReasonCode = (typeof RETURN_REASON_CODES)[number];
 
 export interface ReturnCaseSummary {
   id: string;
   orderId: string;
   subOrderId: number;
   reason: string;
+  reasonCode?: ReturnReasonCode | null;
   status: string;
   updatedAt: string;
 }
@@ -1286,7 +1332,7 @@ export interface AnnualSpend { year: number; orderCount: number; totalSpent: num
 export const fetchAnnualSpend = (token: string, year?: number) => orderCall<AnnualSpend>("/me/annual-summary", { token }, { query: year ? { year: String(year) } : {} }, "Failed to load your spending");
 
 export interface TrackingStep { time: string; description: string; kind: string; location: string | null; source: string }
-export interface SubOrderTracking { subOrderId: number; supplierTrackingNumber: string | null; hubTrackingNumber: string | null; timeline: TrackingStep[]; isDelayed: boolean }
+export interface SubOrderTracking { subOrderId: number; supplierTrackingNumber: string | null; hubTrackingNumber: string | null; timeline: TrackingStep[]; isDelayed: boolean; faultOutcome?: FaultOutcome | null }
 export interface OrderTracking { orderId: string; subOrders: SubOrderTracking[] }
 /** The live tracking of every part of an order, with the steps in the page's language. */
 export const fetchOrderTracking = (orderId: string, who: OrderWho, lang?: Lang) =>
@@ -1314,7 +1360,7 @@ export async function fetchOrderReceipt(orderId: string, who: OrderWho, lang?: L
 }
 
 /** A return request for one part of an order (the server enforces the return window after delivery). A guest gives their email; photos are for signed-in buyers. */
-export async function createReturnCase(input: { subOrderId: number; reason: string; message: string; photos?: string[] }, who: OrderWho): Promise<{ id: string }> {
+export async function createReturnCase(input: { subOrderId: number; reasonCode?: ReturnReasonCode; reason?: string; message: string; photos?: string[] }, who: OrderWho): Promise<{ id: string }> {
   const res = await netFetch(`${API_BASE_URL}/returns`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}) },

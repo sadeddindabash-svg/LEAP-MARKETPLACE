@@ -3,6 +3,8 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, optionalAuth, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 const messages = require('../notifications/messages');
+const flow = require('./returnFlow');
+const conv = require('./conversations');      // the hub's report / the buyer's request open the supplier's conversation; Leap <-> hub (migration 149)      // approve with a refund, where the part goes, part received + stock back (migration 146)
 
 /**
  * Returns/disputes module — BUY-053, SUP-030, and the admin arbitration
@@ -40,7 +42,68 @@ function toCaseSummaryDto(row) {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // migration 146: the reason from the list, and what was decided (where the part goes, the refund); never the provider's error text
+    ...(({ refundError, refundReference, ...rest }) => rest)(flow.decisionDto(row)),
   };
+}
+
+// The admin's view of a case (list and page): the buyer's email, the supplier, the parts, and whether it has waited too long.
+const ADMIN_CASE_SQL = `SELECT rc.*, u.email AS buyer_email, s.name AS supplier_name, so.hub_id AS order_hub_id,
+         h.name AS return_hub_name, h.address AS return_hub_address,
+         (SELECT string_agg(COALESCE(p.name, oli.product_id::text) || ' × ' || oli.quantity, ', ') FROM order_line_items oli LEFT JOIN products p ON p.id = oli.product_id WHERE oli.sub_order_id = rc.sub_order_id) AS items,
+         (rc.status = 'awaiting' AND rc.created_at < now() - make_interval(hours => $1::int)) AS overdue,
+         (SELECT COUNT(*) FROM return_case_supplier_messages m WHERE m.case_id = rc.id AND m.sender_role = 'supplier' AND m.created_at > COALESCE(rc.admin_read_at, '-infinity'::timestamptz))::int AS unread_supplier,
+         (SELECT COUNT(*) FROM return_case_buyer_messages m WHERE m.case_id = rc.id AND m.sender_role = 'buyer' AND m.created_at > COALESCE(rc.admin_read_at, '-infinity'::timestamptz))::int AS unread_buyer,
+         (SELECT COUNT(*) FROM return_case_hub_messages m WHERE m.case_id = rc.id AND m.sender_role = 'hub' AND m.created_at > COALESCE(rc.admin_read_at, '-infinity'::timestamptz))::int AS unread_hub
+  FROM return_cases rc
+  JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
+  JOIN suppliers s ON s.id = so.supplier_id
+  LEFT JOIN users u ON u.id = rc.buyer_id
+  LEFT JOIN hubs h ON h.id = rc.return_hub_id`;
+
+function toAdminCaseDto(row) {
+  const d = flow.decisionDto(row);
+  return {
+    ...toCaseSummaryDto(row),
+    refundError: d.refundError, refundReference: d.refundReference,
+    buyerEmail: row.buyer_email || row.guest_email || null,
+    supplierName: row.supplier_name || null,
+    items: row.items || '',
+    orderHubId: row.order_hub_id || null,
+    overdue: Boolean(row.overdue),
+    unreadSupplier: Number(row.unread_supplier || 0), unreadBuyer: Number(row.unread_buyer || 0),      // patch-returns-messages
+    unreadHub: Number(row.unread_hub || 0), source: row.source || 'buyer',      // migration 149
+    supplierAskCount: Number(row.supplier_ask_count || 1), supplierAskedAt: row.supplier_asked_at || row.created_at, supplierRemindedAt: row.supplier_reminded_at || null,      // migration 150
+    supplierAnswer: row.supplier_answer || null, supplierAnswerNote: row.supplier_answer_note || null, supplierAnsweredAt: row.supplier_answered_at || null,      // migration 147
+  };
+}
+
+// The hub the buyer was told to send the part to (name and address), for the buyer's own page.
+async function withReturnHub(row) {
+  if (!row.return_hub_id) return row;
+  const { rows } = await db.query('SELECT name, address FROM hubs WHERE id = $1', [row.return_hub_id]);
+  return { ...row, return_hub_name: rows[0]?.name || null, return_hub_address: rows[0]?.address || null };
+}
+
+async function inTx(fn) {
+  const client = await db.getPool().connect();
+  try { await client.query('BEGIN'); const r = await fn(client); await client.query('COMMIT'); return r; }
+  catch (err) { await client.query('ROLLBACK').catch(() => {}); throw err; }
+  finally { client.release(); }
+}
+// A supplier or the buyer wrote on a return: the admins' bell (patch-returns-messages). Never fails the request.
+async function tellAdminsAboutMessage(caseId, who, message) {
+  try {
+    const { rows } = await db.query('SELECT order_id FROM return_cases WHERE id = $1', [caseId]);
+    const short = String(message).replace(/\s+/g, ' ').trim();
+    const { notifyAdmins } = require('../orderResponse/noAnswer');
+    await notifyAdmins({ title: `Return ${caseId}: new message from the ${({ supplier: 'supplier', buyer: 'buyer', hub: 'hub' })[who] || who}`, body: short.length > 160 ? `${short.slice(0, 157)}…` : short }, rows[0]?.order_id || null);
+  } catch (err) { console.error('[returns] admin notification failed (non-fatal):', err.message); }
+}
+
+function flowError(res, err, next) {
+  if (err instanceof flow.ReturnFlowError) return res.status(err.status).json({ error: err.message });
+  return next(err);
 }
 
 function toSupplierCaseDto(row) {
@@ -52,8 +115,35 @@ function toSupplierCaseDto(row) {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // migration 147: what the supplier checks before answering. The buyer's photos of the part, never the buyer's name or messages.
+    reasonCode: row.reason_code || null,
+    items: row.item_list || [],
+    photos: row.photo_urls || [],
+    supplierAnswer: row.supplier_answer || null,
+    supplierAnswerNote: row.supplier_answer_note || null,
+    supplierAnsweredAt: row.supplier_answered_at || null,
+    canAnswer: ['awaiting', 'in_progress'].includes(row.status) && !row.has_fault,      // not once the hub was told to send the part back
+    sendBack: row.send_back ?? null,
+    receivedAt: row.received_at || null,
+    receivedCondition: row.received_condition || null,
+    // patch-returns-hub-evidence: the hub flagged the parcel at inspection: its note, the kind of problem and its photos
+    source: row.source || 'buyer', hasFault: Boolean(row.has_fault),      // migration 149
+    askCount: Number(row.supplier_ask_count || 1), costBearer: row.cost_bearer || null,      // migration 150
+    buyerRequest: row.buyer_request ? row.buyer_request.split('\n\n').slice(1).join('\n\n') || null : null,      // the buyer's words from their first request
+    hubEvidence: row.hub_flag ? { notes: row.hub_flag.notes || null, damageType: row.hub_flag.damageType || null, at: row.hub_flag.at, photos: row.hub_flag.photos || [] } : null,
   };
 }
+// The parts and the buyer's photos, for the supplier's list and case (migration 147)
+const SUPPLIER_CASE_EXTRA = `,
+  (SELECT json_agg(url ORDER BY sort_order) FROM return_case_photos WHERE case_id = rc.id) AS photo_urls,
+  (SELECT json_agg(json_build_object('name', COALESCE(p.name, oli.product_id::text), 'quantity', oli.quantity, 'productId', oli.product_id) ORDER BY oli.product_id)
+     FROM order_line_items oli LEFT JOIN products p ON p.id = oli.product_id WHERE oli.sub_order_id = rc.sub_order_id) AS item_list,
+  (SELECT json_build_object('notes', e.notes, 'damageType', e.damage_type, 'at', e.created_at,
+            'photos', (SELECT json_agg(ph.url ORDER BY ph.sort_order) FROM hub_shipment_photos ph WHERE ph.event_id = e.id))
+     FROM hub_shipment_events e JOIN hub_shipments hs ON hs.id = e.shipment_id
+     WHERE hs.sub_order_id = rc.sub_order_id AND e.step = 'flagged' ORDER BY e.created_at DESC LIMIT 1) AS hub_flag,
+  EXISTS (SELECT 1 FROM fault_cases fc WHERE fc.sub_order_id = rc.sub_order_id) AS has_fault,
+  (SELECT m.message FROM return_case_supplier_messages m WHERE m.case_id = rc.id AND m.sender_role = 'buyer' ORDER BY m.created_at, m.id LIMIT 1) AS buyer_request`;      // patch-returns-hub-evidence
 
 // ============================================================
 // Buyer-facing: create a return request (guest checkout compatible).
@@ -61,7 +151,10 @@ function toSupplierCaseDto(row) {
 
 // POST /returns  { subOrderId, reason, message, guestEmail?, photos? }
 router.post('/', optionalAuth, async (req, res, next) => {
-  const { subOrderId, reason, message, guestEmail, photos } = req.body || {};
+  const { subOrderId, message, guestEmail, photos } = req.body || {};
+  // migration 146: the reason from the list (website); the app may still send its own words as `reason`
+  const reasonCode = flow.REASONS[req.body?.reasonCode] ? req.body.reasonCode : null;
+  const reason = typeof req.body?.reason === 'string' && req.body.reason.trim() ? req.body.reason.trim() : reasonCode ? flow.REASONS[reasonCode].en : null;
   if (!subOrderId || !reason || !message) {
     return res.status(400).json({ error: 'subOrderId, reason, and message are required' });
   }
@@ -112,13 +205,14 @@ router.post('/', optionalAuth, async (req, res, next) => {
 
     const id = await nextCaseId(client);
     await client.query(
-      `INSERT INTO return_cases (id, order_id, sub_order_id, buyer_id, guest_email, reason) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, orderId, subOrderId, buyerId, buyerId ? null : guestEmail, reason]
+      `INSERT INTO return_cases (id, order_id, sub_order_id, buyer_id, guest_email, reason, reason_code) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, orderId, subOrderId, buyerId, buyerId ? null : guestEmail, reason, reasonCode]
     );
     await client.query(
       `INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'buyer', $2)`,
       [id, message]
     );
+    await conv.copyBuyerRequest(client, { caseId: id, reason, message });      // the supplier sees this first request only (migration 149)
     // Optional evidence photos (migration 043) -- deliberately optional,
     // not required: unlike a hub inspection step (mandatory photo per
     // step) or a supplier's product listing (mandatory minimum photo
@@ -133,7 +227,12 @@ router.post('/', optionalAuth, async (req, res, next) => {
       }
     }
     await client.query('COMMIT');
-    res.status(201).json({ id, orderId, subOrderId, reason, status: 'awaiting' });
+    await flow.afterFiled({ id, orderId, subOrderId, reasonCode });      // the supplier is told (never fails the request)
+    try {
+      const { notifyAdmins } = require('../orderResponse/noAnswer');
+      await notifyAdmins({ title: `New return ${id}`, body: `Order ${orderId}: ${reason}` }, orderId);      // and the admins, at the same moment (migration 149)
+    } catch (err) { console.error('[returns] admin notification failed (non-fatal):', err.message); }
+    res.status(201).json({ id, orderId, subOrderId, reason, reasonCode, status: 'awaiting' });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -151,7 +250,7 @@ router.post('/', optionalAuth, async (req, res, next) => {
 router.get('/supplier/me', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT rc.* FROM return_cases rc
+      `SELECT rc.*${SUPPLIER_CASE_EXTRA} FROM return_cases rc
        JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
        WHERE so.supplier_id = $1
        ORDER BY rc.updated_at DESC`,
@@ -166,7 +265,7 @@ router.get('/supplier/me', requireAuth, requireRole('supplier'), async (req, res
 router.get('/supplier/me/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT rc.* FROM return_cases rc
+      `SELECT rc.*${SUPPLIER_CASE_EXTRA} FROM return_cases rc
        JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
        WHERE rc.id = $1 AND so.supplier_id = $2`,
       [req.params.id, req.user.supplierId]
@@ -181,6 +280,45 @@ router.get('/supplier/me/:id', requireAuth, requireRole('supplier'), async (req,
       ...toSupplierCaseDto(rows[0]),
       messages: supplierMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /returns/supplier/me/:id/answer  { answer: 'accept' | 'decline', note }   migration 147
+// The supplier's view on the return, after checking the buyer's photos. A "decline" needs a reason. It can be changed until the admin decides;
+// the admin still makes the decision. It is written into the supplier thread and the admins are told.
+router.post('/supplier/me/:id/answer', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const answer = req.body?.answer;
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 1000) : '';
+    if (!['accept', 'decline'].includes(answer)) return res.status(400).json({ error: 'answer must be "accept" or "decline".' });
+    if (answer === 'decline' && note.length < 3) return res.status(400).json({ error: 'Please say why you do not accept the return.' });
+    const { rows } = await db.query(
+      `UPDATE return_cases rc SET supplier_answer = $3, supplier_answer_note = $4, supplier_answered_at = now(), updated_at = now()
+       FROM supplier_sub_orders so
+       WHERE rc.id = $1 AND so.id = rc.sub_order_id AND so.supplier_id = $2 AND rc.status IN ('awaiting', 'in_progress')
+         AND NOT EXISTS (SELECT 1 FROM fault_cases fc WHERE fc.sub_order_id = rc.sub_order_id)
+       RETURNING rc.*`,
+      [req.params.id, req.user.supplierId, answer, note || null]
+    );
+    if (rows.length === 0) {
+      const own = await db.query('SELECT rc.status FROM return_cases rc JOIN supplier_sub_orders so ON so.id = rc.sub_order_id WHERE rc.id = $1 AND so.supplier_id = $2', [req.params.id, req.user.supplierId]);
+      if (own.rows.length === 0) return res.status(404).json({ error: 'Return case not found' });
+      return res.status(409).json({ error: 'Leap has already decided this return (or the hub is sending the part back), so the answer can no longer be changed.' });
+    }
+    const text = answer === 'accept'
+      ? `同意退货${note ? `：${note}` : ''}\nAccepts the return${note ? `: ${note}` : ''}`
+      : `不同意退货：${note}\nDoes not accept the return: ${note}`;
+    await db.query("INSERT INTO return_case_supplier_messages (case_id, sender_role, message) VALUES ($1, 'supplier', $2)", [req.params.id, text]);
+    try {
+      const { notifyAdmins } = require('../orderResponse/noAnswer');
+      await notifyAdmins({ title: `Return ${req.params.id}: the supplier ${answer === 'accept' ? 'accepts' : 'does not accept'}`, body: answer === 'accept' ? `The supplier accepts return ${req.params.id}${note ? `: ${note}` : '.'}` : `The supplier does not accept return ${req.params.id}: ${note}` }, rows[0].order_id);
+    } catch (err) { console.error('[returns] admin notification failed (non-fatal):', err.message); }
+    // migration 149: the supplier accepted a return the hub found: the hub is told at once to send the part back to the supplier's return address
+    const sentBack = answer === 'accept' && rows[0].source === 'hub' ? await conv.sendBackAfterSupplierAccepts(req.params.id) : { done: false };
+    const { rows: [full] } = await db.query(`SELECT rc.*${SUPPLIER_CASE_EXTRA} FROM return_cases rc WHERE rc.id = $1`, [req.params.id]);
+    res.json({ ...toSupplierCaseDto(full), sentToHub: sentBack.done, hasReturnAddress: sentBack.hasReturnAddress ?? null });
   } catch (err) {
     next(err);
   }
@@ -202,6 +340,7 @@ router.post('/supplier/me/:id/messages', requireAuth, requireRole('supplier'), a
 
     await db.query(`INSERT INTO return_case_supplier_messages (case_id, sender_role, message) VALUES ($1, 'supplier', $2)`, [req.params.id, message]);
     await db.query('UPDATE return_cases SET updated_at = now() WHERE id = $1', [req.params.id]);
+    await tellAdminsAboutMessage(req.params.id, 'supplier', message);      // patch-returns-messages
     res.status(201).json({ senderRole: 'supplier', message });
   } catch (err) {
     next(err);
@@ -251,7 +390,7 @@ router.get('/my-cases/:id', optionalAuth, async (req, res, next) => {
     const { rows: photoRows } = await db.query('SELECT url FROM return_case_photos WHERE case_id = $1 ORDER BY sort_order', [req.params.id]);
     // Deliberately NOT including supplierMessages here — see header note.
     res.json({
-      ...toCaseSummaryDto(caseRow),
+      ...toCaseSummaryDto(await withReturnHub(caseRow)),
       messages: buyerMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
       photos: photoRows.map((p) => p.url),
     });
@@ -278,9 +417,114 @@ router.post('/my-cases/:id/messages', optionalAuth, async (req, res, next) => {
 
     await db.query(`INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'buyer', $2)`, [req.params.id, message]);
     await db.query('UPDATE return_cases SET updated_at = now() WHERE id = $1', [req.params.id]);
+    await tellAdminsAboutMessage(req.params.id, 'buyer', message);      // patch-returns-messages
     res.status(201).json({ senderRole: 'buyer', message });
   } catch (err) {
     next(err);
+  }
+});
+
+// ============================================================
+// Hub staff: the returned parts the buyers send to THIS hub (migration 146), and "Received". Declared before the admin /:id routes.
+// ============================================================
+
+router.get('/hub/me', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT rc.id, rc.order_id, rc.reason, rc.reason_code, rc.decided_at, rc.received_at, rc.received_condition, rc.restocked_qty, s.name AS supplier_name,
+              (SELECT json_agg(json_build_object('name', COALESCE(p.name, oli.product_id::text), 'quantity', oli.quantity) ORDER BY oli.product_id)
+                 FROM order_line_items oli LEFT JOIN products p ON p.id = oli.product_id WHERE oli.sub_order_id = rc.sub_order_id) AS items
+       FROM return_cases rc
+       JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
+       JOIN suppliers s ON s.id = so.supplier_id
+       WHERE rc.return_hub_id = $1 AND rc.send_back = true
+         AND ((rc.received_at IS NULL AND rc.status = 'approved') OR rc.received_at > now() - interval '30 days')
+       ORDER BY (rc.received_at IS NOT NULL), COALESCE(rc.received_at, rc.decided_at) DESC`,
+      [req.user.hubId]
+    );
+    res.json(rows.map((r) => ({
+      id: r.id, orderId: r.order_id, reason: r.reason, reasonCode: r.reason_code || null, approvedAt: r.decided_at,
+      receivedAt: r.received_at || null, receivedCondition: r.received_condition || null, restockedQty: r.restocked_qty, supplierName: r.supplier_name, items: r.items || [],
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- migration 149: the hub's conversation with Leap about the parcels it flagged ----
+// GET /returns/hub/me/conversations   each return this hub found (open, or closed in the last 30 days), with its messages and how many are new
+router.get('/hub/me/conversations', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT rc.id, rc.order_id, rc.status, rc.hub_read_at, rc.updated_at, hs.id AS shipment_id, s.name AS supplier_name,
+              (SELECT json_agg(json_build_object('name', COALESCE(p.name, oli.product_id::text), 'quantity', oli.quantity) ORDER BY oli.product_id)
+                 FROM order_line_items oli LEFT JOIN products p ON p.id = oli.product_id WHERE oli.sub_order_id = rc.sub_order_id) AS items,
+              (SELECT json_agg(json_build_object('senderRole', m.sender_role, 'message', m.message, 'createdAt', m.created_at) ORDER BY m.created_at, m.id)
+                 FROM return_case_hub_messages m WHERE m.case_id = rc.id) AS messages
+       FROM return_cases rc
+       JOIN hub_shipments hs ON hs.sub_order_id = rc.sub_order_id
+       JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
+       JOIN suppliers s ON s.id = so.supplier_id
+       WHERE rc.source = 'hub' AND hs.hub_id = $1 AND (rc.status NOT IN ('completed', 'rejected') OR rc.updated_at > now() - interval '30 days')
+       ORDER BY rc.updated_at DESC`,
+      [req.user.hubId]
+    );
+    res.json(rows.map((r) => {
+      const messages = r.messages || [];
+      const readAt = r.hub_read_at ? new Date(r.hub_read_at).getTime() : 0;
+      return {
+        caseId: r.id, orderId: r.order_id, status: r.status, shipmentId: r.shipment_id, supplierName: r.supplier_name, items: r.items || [], messages,
+        unread: messages.filter((m) => m.senderRole === 'admin' && new Date(m.createdAt).getTime() > readAt).length,
+      };
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function hubOwnsCase(caseId, hubId) {
+  const { rows } = await db.query(
+    `SELECT rc.id, rc.order_id FROM return_cases rc JOIN hub_shipments hs ON hs.sub_order_id = rc.sub_order_id WHERE rc.id = $1 AND rc.source = 'hub' AND hs.hub_id = $2`,
+    [caseId, hubId]);
+  return rows[0] || null;
+}
+
+// POST /returns/hub/me/conversations/:id/messages  { message }   reaches Leap only
+router.post('/hub/me/conversations/:id/messages', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 4000) : '';
+    if (!message) return res.status(400).json({ error: 'message is required' });
+    const rc = await hubOwnsCase(req.params.id, req.user.hubId);
+    if (!rc) return res.status(404).json({ error: 'Return case not found' });
+    await db.query("INSERT INTO return_case_hub_messages (case_id, sender_role, sender_id, message) VALUES ($1, 'hub', $2, $3)", [rc.id, req.user.sub, message]);
+    await db.query('UPDATE return_cases SET updated_at = now(), hub_read_at = now() WHERE id = $1', [rc.id]);
+    await tellAdminsAboutMessage(rc.id, 'hub', message);
+    res.status(201).json({ senderRole: 'hub', message });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /returns/hub/me/conversations/:id/read   the hub opened the conversation
+router.post('/hub/me/conversations/:id/read', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const rc = await hubOwnsCase(req.params.id, req.user.hubId);
+    if (!rc) return res.status(404).json({ error: 'Return case not found' });
+    await db.query('UPDATE return_cases SET hub_read_at = now() WHERE id = $1', [rc.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /returns/hub/me/:id/received  { condition: 'good' | 'damaged' }   good = back to stock
+router.post('/hub/me/:id/received', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const result = await inTx((c) => flow.markReceived(c, { caseId: req.params.id, condition: req.body?.condition, userId: req.user.sub, hubId: req.user.hubId }));
+    await flow.afterReceived(result);
+    res.json({ id: req.params.id, receivedAt: result.rc.received_at, receivedCondition: result.rc.received_condition, restockedQty: result.restocked });
+  } catch (err) {
+    flowError(res, err, next);
   }
 });
 
@@ -292,8 +536,8 @@ router.post('/my-cases/:id/messages', optionalAuth, async (req, res, next) => {
 
 router.get('/', requireAuth, requireRole('admin'), requirePageAccess('returns'), async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM return_cases ORDER BY updated_at DESC');
-    res.json(rows.map(toCaseSummaryDto));
+    const { rows } = await db.query(`${ADMIN_CASE_SQL} ORDER BY rc.updated_at DESC`, [flow.OVERDUE_HOURS]);
+    res.json(rows.map(toAdminCaseDto));
   } catch (err) {
     next(err);
   }
@@ -313,8 +557,16 @@ router.get('/:id', requireAuth, requireRole('admin'), requirePageAccess('returns
       [req.params.id]
     );
     const { rows: photoRows } = await db.query('SELECT url FROM return_case_photos WHERE case_id = $1 ORDER BY sort_order', [req.params.id]);
+    const { rows: [full] } = await db.query(`${ADMIN_CASE_SQL} WHERE rc.id = $2`, [flow.OVERDUE_HOURS, req.params.id]);
+    const faultCase = await flow.isFaultCase(db, rows[0].sub_order_id);
+    await db.query('UPDATE return_cases SET admin_read_at = now() WHERE id = $1', [req.params.id]);      // the admin opened it: its messages are read (patch-returns-messages)
     res.json({
-      ...toCaseSummaryDto(rows[0]),
+      ...toAdminCaseDto(full),
+      partValue: await flow.partValue(db, rows[0].sub_order_id),
+      hubMessages: (await db.query('SELECT sender_role, message, created_at FROM return_case_hub_messages WHERE case_id = $1 ORDER BY created_at, id', [req.params.id])).rows
+        .map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),      // migration 149
+      faultCase,
+      canApprove: ['awaiting', 'in_progress'].includes(full.status) && !faultCase,
       buyerMessages: buyerMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
       supplierMessages: supplierMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
       photos: photoRows.map((p) => p.url),
@@ -356,6 +608,96 @@ router.post('/:id/supplier-messages', requireAuth, requireRole('admin'), require
   }
 });
 
+// POST /returns/:id/ask-supplier-again  { note }   after the supplier did not accept: ask them to look again (migration 150)
+// Their earlier answer stays in the conversation; the answer buttons come back, and a new 48 hours starts for the reminder.
+router.post('/:id/ask-supplier-again', requireAuth, requireRole('admin'), requirePageAccess('returns'), async (req, res, next) => {
+  try {
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 1000) : '';
+    if (note.length < 3) return res.status(400).json({ error: 'Write what the supplier should look at again (it is sent to them).' });
+    const { rows } = await db.query(
+      `UPDATE return_cases SET supplier_answer = NULL, supplier_answer_note = NULL, supplier_answered_at = NULL,
+         supplier_asked_at = now(), supplier_ask_count = COALESCE(supplier_ask_count, 1) + 1, supplier_reminded_at = NULL, updated_at = now()
+       WHERE id = $1 AND supplier_answer = 'decline' AND status IN ('awaiting', 'in_progress') RETURNING *`,
+      [req.params.id]);
+    if (rows.length === 0) return res.status(409).json({ error: 'Only an open return the supplier did not accept can be asked again.' });
+    const rc = rows[0];
+    await db.query("INSERT INTO return_case_supplier_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)", [rc.id,
+      `平台请您重新考虑这次退货（第 ${rc.supplier_ask_count} 次）：${note}\nLeap asks you to look at this return again (request ${rc.supplier_ask_count}): ${note}`]);
+    try {
+      const { rows: users } = await db.query("SELECT u.id FROM users u JOIN supplier_sub_orders so ON so.supplier_id = u.supplier_id WHERE so.id = $1 AND u.role = 'supplier'", [rc.sub_order_id]);
+      for (const u of users) await createNotification({ userId: u.id, type: 'return_status', title: `请重新考虑退货 ${rc.id} · Please look at return ${rc.id} again`, body: note, linkType: 'return_case', linkId: rc.id });
+    } catch (err) { console.error('[returns] supplier notification failed (non-fatal):', err.message); }
+    res.json({ ok: true, askCount: rc.supplier_ask_count });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /returns/:id/hub-messages  { message }   the admin writes to the hub that found the problem (migration 149)
+router.post('/:id/hub-messages', requireAuth, requireRole('admin'), requirePageAccess('returns'), async (req, res, next) => {
+  try {
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 4000) : '';
+    if (!message) return res.status(400).json({ error: 'message is required' });
+    const { rows } = await db.query("SELECT id FROM return_cases WHERE id = $1 AND source = 'hub'", [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'This return did not come from a hub.' });
+    await db.query("INSERT INTO return_case_hub_messages (case_id, sender_role, sender_id, message) VALUES ($1, 'admin', $2, $3)", [req.params.id, req.user.sub, message]);
+    await db.query('UPDATE return_cases SET updated_at = now() WHERE id = $1', [req.params.id]);
+    res.status(201).json({ senderRole: 'admin', message });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- migration 146: the admin's decision and what follows ----
+const adminOnly = [requireAuth, requireRole('admin'), requirePageAccess('returns')];
+
+// POST /returns/:id/approve  { amount, sendBack, hubId, refundWhen: 'now' | 'on_receipt', note }
+router.post('/:id/approve', ...adminOnly, async (req, res, next) => {
+  try {
+    const { amount, sendBack, hubId, refundWhen, note, costBearer, overruleReason } = req.body || {};
+    const result = await inTx((c) => flow.approve(c, { caseId: req.params.id, adminId: req.user.sub, amount, sendBack, hubId, refundWhen, note, costBearer, overruleReason }));
+    await flow.afterApprove(result);      // waits for an automatic refund, so the page shows how it went
+    const { rows: [rc] } = await db.query('SELECT * FROM return_cases WHERE id = $1', [req.params.id]);
+    res.json(toCaseSummaryDto(await withReturnHub(rc)));
+  } catch (err) {
+    flowError(res, err, next);
+  }
+});
+
+// POST /returns/:id/received  { condition }   the admin records the part as received (when the hub did not)
+router.post('/:id/received', ...adminOnly, async (req, res, next) => {
+  try {
+    const result = await inTx((c) => flow.markReceived(c, { caseId: req.params.id, condition: req.body?.condition, userId: req.user.sub }));
+    await flow.afterReceived(result);
+    res.json({ id: req.params.id, restockedQty: result.restocked });
+  } catch (err) {
+    flowError(res, err, next);
+  }
+});
+
+// POST /returns/:id/refunded  { reference }   the admin refunded the buyer by hand
+router.post('/:id/refunded', ...adminOnly, async (req, res, next) => {
+  try {
+    const result = await inTx((c) => flow.markRefunded(c, { caseId: req.params.id, reference: req.body?.reference, adminId: req.user.sub }));
+    await flow.notifyBuyer(result.rc, result.text);
+    await flow.maybeComplete(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    flowError(res, err, next);
+  }
+});
+
+// POST /returns/:id/retry-refund   try the automatic refund again
+router.post('/:id/retry-refund', ...adminOnly, async (req, res, next) => {
+  try {
+    const r = await flow.refundReturn(req.params.id, { forceAuto: true, byAdmin: req.user.sub });
+    if (r.ok) return res.json({ ok: true, reference: r.reference });
+    res.status(/no refund waiting/i.test(r.error || '') ? 409 : 502).json({ error: r.error || 'The refund did not go through.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /returns/:id  { status }
 router.patch('/:id', requireAuth, requireRole('admin'), requirePageAccess('returns'), async (req, res, next) => {
   try {
@@ -363,8 +705,14 @@ router.patch('/:id', requireAuth, requireRole('admin'), requirePageAccess('retur
     if (!['awaiting', 'in_progress', 'approved', 'rejected', 'completed'].includes(status)) {
       return res.status(400).json({ error: "status must be one of: awaiting, in_progress, approved, rejected, completed" });
     }
+    const { rows: [current] } = await db.query('SELECT status, refund_issued_at, received_at FROM return_cases WHERE id = $1', [req.params.id]);
+    if (current && (current.refund_issued_at || current.received_at) && status !== current.status && status !== 'completed') {
+      return res.status(409).json({ error: 'The money or the part has already come back on this return, so it can only be marked completed.' });
+    }
     const { rows } = await db.query(
-      `UPDATE return_cases SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE return_cases SET status = $1, updated_at = now(),
+         refund_status = CASE WHEN $1 IN ('rejected', 'awaiting', 'in_progress') AND refund_issued_at IS NULL THEN NULL ELSE refund_status END
+       WHERE id = $2 RETURNING *`,
       [status, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Return case not found' });
@@ -376,7 +724,8 @@ router.patch('/:id', requireAuth, requireRole('admin'), requirePageAccess('retur
     // Links to the real ORDER, not the return case itself -- the mobile
     // app has a real order detail screen showing the return request
     // inline, but no separate return-case-specific screen to navigate to.
-    await createNotification({
+    // patch-returns-conversations: only major news reaches the buyer (approved / rejected / completed), not "in progress" or "awaiting"
+    if (['approved', 'rejected', 'completed'].includes(status)) await createNotification({
       userId: rows[0].buyer_id,
       type: 'return_status',
       ...messages.returnUpdated(rows[0].id, status),

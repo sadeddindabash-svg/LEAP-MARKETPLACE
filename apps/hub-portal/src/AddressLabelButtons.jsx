@@ -1,10 +1,11 @@
 import React, { useState } from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { API_BASE_URL, SessionExpiredError } from "./auth";
 import { useLang } from "./langContext";
 
 // The delivery address label, the same PDF the hub app shares (GET /hub/me/shipments/:id/address-label, made by the server from the ENGLISH
 // address). "Print" opens the print window for it; "Download" saves it.
-const C = { ink: "#14171C", line: "#E4E6EA", signal: "#E8622C", muted: "#6B7280" };
+const C = { ink: "#14171C", line: "#E4E6EA", signal: "#0B3146", muted: "#636B78" };
 const body = { fontFamily: "'Inter', sans-serif" };
 const TEXT = {
   zh: { print: "打印地址标签", download: "下载 PDF", preparing: "准备中…" },

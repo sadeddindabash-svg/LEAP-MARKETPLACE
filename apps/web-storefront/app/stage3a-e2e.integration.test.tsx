@@ -93,7 +93,7 @@ describe.runIf(up)("stage 3a end to end: the real order pages against the real s
     const { buyer, orderId } = await signedInOrder();
     shell(orderPage(orderId));
     fireEvent.click(await screen.findByRole("button", { name: "Request a return" }, T));
-    fireEvent.change(screen.getByLabelText("Reason (e.g. wrong item, damaged)"), { target: { value: "Damaged" } });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "damaged" } });
     fireEvent.change(screen.getByLabelText("Details"), { target: { value: "Arrived cracked" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
     const link = await screen.findByRole("link", { name: "View your return request" }, T);

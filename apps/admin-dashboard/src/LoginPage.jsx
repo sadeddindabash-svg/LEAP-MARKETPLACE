@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { Lock } from "lucide-react";
 import { login } from "./auth";
 import { FONT_IMPORT, C, disp, body } from "./theme";
@@ -30,8 +31,8 @@ export default function LoginPage({ onLoginSuccess }) {
   return (
     <>
       <style>{FONT_IMPORT}</style>
-      <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, background: C.canvas }}>
-        <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
+      <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: `radial-gradient(circle at 20% 10%, ${C.navySoft}, ${C.navy} 45%, ${C.navyDeep})` }}>
+        <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.navyDeep}`, borderRadius: 16, padding: 32, boxShadow: "0 16px 40px rgba(0,0,0,0.35)" }}>
           {/* the logo, drawn like an engraving when the page opens (public/brand/leap-logo-animated.svg); the still logo if that file is missing */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
             <img src="/brand/leap-logo-animated.svg" alt="Leap Auto Parts" width={104} height={104} style={{ display: "block" }}
@@ -39,7 +40,7 @@ export default function LoginPage({ onLoginSuccess }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>Leap Auto Parts</div>
-            <span style={{ fontSize: 10, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "2px 6px" }}>OPS</span>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", color: C.onSignal, background: C.signal, borderRadius: 999, padding: "3px 8px" }}>ADMIN</span>
           </div>
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Platform operations login</div>
 
@@ -75,7 +76,7 @@ export default function LoginPage({ onLoginSuccess }) {
             style={{
               width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               marginTop: 8, padding: "11px 16px", borderRadius: 8, border: "none",
-              background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontWeight: 700, fontSize: 14, cursor: isSubmitting ? "default" : "pointer",
+              background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontWeight: 800, fontSize: 14, boxShadow: isSubmitting ? "none" : "0 1px 0 rgba(255,255,255,0.45) inset, 0 2px 4px rgba(227,159,12,0.35), 0 6px 14px rgba(227,159,12,0.25)", cursor: isSubmitting ? "default" : "pointer",
             }}
           >
             <Lock size={14} /> {isSubmitting ? "Logging in…" : "Log in"}

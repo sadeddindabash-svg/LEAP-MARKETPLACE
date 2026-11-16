@@ -79,7 +79,9 @@ router.get('/admin', requireAuth, requireRole('admin'), requirePageAccess('suppl
     const { rows } = await db.query(
       `SELECT DISTINCT ON (sm.supplier_id)
          sm.supplier_id, s.name AS supplier_name, sm.original_text, sm.translated_text,
-         sm.sender_role, sm.translation_status, sm.created_at
+         sm.sender_role, sm.translation_status, sm.created_at, s.country,
+         (SELECT COUNT(*)::int FROM supplier_messages u WHERE u.supplier_id = sm.supplier_id AND u.sender_role = 'supplier'
+            AND u.created_at > COALESCE(s.admin_messages_read_at, '-infinity'::timestamptz)) AS unread_count      -- patch-suppliers-redesign
        FROM supplier_messages sm
        JOIN suppliers s ON s.id = sm.supplier_id
        ORDER BY sm.supplier_id, sm.created_at DESC`
@@ -93,6 +95,7 @@ router.get('/admin', requireAuth, requireRole('admin'), requirePageAccess('suppl
       supplierName: r.supplier_name,
       lastMessagePreview: r.sender_role === 'admin' ? r.original_text : (r.translated_text || r.original_text),
       lastMessageAt: r.created_at,
+      lastSenderRole: r.sender_role, unreadCount: r.unread_count || 0, country: r.country || null,      // patch-suppliers-redesign
     })));
   } catch (err) {
     next(err);

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import { CartFitLine, FitRibbon, useCartFit } from "@/components/CartFit";
+import ProductTitle from "@/components/ProductTitle";
 import CartMergeNotice from "@/components/CartMergeNotice";
 import Link from "@/components/LocLink";
 import { useCart } from "@/components/CartProvider";
@@ -10,6 +11,7 @@ import { useT } from "@/components/LangProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { Price } from "@/components/Price";
 import { ShippingRow, FreeShippingHint, FreeShippingBadge } from "@/components/FreeShipping";
+import { PartsDiscountRows, SavedDetail } from "@/components/SavingsSummary";
 import { resolveImageUrl, type CartItem } from "@/lib/api";
 import { estimatedWeightKg, isOnSale, lineTotal, loyaltyBeatsPromo, stockHint, supplierLabel, atStockLimit } from "@/lib/cart";
 import { flyToTrash, foldAway } from "@/lib/flyToTrash";
@@ -21,14 +23,14 @@ const TRASH = <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"
 function Tick({ checked, mixed = false, label, onChange }: { checked: boolean; mixed?: boolean; label: string; onChange: () => void }) {
   return (
     <button type="button" role="checkbox" aria-checked={mixed ? "mixed" : checked} aria-label={label} onClick={onChange}
-      className={`grid size-6 flex-none place-items-center rounded-md border-2 ${checked || mixed ? "border-navy bg-navy text-white" : "border-[#8696a2] bg-white"}`}>
+      className={`grid size-6 flex-none place-items-center rounded-md border-2 max-sm:size-5 ${checked || mixed ? "border-navy bg-navy text-white" : "border-[#8696a2] bg-white"}`}>
       {checked && !mixed && <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg>}
       {mixed && <span aria-hidden="true" className="block h-0.5 w-3 rounded bg-white" />}
     </button>
   );
 }
 
-const stepper = "grid size-11 place-items-center text-lg font-bold text-navy hover:bg-chalk disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent";
+const stepper = "grid size-8 place-items-center text-base font-bold text-navy hover:bg-chalk lg:size-11 lg:text-lg disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent";
 
 function Line({ item, onChange, onRemove, busy, selected, onToggle }: { item: CartItem; onChange: (q: number) => void; onRemove: (photo: HTMLElement | null, row: HTMLElement | null) => void; busy: boolean; selected: boolean; onToggle: () => void }) {
   const t = useT();
@@ -37,35 +39,51 @@ function Line({ item, onChange, onRemove, busy, selected, onToggle }: { item: Ca
   const fit = useCartFit(item.productId);          // does it fit the buyer's car: the ribbon on the photo and the line under the name
   const row = useRef<HTMLLIElement>(null);
   return (
-    <li ref={row} data-selected={selected} className={`grid grid-cols-[24px_88px_minmax(0,1fr)] items-start gap-4 border-b border-line py-5 transition-opacity last:border-b-0 sm:grid-cols-[24px_104px_minmax(0,1fr)_auto] ${selected ? "" : "opacity-55"}`}>
-      <span className="self-center"><Tick checked={selected} label={`${t("cart_select_item")}: ${item.name}`} onChange={onToggle} /></span>
-      <Link ref={photo} href={`/products/${item.productId}`} className="relative block h-24 overflow-hidden rounded-xl bg-[#e6edf2]">
+    <li ref={row} data-selected={selected} className={`grid grid-cols-[20px_64px_minmax(0,1fr)] items-start gap-2.5 border-b border-line py-2 transition-opacity last:border-b-0 lg:grid-cols-[24px_104px_minmax(0,1fr)_auto] lg:gap-4 lg:py-5 ${selected ? "" : "opacity-55"}`}>
+      <span className="self-center max-lg:col-start-1 max-lg:row-start-1"><Tick checked={selected} label={`${t("cart_select_item")}: ${item.name}`} onChange={onToggle} /></span>
+      <Link ref={photo} href={`/products/${item.productId}`} className="relative block h-16 overflow-hidden max-lg:col-start-2 max-lg:row-start-1 rounded-[10px] bg-[#e6edf2] lg:h-24 lg:rounded-xl">
         {item.imageUrl && <SafeImage src={resolveImageUrl(item.imageUrl)} alt="" fill sizes="104px" className="object-cover" unoptimized />}
         <FitRibbon fit={fit} />
       </Link>
-      <div className="min-w-0">
-        <Link href={`/products/${item.productId}`} className="line-clamp-2 text-[17px] font-bold leading-snug hover:underline">{item.name}</Link>
-        {item.supplierName && <p className="mt-0.5 text-sm text-muted">{supplierLabel(item.supplierName, t("supplier_word"))}</p>}
-        <CartFitLine fit={fit} />
-        {item.priceChanged && <p role="status" className="mt-2 text-sm font-semibold text-[#7a4e00]">{t("price_updated_since_added")}</p>}
-        <div className="mt-3 flex flex-wrap items-center gap-4">
+      {/* On a phone and a tablet (the summary is beside the parts there): everything small, and the quantity, the bin and the price on one line (the price is drawn over the end of that line, see below). */}
+      <div className="flex min-w-0 flex-col max-lg:col-start-3 max-lg:row-start-1">
+        <Link href={`/products/${item.productId}`} className="block text-[13.5px] font-bold leading-tight hover:underline lg:text-[17px] lg:leading-snug"><ProductTitle title={item.fitTitle} name={item.name} /></Link>
+        {item.supplierName && <p className="truncate text-[11.5px] text-muted lg:mt-0.5 lg:text-sm">{supplierLabel(item.supplierName, t("supplier_word"))}</p>}
+        <div className="max-lg:[&_*]:text-[11.5px] max-lg:[&>*]:mt-0 max-lg:[&>p]:truncate"><CartFitLine fit={fit} /></div>
+        {item.priceChanged && <p role="status" className="text-[11.5px] font-semibold text-[#7a4e00] lg:mt-2 lg:text-sm">{t("price_updated_since_added")}</p>}
+        {/* during a checkout hold: the held units and the units added later can be two lines at two prices (Pricing > Discount rules > Rules) */}
+        {((item.lines?.length ?? 0) > 1 || item.lines?.some((l) => l.lowered)) && (
+          <ul data-testid="cart-price-lines" className="mt-1 space-y-0.5 text-[11.5px] lg:mt-2 lg:text-sm">
+            {item.lines!.map((l, k) => (
+              <li key={k} className="flex flex-wrap items-center gap-1.5">
+                <span className="font-semibold">{l.quantity} × <Price usd={l.price} /></span>
+                {l.originalPrice ? <span className="text-muted line-through"><Price usd={l.originalPrice} /></span> : null}
+                <span className={`rounded px-1.5 text-[10.5px] font-extrabold ${l.isNew ? "bg-[#e8eef7] text-[#1d3f73]" : "bg-[#fff4d6] text-[#8a5a00]"}`}>{t(l.isNew ? "cart_line_new" : "cart_line_held")}</span>
+                {l.lowered && <span className="rounded bg-[#e3f6ea] px-1.5 text-[10.5px] font-extrabold text-[#17663a]">{t("cart_line_lowered")}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-1 flex items-center gap-1.5 max-lg:order-last lg:mt-3 lg:flex-wrap lg:gap-4">
           <div role="group" aria-label={String(item.quantity)} className="inline-flex items-center rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white">
             <button type="button" className={stepper} disabled={busy || item.quantity <= 1} onClick={() => onChange(item.quantity - 1)} aria-label={t("decrease_quantity")}>−</button>
-            <span className="min-w-9 text-center font-bold" aria-live="polite">{item.quantity}</span>
+            <span className="min-w-6 text-center text-sm font-bold lg:min-w-9 lg:text-base" aria-live="polite">{item.quantity}</span>
             <button type="button" className={stepper} disabled={busy || atStockLimit(item)} onClick={() => onChange(item.quantity + 1)} aria-label={t("increase_quantity")}>+</button>
           </div>
-          <button type="button" onClick={() => onRemove(photo.current, row.current)} disabled={busy} aria-label={t("remove")} title={t("remove")} className="grid size-11 place-items-center rounded-lg text-[#a12a21] hover:bg-[#fbeceb] disabled:opacity-50">{TRASH}</button>
+          <button type="button" onClick={() => onRemove(photo.current, row.current)} disabled={busy} aria-label={t("remove")} title={t("remove")} className="grid size-8 place-items-center rounded-lg text-[#a12a21] hover:bg-[#fbeceb] disabled:opacity-50 lg:size-11">{TRASH}</button>
         </div>
-        {hint && <p className="mt-2 text-sm font-semibold text-[#7a4e00]">{hint.kind === "limit" ? t("cart_at_stock_limit") : t("cart_only_left", { n: hint.left })}</p>}
+        {hint && <p className="text-[11.5px] font-semibold text-[#7a4e00] lg:mt-2 lg:text-sm">{hint.kind === "limit" ? t("cart_at_stock_limit") : t("cart_only_left", { n: hint.left })}</p>}
       </div>
-      <div className="col-span-3 text-end sm:col-span-1">
-        <Price usd={lineTotal(item)} className="text-xl font-extrabold text-navy" />
-        {isOnSale(item) && <p className="text-sm text-muted line-through"><Price usd={(item.originalPrice as number) * item.quantity} /></p>}
+      {/* phone: at the bottom end of the part, on the line of the quantity (the old price small above it); tablet and PC: its own column, as before */}
+      <div className="text-end max-lg:col-start-3 max-lg:row-start-1 max-lg:flex max-lg:flex-col-reverse max-lg:self-end max-lg:justify-self-end max-lg:pb-1 max-lg:leading-tight lg:col-span-1">
+        <Price usd={lineTotal(item)} className="text-[15.5px] font-extrabold text-navy lg:text-xl" />
+        {isOnSale(item) && <p className="text-[11px] text-muted line-through lg:text-sm"><Price usd={(item.originalPrice as number) * item.quantity} /></p>}
       </div>
     </li>
   );
 }
 
+// On a phone and a tablet every part is a compact row (PC: as before); on every screen each quotation and the other parts are separate boxes (confirmed via mockups).
 // The cart, with what the mobile app's cart shows: each part with its photo, supplier, line total (and the struck-through price when it is on sale), a stock hint when 5 or
 // fewer would remain, "Price updated" when it moved, the estimated weight, and the discount the server applied. Each line has a tick box: only the ticked lines are
 // ordered (the summary and Checkout follow them; the others stay in the basket). Removing a line sends its photo into a trash can, then the line folds away.
@@ -114,29 +132,65 @@ export default function CartPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
-      <h1 className="mb-6 text-3xl font-bold tracking-tight text-navy">{t("cart_title")} <span className="text-lg font-semibold text-muted">({t("cart_items", { n: itemCount })})</span></h1>
+    <div className="mx-auto max-w-6xl px-2 pb-8 pt-2 sm:px-8">          {/* every gap between the boxes is 8 px, on every screen */}
+      {/* The title and "Select all" on one line, as wide as the parts (on a PC the summary is beside them). */}
+      <div className="mb-2 flex items-center justify-between gap-2 md:w-[calc((100%-0.5rem)*1.6/2.6)]">
+        <h1 className="min-w-0 text-lg font-bold tracking-tight text-navy sm:text-3xl">{t("cart_title")} <span className="text-[13px] font-semibold text-muted sm:text-lg">({t("cart_items", { n: itemCount })})</span></h1>
+        {ctx.toggleSelected && (
+          <div className="flex flex-none items-center gap-1.5 text-[12.5px] font-bold sm:gap-3 sm:text-base">
+            <Tick checked={unselected.size === 0} mixed={unselected.size > 0 && unselected.size < cart.items.length} label={t("cart_select_all", { n: cart.items.length })} onChange={() => ctx.setAllSelected(unselected.size > 0)} />
+            <span aria-hidden="true">{t("cart_select_all", { n: cart.items.length })}</span>
+          </div>
+        )}
+      </div>
       <CartMergeNotice />
       {error && <p role="alert" className="mb-4 text-sm font-semibold text-[#a12a21]">{error}</p>}
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <section className="rounded-[14px] border border-line bg-white px-5" aria-label={t("cart_title")}>
-          {ctx.toggleSelected && (
-            <div className="flex items-center gap-3 border-b border-line py-4 font-bold">
-              <Tick checked={unselected.size === 0} mixed={unselected.size > 0 && unselected.size < cart.items.length} label={t("cart_select_all", { n: cart.items.length })} onChange={() => ctx.setAllSelected(unselected.size > 0)} />
-              <span aria-hidden="true">{t("cart_select_all", { n: cart.items.length })}</span>
-            </div>
-          )}
-          <ul>
-            {cart.items.map((item) => (
+      <div className="grid items-start gap-2 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">          {/* tablet and PC: the summary beside the parts */}
+        {/* on every screen: a box per quotation (its header and its parts, gold edge) and a box for the other parts, 8 px apart */}
+        <section className="grid gap-2" aria-label={t("cart_title")}>
+          {(() => {
+            const line = (item: CartItem) => (
               <Line key={item.productId} item={item} busy={busy} selected={!unselected.has(item.productId)} onToggle={() => ctx.toggleSelected?.(item.productId)}
                 onChange={(q) => guard(() => updateQuantity(item.productId, q))}
                 onRemove={(photo, row) => remove(item, photo, row)} />
-            ))}
-          </ul>
+            );
+            // Parts from a quotation first, together under its navy header (tap it to open the quotation); then the other parts, from the catalogue.
+            const groups = new Map<string, CartItem[]>();
+            for (const i of cart.items) if (i.quotation?.id) groups.set(i.quotation.id, [...(groups.get(i.quotation.id) ?? []), i]);
+            const others = cart.items.filter((i) => !i.quotation?.id);
+            return (
+              <>
+                {[...groups.entries()].map(([id, list]) => {
+                  const q = list[0].quotation;
+                  const sub = [q?.partyName ? t("quote_for_name", { name: q.partyName }) : null, q?.car].filter(Boolean).join(" · ");
+                  return (
+                    <div key={id} data-testid="cart-quotation-group" className="rounded-[14px] border-[1.5px] border-signal bg-white px-2.5 pt-2 sm:px-5 sm:pt-4">
+                      <Link href={`/quotations/${encodeURIComponent(id)}`} className="flex items-center gap-3 rounded-[14px] bg-gradient-to-br from-navy to-[#215a78] px-4 py-3 text-white shadow-[0_12px_26px_rgba(11,49,70,0.3)] max-sm:px-3 max-sm:py-2">
+                        <span className="min-w-0 flex-1">
+                          <b className="block">📄 {t("quote_doc_title_case")} <span dir="ltr">{id}</span></b>
+                          {sub && <span className="block truncate text-sm text-[#f9d77a]"><bdi>{sub}</bdi></span>}
+                          <span className="block text-xs text-[#bfe9d3]">✓ {t("quote_all_fit")}</span>
+                        </span>
+                        <span aria-hidden="true" className="grid size-8 flex-none place-items-center rounded-full bg-gradient-to-b from-[#ffd567] to-signal-dark text-lg font-black text-navy rtl:rotate-180">›</span>
+                      </Link>
+                      <ul className="mt-1">{list.map(line)}</ul>
+                    </div>
+                  );
+                })}
+                {others.length > 0 && (
+                  <div className="rounded-[14px] border border-line bg-white px-2.5 sm:px-5">
+                    {groups.size > 0 && <p className="pt-2 text-xs font-extrabold tracking-wide text-signal-dark sm:pt-4">{t("cart_other_parts")}</p>}
+                    <ul>{others.map(line)}</ul>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </section>
-        <aside className="rounded-[14px] border border-line bg-white p-6" aria-labelledby="cart-summary">
-          <h2 id="cart-summary" className="mb-4 text-xl font-bold">{t("order_summary")}</h2>
+        <aside className="rounded-[14px] border border-line bg-white p-3 sm:p-6 md:sticky md:top-[calc(var(--header-h,0px)+0.5rem)]" aria-labelledby="cart-summary">          {/* tablet and PC: stays in view while the parts scroll, 8 px under the header */}
+          <h2 id="cart-summary" className="mb-1 text-base font-bold sm:mb-4 sm:text-xl">{t("order_summary")}</h2>
           {unselected.size > 0 && <p data-testid="cart-selected-count" className="mb-2 text-sm font-semibold text-muted">{t("cart_items_of", { n: chosen?.items.length ?? 0, total: cart.items.length })}</p>}
+          <PartsDiscountRows summary={summary} />
           <div className="flex justify-between py-2"><span>{t("subtotal")}</span><Price usd={summary.subtotal} /></div>
           {summary.discount > 0 && (
             <div className="flex justify-between py-2 font-semibold text-[#0f6b49]">
@@ -147,21 +201,22 @@ export default function CartPage() {
           {weight !== null && <div className="flex justify-between py-2 text-sm text-muted"><span>{t("estimated_weight")}</span><span>{weight.toFixed(1)} {t("kg")}</span></div>}
           <ShippingRow shipping={chosen?.shipping} />
           <FreeShippingHint shipping={chosen?.shipping} />
-          <div className="mt-2 flex justify-between border-t-2 border-line pt-4 text-[22px] font-extrabold"><span>{t("total")}</span><Price usd={summary.total} /></div>
+          <div className="mt-2 flex justify-between border-t-2 border-line pt-2 text-lg font-extrabold sm:pt-4 sm:text-[22px]"><span>{t("total")}</span><Price usd={summary.total} /></div>
           {summary.saved > 0 && (
             <>
               <p data-testid="you-saved" className="mt-1 text-sm font-semibold text-[#0f6b49]">{t("you_saved")} <Price usd={summary.saved} /></p>
-              {summary.shippingSaved > 0 && <p data-testid="you-saved-detail" className="text-[12.5px] text-muted">{summary.discount > 0 ? t("saved_breakdown", { discount: format(summary.discount), shipping: format(summary.shippingSaved) }) : t("saved_free_shipping")}</p>}
+              {/* every saving: parts discount + promo or loyalty + free shipping */}
+              <SavedDetail summary={summary} />
             </>
           )}
           {loyaltyBeatsPromo(cart) && <p className="mt-3 text-sm text-muted">{t("loyalty_beats_promo", { amount: format(summary.discount) })}</p>}
           {chosen && chosen.items.length > 0 ? (
-            <Link href="/checkout" className="relative mt-5 flex min-h-13 w-full items-center justify-center rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark">{unselected.size > 0 ? t("checkout_some", { n: chosen.items.length, total: cart.items.length }) : t("checkout")}<FreeShippingBadge shipping={chosen.shipping} /></Link>
+            <Link href="/checkout" className="relative mt-2 flex min-h-12 w-full sm:mt-5 sm:min-h-13 items-center justify-center rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark">{unselected.size > 0 ? t("checkout_some", { n: chosen.items.length, total: cart.items.length }) : t("checkout")}<FreeShippingBadge shipping={chosen.shipping} /></Link>
           ) : (
             <span aria-disabled="true" className="mt-5 flex min-h-13 w-full cursor-not-allowed items-center justify-center rounded-[10px] bg-[#e6edf2] text-base font-bold text-[#8696a2]">{t("checkout")}</span>
           )}
           {unselected.size > 0 && <p className="mt-2 text-center text-[12.5px] text-muted">{chosen && chosen.items.length > 0 ? t("cart_unticked_note") : t("cart_none_selected")}</p>}
-          {chosen && chosen.items.length > 0 && <Link href="/quotations/new" data-testid="get-quotation" className="mt-3 flex min-h-12 w-full items-center justify-center rounded-[10px] border-[1.5px] border-navy text-base font-bold text-navy hover:bg-chalk">{t("get_quotation")}</Link>}
+          {/* "Get a quotation" is no longer here: a quotation starts car first (the header's button, or + New quotation in My quotations) */}
           <Link href="/search" className="mt-3 block text-center text-sm font-semibold text-navy underline underline-offset-4">{t("continue_shopping")}</Link>
         </aside>
       </div>

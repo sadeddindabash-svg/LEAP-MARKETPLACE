@@ -10,6 +10,7 @@ import 'core/language_state.dart';
 import 'core/app_lock_state.dart';
 import 'core/theme_state.dart';
 import 'core/garage_state.dart';
+import 'core/product_slide.dart';
 import 'widgets/app_lock_gate.dart';
 import 'widgets/force_update_gate.dart';
 import 'widgets/theme_reveal.dart';
@@ -155,7 +156,8 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/product/:id',
-      builder: (context, state) => ProductScreen(productId: state.pathParameters['id']!),
+      // the product page slides in from the side (ProductSlide)
+      pageBuilder: (context, state) => ProductSlide.page(state, ProductScreen(productId: state.pathParameters['id']!)),
     ),
     // Real alias route (new) -- closes a real, confirmed bug found
     // while extending deep-link scaffolding to product sharing:
@@ -170,7 +172,7 @@ final GoRouter appRouter = GoRouter(
     // calls context.push('/product/$id') directly.
     GoRoute(
       path: '/products/:id',
-      builder: (context, state) => ProductScreen(productId: state.pathParameters['id']!),
+      pageBuilder: (context, state) => ProductSlide.page(state, ProductScreen(productId: state.pathParameters['id']!)),
     ),
     GoRoute(path: '/checkout', builder: (context, state) => const CheckoutScreen()),
     GoRoute(path: '/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!, guestEmail: state.uri.queryParameters['guestEmail'])),

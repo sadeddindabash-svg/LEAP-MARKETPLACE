@@ -182,7 +182,14 @@ String _date(BuildContext context, String iso) {
   return '${d.day} ${(_ar(context) ? ar : en)[d.month - 1]} ${d.year}';
 }
 
-String _vehicleLine(Map<String, dynamic> v) => [v['make'], v['model'], v['year'], v['version']].where((x) => x != null && '$x'.isNotEmpty).join(' ');
+// The quotation's car: in Arabic when the app is (its Arabic brand, model and version, kept since the car comes from the catalogue), else in English.
+String _vehicleLine(Map<String, dynamic> v, {bool ar = false}) {
+  String? pick(String key) {
+    final arValue = v['${key}Ar'];
+    return ar && arValue is String && arValue.isNotEmpty ? arValue : (v[key] == null ? null : '${v[key]}');
+  }
+  return [pick('make'), pick('model'), '${v['year'] ?? ''}', pick('version')].where((x) => x != null && x.isNotEmpty).join(' ');
+}
 
 Color _stateColor(String state) => switch (state) { 'open' => const Color(0xFF0F6B49), 'ordered' => const Color(0xFF0B3146), 'expired' => const Color(0xFFA12A21), _ => Colors.grey };
 Color _stateBack(String state) => switch (state) { 'open' => const Color(0xFFE8F7EF), 'ordered' => const Color(0xFFEAF3F9), 'expired' => const Color(0xFFFDF0EF), _ => const Color(0xFFF4F6F8) };
@@ -1130,7 +1137,7 @@ class _MyQuotationsScreenState extends State<MyQuotationsScreen> {
                                     child: Text(qtr(context, 'badge_$state'), style: TextStyle(color: _stateColor(state), fontSize: 11.5, fontWeight: FontWeight.w700)),
                                   ),
                                 ]),
-                                subtitle: Text('${party['name']} · ${qtr(context, 'party_${party['type']}')} · ${_vehicleLine(q['vehicle'] as Map<String, dynamic>)} · ${qtr(context, 'parts_count').replaceAll('{n}', '${q['itemCount']}')}\n${qtr(context, 'valid_until')} ${_date(context, q['expiresAt'] as String)}'),
+                                subtitle: Text('${party['name']} · ${qtr(context, 'party_${party['type']}')} · ${_vehicleLine(q['vehicle'] as Map<String, dynamic>, ar: _ar(context))} · ${qtr(context, 'parts_count').replaceAll('{n}', '${q['itemCount']}')}\n${qtr(context, 'valid_until')} ${_date(context, q['expiresAt'] as String)}'),
                                 isThreeLine: true,
                                 trailing: Text(_money(context, q['totalUsd'] as num, q['currency'] as Map<String, dynamic>), style: TextStyle(fontWeight: FontWeight.w800, color: p.ink)),
                               ),
@@ -1304,7 +1311,11 @@ class _QuotationDetailScreenState extends State<QuotationDetailScreen> {
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(icon: const Icon(Icons.picture_as_pdf_outlined, size: 18), label: Text(qtr(context, 'pdf')), onPressed: () => _open('$link/print')),
+            child: ElevatedButton.icon(icon: const Icon(Icons.picture_as_pdf_outlined, size: 18), label: Text(qtr(context, 'pdf')), onPressed: () {
+              // the website's PDF in the app's language (Arabic: its /ar/ address), the same on every device
+              final pdf = Uri.parse('$link/print');
+              _open(_ar(context) && !pdf.path.startsWith('/ar/') ? pdf.replace(path: '/ar${pdf.path}').toString() : pdf.toString());
+            }),
           ),
           const SizedBox(height: 6),
           TextButton(onPressed: () => _open(link), child: Text(qtr(context, 'confirm_shares'))),
@@ -1324,7 +1335,7 @@ class _QuotationDetailScreenState extends State<QuotationDetailScreen> {
       _Card(children: [
         Text('${party['name']} · ${qtr(context, 'party_${party['type']}')}', style: const TextStyle(fontWeight: FontWeight.w800)),
         if (party['policyNumber'] != null) Text('${qtr(context, 'policy').replaceAll(RegExp(r' \(.*\)'), '')}: ${party['policyNumber']}', style: TextStyle(color: p.muted)),
-        Text(_vehicleLine(q['vehicle'] as Map<String, dynamic>), style: TextStyle(color: p.muted)),
+        Text(_vehicleLine(q['vehicle'] as Map<String, dynamic>, ar: _ar(context)), style: TextStyle(color: p.muted)),
         Text('${qtr(context, 'issued')} ${_date(context, q['createdAt'] as String)}', style: TextStyle(color: p.muted, fontSize: 12.5)),
         const Divider(height: 22),
         for (final i in items)

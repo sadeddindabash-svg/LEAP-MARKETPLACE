@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { Download, FileSpreadsheet, Check, AlertTriangle, Undo2 } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
@@ -104,7 +105,7 @@ export default function CatalogImportPanel({ onSessionExpired }) {
   });
 
   const box = { border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, background: C.card, marginBottom: 14 };
-  const button = (primary, disabled) => ({ ...body, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: primary ? "none" : `1px solid ${C.line}`, background: disabled ? "#D1D5DB" : primary ? C.ink : "#fff", color: primary ? "#fff" : C.ink, fontWeight: 600, fontSize: 13, cursor: disabled ? "default" : "pointer" });
+  const button = (primary, disabled) => ({ ...body, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: primary ? "none" : `1px solid ${C.line}`, background: disabled ? "#D1D5DB" : primary ? C.navy : "#fff", color: primary ? "#fff" : C.ink, fontWeight: 600, fontSize: 13, cursor: disabled ? "default" : "pointer" });
   const s = preview?.summary;
   const toImport = s ? s.newCategories + s.newParts + s.updatedCategories + s.updatedParts : 0;
   const shownRows = preview ? preview.rows.filter((r) => !problemsOnly || r.status === "error" || r.messages.some((m) => m.level === "warning")) : [];

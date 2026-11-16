@@ -1,9 +1,9 @@
 // The rules for the new vehicle fields, in one place, so the manual form and the Excel import cannot disagree. Pure functions (no database).
 const OLDEST_YEAR = 1950;
-const MAX_NAME_LENGTH = 120;
+const MAX_NAME_LENGTH = 200;            // a version name (long van / truck names, in Arabic too)
 const MAX_ENGINE_LENGTH = 200;
 const MIN_SEATS = 1;
-const MAX_SEATS = 12;
+const MAX_SEATS = 60;                   // buses and minibuses have 15, 17, 30... seats
 
 /** Arabic-Indic and Persian digits become English digits (the project writes every year and number in English digits). */
 function toEnglishDigits(text) {
@@ -30,7 +30,7 @@ function parseYear(value) {
   return year >= OLDEST_YEAR && year <= new Date().getFullYear() + 1 ? year : null;
 }
 
-/** A whole number of seats from MIN_SEATS to MAX_SEATS, or null. Accepts 5, "5", "٥"; refuses 5.5, 0, 13, "five". */
+/** A whole number of seats from MIN_SEATS to MAX_SEATS, or null. Accepts 5, "5", "٥"; refuses 5.5, 0, 61, "five". */
 function parseSeats(value) {
   const text = toEnglishDigits(typeof value === 'number' ? String(value) : value).trim();
   if (!/^\d{1,2}$/.test(text)) return null;

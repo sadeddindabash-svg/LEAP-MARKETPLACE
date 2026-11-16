@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, useContext } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import ExcelJS from "exceljs";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABELS } from "./adminNav";
 import { PageTabsContext, useGroupTabs, FolderTabs, FilterButtons, toolbarButtonStyle, useSlidingMark, lessMotion, SLIDE_MS, SLIDE_EASE, BrandLogo } from "./components/PageChrome";      // the common page design: header, main tabs, buttons
-import { FONT_IMPORT, C, disp, body, mono } from "./theme";
+import { FONT_IMPORT, C, disp, body, mono, SHADOW } from "./theme";
 import { useAutoRefresh, setIfChanged, sameData } from "./autoRefresh";
 import HomePicturesSection from "./HomePicturesSection";
 import ProfitsPanel from "./ProfitsPanel";      // Financial -> Profits
@@ -18,27 +19,29 @@ import SocialLinksSection from "./SocialLinksSection";
 import LegalPagesSection from "./LegalPagesSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import FitmentSummary from "./FitmentSummary";
+import SupplierVerificationCard, { TrustBadge } from "./SupplierVerificationCard";      // patch-supplier-verification
 import FreeShippingSection from "./FreeShippingSection";
-import VersionsPanel from "./VersionsPanel";
+import VehicleVersionsPage from "./VehicleVersionsPage";      // patch-vehicle-data-redesign: a year's versions are their own page now (was VersionsPanel under each year)
 import VehicleImportPanel from "./VehicleImportPanel";
 import VehicleExportPanel from "./VehicleExportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
 import CategoryInUseDialog from "./CategoryInUseDialog";
 import CategoriesTabs from "./CategoriesTabs";
+import { CardMenu, OrderArrows, TagInput, cardStyle } from "./CatalogCards";      // patch-categories-redesign
 import SupplierPaymentTermsCard from "./SupplierPaymentTermsCard";
 import OwedSuppliersTable from "./OwedSuppliersTable";
 import DeliveryProofCard from "./DeliveryProofCard";
 // (DeliveryDriversSection is no longer used: migration 121, no delivery driver accounts)
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchSupplierResponses, fetchResponseAlternatives, reassignSupplierResponse, markResponseHandled, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
-  fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchSupplierResponses, fetchResponseAlternatives, reassignSupplierResponse, markResponseHandled, fetchNoAnswerRules, saveNoAnswerRules, fetchWaitingOrders, fetchResponseHistory, fetchResponseCandidates, resendSupplierResponse, moveSupplierResponse, markResponseRefunded, fetchOrders, fetchOrderById, fetchCancellations, markCancellationRefunded, retryCancellationRefund, adminCancelOrder, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, approveReturnCase, askSupplierAgain, replyToReturnCaseHub, markReturnReceived, markReturnRefunded, retryReturnRefund, fetchOverview, API_BASE_URL, SessionExpiredError,
+  fetchCountriesList, fetchDeliverySettings, saveDeliverySettings, previewDelivery, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
   fetchProductRequirements, updateProductRequirements,
   fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
-  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, createBrand, deleteBrand, createModel, deleteModel, deleteGeneration, fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
+  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchVersionsForGeneration, createBrand, deleteBrand, createModel, deleteModel, deleteGeneration, fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
   fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern, bulkUploadVinModelPatterns, resolveVinModelPatternConflict,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
-  fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
+  fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule, fetchDiscountHoldRules, saveDiscountHoldRules, fetchDiscountHoldEvents,
   fetchLoyaltyTiers, createLoyaltyTier, updateLoyaltyTier, deleteLoyaltyTier,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, uploadCatalogImage, updateCategoryPhoto, updatePartPhoto, updateGenerationPhoto, createYear, moveCategory, movePart, moveBrand, moveModel, updateBrandPhoto, updateCategory, updatePart, updateBrand, updateModel, updateGeneration, fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
@@ -158,7 +161,7 @@ const NavigationContext = createContext(null);
 // Every page's header (the common page design): the title and its description on the left; search, notifications and the admin's name on the right.
 // Under it, the page's main tabs: those of its group (handed down by the shell), and/or the page's own (`tabs`: { label, tabs: [{ id, label }], activeId, onSelect }).
 // The header's colors: golden yellow, with dark text that reads well on it.
-const HEADER = { bg: C.signal, line: "#D9940F", text: C.onSignal, soft: "#5C4407" };      // golden yellow, the same as the side menu, with dark text
+const HEADER = { bg: C.navy, line: "rgba(255,255,255,0.12)", text: "#fff", soft: C.onNavyMuted };      // golden yellow, the same as the side menu, with dark text
 function TopBar({ title, subtitle, tabs }) {
   const groupTabs = useGroupTabs();
   const currentUser = useContext(CurrentUserContext);
@@ -174,18 +177,22 @@ function TopBar({ title, subtitle, tabs }) {
 
   // the page's own tabs replace the one tab a page outside any group gets (its own name); a group's tabs stay, with the page's own under them
   const showGroup = Boolean(groupTabs && groupTabs.tabs.length > 0 && !(tabs && groupTabs.single));
+  const hasTabs = showGroup || Boolean(tabs && tabs.tabs.length > 0);
   return (
-    <>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, padding: "18px 28px", borderBottom: `1px solid ${HEADER.line}`, background: HEADER.bg }}>
-      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: HEADER.text }}>{title}</div>
-        {subtitle && <div style={{ ...body, fontSize: 12.5, color: HEADER.soft, marginTop: 2 }}>{subtitle}</div>}
+    <div data-leap-header="" style={{ position: "relative", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)`, padding: hasTabs ? "24px 32px 0" : "24px 32px 26px", boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.06)" }}>
+    {/* a soft gloss across the top, like the app's navy cards */}
+    <span aria-hidden="true" style={{ position: "absolute", inset: "0 0 55% 0", background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0))", pointerEvents: "none" }} />
+    <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+        <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal, marginBottom: 6 }}>Leap admin</div>
+        <div style={{ ...disp, fontSize: 28, lineHeight: "34px", fontWeight: 800, letterSpacing: "-0.02em", color: HEADER.text }}>{title}</div>
+        {subtitle && <div style={{ ...body, fontSize: 13, lineHeight: "19px", color: HEADER.soft, marginTop: 4, maxWidth: 760 }}>{subtitle}</div>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
         <GlobalSearch nav={nav} />
         <NotificationBell nav={nav} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: C.signal, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
+          <div style={{ width: 38, height: 38, borderRadius: "50%", background: C.signal, color: C.onSignal, boxShadow: "0 0 0 3px rgba(249,179,23,0.25)", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
           <div>
             <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: HEADER.text }}>{displayName}</div>
             <div style={{ ...body, fontSize: 10.5, color: HEADER.soft }}>{roleLabel}</div>
@@ -193,9 +200,9 @@ function TopBar({ title, subtitle, tabs }) {
         </div>
       </div>
     </div>
-    {showGroup && <FolderTabs label={groupTabs.label} tabs={groupTabs.tabs} activeId={groupTabs.activeId} onSelect={groupTabs.onSelect} />}
-    {tabs && tabs.tabs.length > 0 && <FolderTabs label={tabs.label} tabs={tabs.tabs} activeId={tabs.activeId} onSelect={tabs.onSelect} maxVisible={tabs.maxVisible || 7} />}
-    </>
+    {showGroup && <FolderTabs dark label={groupTabs.label} tabs={groupTabs.tabs} activeId={groupTabs.activeId} onSelect={groupTabs.onSelect} />}
+    {tabs && tabs.tabs.length > 0 && <FolderTabs dark label={tabs.label} tabs={tabs.tabs} activeId={tabs.activeId} onSelect={tabs.onSelect} maxVisible={tabs.maxVisible || 7} />}
+    </div>
   );
 }
 
@@ -247,8 +254,8 @@ function GlobalSearch({ nav }) {
 
   return (
     <div style={{ position: "relative", width: 280 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px" }}>
-        <Search size={15} color={C.muted} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, padding: "0 12px" }}>
+        <Search size={15} color={C.onNavyMuted} />
         <input
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
@@ -256,7 +263,8 @@ function GlobalSearch({ nav }) {
           onBlur={() => setTimeout(() => setIsOpen(false), 150)} // real delay so a click on a result registers before the dropdown closes
           placeholder="Search orders, suppliers, tickets…"
           aria-label="Search"
-          style={{ ...body, fontSize: 12.5, color: C.ink, border: "none", background: "none", outline: "none", width: "100%" }}
+          data-leap-plain=""
+          style={{ ...body, fontSize: 12.5, color: "#fff", border: "none", background: "none", outline: "none", width: "100%" }}
         />
       </div>
       {isOpen && query.trim().length >= 2 && (
@@ -315,9 +323,9 @@ function NotificationBell({ nav }) {
         onClick={() => setIsOpen((v) => !v)}
         onBlur={() => setTimeout(() => setIsOpen(false), 150)} // real delay so a click on an item registers before the dropdown closes
         aria-label="Notifications"
-        style={{ position: "relative", width: 40, height: 40, boxSizing: "border-box", background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
+        style={{ position: "relative", width: 40, height: 40, boxSizing: "border-box", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
       >
-        <Bell size={17} color={C.ink} />
+        <Bell size={17} color="#fff" />
         {total > 0 && (
           <span style={{ position: "absolute", top: -6, right: -6, background: C.red, color: "#fff", borderRadius: 999, minWidth: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
             {total > 9 ? "9+" : total}
@@ -334,7 +342,7 @@ function NotificationBell({ nav }) {
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid ${C.line}` }}
             >
               <span style={{ ...body, fontSize: 12.5, color: C.ink }}>{item.label}</span>
-              <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.signal }}>{item.count}</span>
+              <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.onSignal, background: C.signal, borderRadius: 999, padding: "1px 8px" }}>{item.count}</span>
             </div>
           ))}
         </div>
@@ -512,6 +520,15 @@ function OverviewPage({ onSessionExpired }) {
   const [errorMessage, setErrorMessage] = useState(null);
   // The real categories (Categories page), so "Units sold by category" shows their names, not their ids.
   const [categoryNames, setCategoryNames] = useState({});
+  // The redesigned Overview (approved mockup): the greeting uses the admin's name, "Needs attention" opens each page, and the 5 latest orders.
+  const me = useContext(CurrentUserContext);
+  const nav = useContext(NavigationContext);
+  const [recent, setRecent] = useState([]);
+  const loadRecent = () => fetchOrders(getStoredToken())
+    .then((list) => setRecent((Array.isArray(list) ? list : []).slice().sort((x, y) => new Date(y.placedAt || 0) - new Date(x.placedAt || 0)).slice(0, 5)))
+    .catch(() => {});      // not essential: the card just says "No orders yet"
+  useEffect(() => { loadRecent(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(loadRecent);
   useEffect(() => {
     fetchCategories().then((list) => setCategoryNames(Object.fromEntries((Array.isArray(list) ? list : []).map((c) => [c.id, c.nameEn || c.nameZh || c.id])))).catch(() => {});
   }, []);
@@ -561,44 +578,257 @@ function OverviewPage({ onSessionExpired }) {
     color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
   }));
 
+  // What is waiting for someone, biggest first-hand problems first: each opens its page (only pages this admin may open).
+  const canOpen = (id) => !me || me.isOwner || me.allowedPages === "all" || (me.allowedPages || []).includes(id);
+  const waiting = [
+    { page: "returns", count: data.openDisputes, tone: "bad", title: "Returns and disputes", sub: "Awaiting your decision" },
+    { page: "flagged", count: nav?.flaggedCount || 0, tone: "bad", title: "Flagged shipments", sub: "A hub found a problem" },
+    { page: "moderation", count: data.pendingModeration, tone: "warn", title: "Products to moderate", sub: "New listings from suppliers" },
+    { page: "suppliers", count: data.pendingSuppliers, tone: "info", title: "Suppliers to verify", sub: "Documents uploaded" },
+    { page: "tickets", count: data.openTickets, tone: "warn", title: "Support tickets", sub: "Buyers waiting for an answer" },
+    { page: "shippingCosts", count: data.shippingCostsWaiting || 0, tone: "warn", title: "Shipping costs to approve", sub: "Hubs sent new costs" },
+  ].filter((w) => w.count > 0 && canOpen(w.page));
+  const waitingTotal = waiting.reduce((s, w) => s + w.count, 0);
+  const TONE = { bad: { bg: C.redBg, fg: C.redInk }, warn: { bg: C.amberBg, fg: C.amberInk }, info: { bg: C.torqueBg, fg: C.torqueInk } };
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const firstName = String(me?.name || "").trim().split(/\s+/)[0];
+  const todayLabel = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const maxDay = Math.max(1, ...dayTrend.map((d) => d.v));
+  const maxSupplier = Math.max(1, ...data.topSuppliers.map((s) => s.orderCount));
+  const label11 = { ...body, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted };
+
   return (
     <div>
-      <TopBar title="Overview" subtitle="Real counts across the platform — see README for what's intentionally not shown yet (blended $ GMV, top markets by country)" />
-      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
-        <SupplierAnalyticsPicker onSessionExpired={onSessionExpired} />
-
-        <div style={{ display: "flex", gap: 16 }}>
-          <KpiCard label="Total orders" value={data.totalOrders.toLocaleString()} icon={ShoppingBag} />
-          <KpiCard label="Active suppliers" value={data.activeSuppliers.toLocaleString()} icon={Store} />
-          <KpiCard label="Open disputes" value={data.openDisputes.toLocaleString()} icon={AlertTriangle} />
-          <KpiCard label="Open tickets" value={data.openTickets.toLocaleString()} icon={LifeBuoy} />
+      <TopBar title="Overview" subtitle="Real counts across the platform, refreshed by themselves" />
+      <div style={{ padding: "28px 28px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        {/* the greeting: what to start with */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <div style={label11}>{todayLabel}</div>
+            <div style={{ ...disp, fontSize: 30, lineHeight: "36px", fontWeight: 800, letterSpacing: "-0.02em", color: C.ink, marginTop: 6 }}>{firstName ? `${greeting}, ${firstName}` : greeting}</div>
+            <div style={{ ...body, fontSize: 14, color: C.muted, marginTop: 6 }}>
+              {waitingTotal === 0 ? "Nothing is waiting for anyone right now." : `${waitingTotal} ${waitingTotal === 1 ? "thing is" : "things are"} waiting for someone. Start with ${waiting[0].title.toLowerCase()}.`}
+            </div>
+          </div>
+          {waiting.length > 0 && (
+            <button type="button" onClick={() => nav?.onNavigateToPage(waiting[0].page)}
+              style={{ ...body, display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 18px", borderRadius: 10, border: "none", background: C.signal, color: C.onSignal, fontSize: 13.5, fontWeight: 800, cursor: "pointer", boxShadow: SHADOW.goldRaised }}>
+              Open {waiting[0].title.toLowerCase()} <ChevronRight size={16} />
+            </button>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 16 }}>
-          <Card title="Orders per day (last 7 days)" style={{ flex: 2 }}>
-            <div style={{ padding: "16px 18px 8px", height: 220 }}>
-              {dayTrend.length === 0 ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", ...body, fontSize: 12.5, color: C.muted }}>No orders in the last 7 days.</div>
+        {/* the key numbers as small charts (approved picture): sales split, orders, tickets, what suppliers are owed; then a strip of four more */}
+        {(() => {
+          const usd0 = (n) => `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+          const cny0 = (n) => `¥${Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+          const num = (n) => Number(n || 0).toLocaleString();
+          const card = (navy, onClick) => ({
+            role: onClick ? "button" : undefined, tabIndex: onClick ? 0 : undefined, onClick: onClick || undefined,
+            onKeyDown: onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined,
+            style: { position: "relative", overflow: "hidden", minWidth: 0, borderRadius: 14, padding: 18, cursor: onClick ? "pointer" : "default",
+              background: navy ? `linear-gradient(135deg, ${C.navyDeep}, ${C.navy} 55%, ${C.navySoft})` : C.card, border: `1px solid ${navy ? C.navyDeep : C.line}`,
+              boxShadow: navy ? SHADOW.navyRaised : SHADOW.card, color: navy ? "#fff" : C.ink },
+          });
+          const lbl = (navy) => ({ ...body, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: navy ? C.signal : C.muted });
+          const big = { ...mono, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 6, whiteSpace: "nowrap" };
+          const sub = (navy) => ({ ...body, fontSize: 12, fontWeight: 600, color: navy ? C.onNavyMuted : C.muted, marginTop: 2 });
+          const legend = (parts, fmt, navy) => (
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              {parts.map((p) => (
+                <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 8, ...body, fontSize: 12.5 }}>
+                  <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: 3, background: p.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, color: navy ? "#C9D6E0" : "#3B4350" }}>{p.name}</span>
+                  <b style={{ ...mono, fontSize: 12 }}>{fmt(p.value)}</b>
+                </div>
+              ))}
+            </div>
+          );
+          const head = (navy, label, value, note, parts) => (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={lbl(navy)}>{label}</div>
+                <div style={big}>{value}</div>
+                {note && <div style={sub(navy)}>{note}</div>}
+              </div>
+              {parts && <MiniDonut parts={parts} dark={navy} label={label} />}
+            </div>
+          );
+          const ss = data.salesSplit;
+          const salesParts = ss ? [
+            { name: "Supplier price", value: ss.supplierUsd, color: "#DCE6EE" },
+            { name: "Leap's markup and fees", value: ss.markupUsd, color: C.signal },
+            { name: "Shipping", value: ss.shippingUsd, color: "#5FA0C8" },
+          ] : null;
+          const os = data.orderSplit;
+          const orderParts = os ? [
+            { name: "Completed", value: os.completed, color: C.gauge },
+            { name: "In progress", value: os.inProgress, color: C.torque },
+            { name: "Returned", value: os.returned, color: C.amber },
+            { name: "Cancelled", value: os.cancelled, color: C.red },
+          ] : null;
+          const ts = data.ticketSplit;
+          const ticketParts = ts ? [
+            { name: "Open", value: ts.open, color: C.red },
+            { name: "In progress", value: ts.inProgress, color: C.amber },
+            { name: "Resolved", value: ts.resolved, color: C.gauge },
+          ] : null;
+          const top = Array.isArray(data.owedTop) ? data.owedTop : [];
+          const topMax = Math.max(1, ...top.map((t) => t.amountCny));
+          const lostPct = os && os.total > 0 ? Math.round(((os.returned + os.cancelled) / os.total) * 1000) / 10 : null;
+          const strip = [
+            typeof data.totalProfitUsd === "number" ? { label: "Total profit", value: usd0(data.totalProfitUsd), page: "profits" } : null,
+            { label: "Active suppliers", value: num(data.activeSuppliers), page: "suppliers" },
+            { label: "Open disputes", value: num(data.openDisputes), page: "returns" },
+            typeof data.totalProducts === "number" ? { label: "Total products", value: num(data.totalProducts), page: "allProducts", note: `${num(data.liveProducts)} live` } : null,
+          ].filter(Boolean);
+          return (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 18, alignItems: "stretch" }}>
+                {ss && (
+                  <div {...card(true, canOpen("profits") ? () => nav?.onNavigateToPage("profits") : null)}>
+                    <span aria-hidden="true" style={{ position: "absolute", inset: "0 0 55% 0", background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0))", pointerEvents: "none" }} />
+                    <div style={{ position: "relative" }}>
+                      {head(true, "Total sales", usd0(ss.salesUsd), `${num(os ? os.total - os.cancelled : data.totalOrders)} orders`, salesParts)}
+                      {legend(salesParts, usd0, true)}
+                    </div>
+                  </div>
+                )}
+                <div {...card(!ss, canOpen("orders") ? () => nav?.onNavigateToPage("orders") : null)}>
+                  {head(!ss, "Total orders", data.totalOrders.toLocaleString(), lostPct != null ? `${lostPct}% returned or cancelled` : null, orderParts)}
+                  {orderParts && legend(orderParts, num, !ss)}
+                </div>
+                <div {...card(false, canOpen("tickets") ? () => nav?.onNavigateToPage("tickets") : null)}>
+                  {head(false, ts ? "Support tickets" : "Open tickets", ts ? num(ts.total) : data.openTickets.toLocaleString(), ts ? `${num(ts.open + ts.inProgress)} waiting for an answer` : null, ticketParts)}
+                  {ticketParts && legend(ticketParts, num, false)}
+                </div>
+                {typeof data.owedToSuppliersCny === "number" && (
+                  <div {...card(false, canOpen("payouts") ? () => nav?.onNavigateToPage("payouts") : null)}>
+                    {head(false, "Owed to suppliers", cny0(data.owedToSuppliersCny), [data.suppliersOwed ? `${data.suppliersOwed} to pay now` : "Nothing due now", data.notDueToSuppliersCny ? `${cny0(data.notDueToSuppliersCny)} not due yet` : null].filter(Boolean).join(" · "), null)}
+                    {top.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 14 }}>No supplier is owed anything right now.</div>}
+                    {top.map((t) => (
+                      <div key={t.supplierId} style={{ marginTop: 9 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, ...body, fontSize: 12.5 }}>
+                          <span style={{ color: "#3B4350", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</span>
+                          <b style={{ ...mono, fontSize: 12 }}>{cny0(t.amountCny)}</b>
+                        </div>
+                        <div style={{ height: 7, borderRadius: 999, background: "#EEF1F4", marginTop: 4, overflow: "hidden" }}>
+                          <div style={{ width: `${Math.max(3, Math.round((t.amountCny / topMax) * 100))}%`, height: "100%", borderRadius: 999, background: C.navy }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18, marginTop: -6 }}>
+                {strip.map((m) => {
+                  const go = canOpen(m.page) ? () => nav?.onNavigateToPage(m.page) : null;
+                  return (
+                    <div key={m.label} {...card(false, go)} style={{ ...card(false, go).style, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ ...lbl(false), display: "block" }}>{m.label}</span>
+                        {m.note && <span style={{ ...sub(false), display: "block" }}>{m.note}</span>}
+                      </span>
+                      <span style={{ ...mono, fontSize: 21, fontWeight: 700, whiteSpace: "nowrap" }}>{m.value}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
+
+        {/* orders per day and the latest orders side by side */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, alignItems: "stretch" }}>
+          <Card title="Orders per day (last 7 days)" style={{ minWidth: 0, height: "100%", boxSizing: "border-box" }}>
+            <div style={{ padding: "20px 20px 14px" }}>
+              {dayTrend.every((d) => d.v === 0) ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, ...body, fontSize: 12.5, color: C.muted }}>No orders in the last 7 days.</div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dayTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="ordersFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
-                        <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke={C.line} vertical={false} />
-                    <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-                    <Tooltip formatter={(v) => [v, "Orders"]} contentStyle={{ fontFamily: "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
-                    <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#ordersFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 16, height: 200, borderBottom: `1px solid ${C.line}` }}>
+                    {dayTrend.map((d, i) => {
+                      const today = i === dayTrend.length - 1;
+                      return (
+                        <div key={i} title={`${d.d}: ${d.v} orders`} style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 6 }}>
+                          <span style={{ ...mono, fontSize: 12, fontWeight: today ? 700 : 500, color: today ? C.ink : C.muted }}>{`${d.v}`}&#8203;</span>
+                          <div style={{ width: "100%", maxWidth: 44, height: `${Math.max(3, Math.round((d.v / maxDay) * 160))}px`, borderRadius: "6px 6px 0 0", background: today ? C.signal : C.navySoft, boxShadow: today ? SHADOW.goldRaised : "none" }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 16, paddingTop: 8 }}>
+                    {dayTrend.map((d, i) => <span key={i} style={{ flex: 1, textAlign: "center", ...body, fontSize: 12, fontWeight: i === dayTrend.length - 1 ? 700 : 500, color: i === dayTrend.length - 1 ? C.ink : C.muted }}>{i === dayTrend.length - 1 ? "Today" : d.d}</span>)}
+                  </div>
+                </>
               )}
             </div>
           </Card>
-          <Card title="Units sold by category" style={{ flex: 1 }}>
+
+          <Card title="Recent orders" style={{ minWidth: 0, height: "100%", boxSizing: "border-box" }} action={canOpen("orders") ? <button type="button" onClick={() => nav?.onNavigateToPage("orders")} style={{ ...body, border: "none", background: "transparent", color: C.torque, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>See all orders</button> : null}>
+            {recent.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 12.5, color: C.muted }}>No orders yet.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><Th>Order</Th><Th>Buyer</Th><Th>Status</Th><Th align="right">Total</Th></tr></thead>
+                  <tbody>
+                    {recent.map((o) => {
+                      const meta = getHubStatusMeta(o.hubStatus);
+                      return (
+                        <tr key={o.id} onClick={() => nav?.onOpenOrder(o.id)} style={{ cursor: "pointer" }}>
+                          <Td><span style={{ ...mono, fontWeight: 700 }}>{o.id}</span><span style={{ display: "block", fontSize: 12, color: C.muted }}>{o.placedAt ? new Date(o.placedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</span></Td>
+                          <Td>{o.buyerName || (o.guestEmail ? `Guest · ${o.guestEmail}` : "—")}</Td>
+                          <Td>{o.hubStatus ? <Badge label={meta.label} color={meta.color} bg={meta.bg} /> : <span style={{ color: C.muted }}>Waiting for supplier</span>}</Td>
+                          <Td align="right" style={{ ...mono, fontWeight: 700 }}>{Number(o.total).toFixed(2)} {o.currencyCode}</Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24, alignItems: "start" }}>
+          <Card title="Needs attention" action={waitingTotal > 0 ? <Badge label={`${waitingTotal} waiting`} color={C.amber} bg={C.amberBg} /> : null}>
+            <div style={{ padding: "4px 20px 8px" }}>
+              {waiting.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, padding: "20px 0", textAlign: "center" }}>Nothing needs your attention right now.</div>}
+              {waiting.map((w, i) => (
+                <button key={w.page} type="button" onClick={() => nav?.onNavigateToPage(w.page)}
+                  style={{ ...body, width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 0", border: "none", borderBottom: i === waiting.length - 1 ? "none" : `1px solid ${C.line}`, background: "transparent", cursor: "pointer", textAlign: "left" }}>
+                  <span aria-hidden="true" style={{ minWidth: 34, height: 26, padding: "0 8px", boxSizing: "border-box", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", ...mono, fontSize: 12.5, fontWeight: 700, background: TONE[w.tone].bg, color: TONE[w.tone].fg }}>{`${w.count}`}&#8203;</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: C.ink }}>{w.title} ({w.count})</span>
+                    <span style={{ display: "block", fontSize: 12.5, color: C.muted }}>{w.sub}</span>
+                  </span>
+                  <ChevronRight size={16} color={C.muted} />
+                </button>
+              ))}
+            </div>
+          </Card>
+          <Card title="Top suppliers by order volume">
+            {data.topSuppliers.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 12.5, color: C.muted }}>No orders yet.</div>
+            ) : (
+              <div style={{ padding: "16px 20px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+                {data.topSuppliers.map((s) => (
+                  <div key={s.id}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, ...body, fontSize: 13.5 }}>
+                      <b style={{ color: C.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</b>
+                      <span style={{ ...mono, fontWeight: 700, color: C.ink }}>{s.orderCount}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: C.surfaceHigh, border: `1px solid ${C.line}`, marginTop: 6, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.round((s.orderCount / maxSupplier) * 100)}%`, height: "100%", borderRadius: 999, background: C.navy }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <Card title="Units sold by category">
             {categorySplit.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 12.5, color: C.muted }}>No sales data yet.</div>
             ) : (
@@ -612,12 +842,12 @@ function OverviewPage({ onSessionExpired }) {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7, flex: 1 }}>
                   {categorySplit.map(c => (
                     <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <div style={{ width: 8, height: 8, borderRadius: 2, background: c.color }} />
-                      <span style={{ ...body, fontSize: 11.5, color: C.ink }}>{c.name}</span>
-                      <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: "auto", paddingLeft: 10 }}>{c.value}%</span>
+                      <span style={{ ...body, fontSize: 12, color: C.ink }}>{c.name}</span>
+                      <span style={{ ...mono, fontSize: 12, color: C.muted, marginLeft: "auto", paddingLeft: 10 }}>{c.value}%</span>
                     </div>
                   ))}
                 </div>
@@ -625,39 +855,40 @@ function OverviewPage({ onSessionExpired }) {
             )}
           </Card>
         </div>
-
-        <div style={{ display: "flex", gap: 16 }}>
-          <Card title="Needs attention" style={{ flex: 1 }}>
-            <div style={{ padding: 6 }}>
-              <AttentionRow icon={AlertTriangle} color={C.red} text={`${data.openDisputes} return case(s) awaiting resolution`} sub="See the Returns page" />
-              <AttentionRow icon={PackageSearch} color={C.amber} text={`${data.pendingModeration} listing(s) pending moderation`} sub="See the Moderation page" />
-              <AttentionRow icon={Store} color={C.torque} text={`${data.pendingSuppliers} supplier(s) awaiting verification`} sub="See the Suppliers page" last />
-            </div>
-          </Card>
-          <Card title="Top suppliers by order volume" style={{ flex: 1 }}>
-            {data.topSuppliers.length === 0 ? (
-              <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 12.5, color: C.muted }}>No orders yet.</div>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr><Th>Supplier</Th><Th align="right">Orders</Th></tr></thead>
-                <tbody>
-                  {data.topSuppliers.map(s => (
-                    <tr key={s.id}>
-                      <Td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><Store size={13} color={C.muted} />{s.name}</span></Td>
-                      <Td align="right" style={{ fontWeight: 700 }}>{s.orderCount}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Card>
+        <div style={{ minWidth: 0 }}>
+            <SupplierAnalyticsPicker onSessionExpired={onSessionExpired} />
         </div>
       </div>
     </div>
   );
 }
 
-function AttentionRow({ icon: Icon, color, text, sub, last }) {
+// A small ring chart for the Overview's key numbers: one coloured arc per part, in order, clockwise from the top.
+function MiniDonut({ parts, size = 96, width = 14, dark = false, label = "" }) {
+  const r = (size - width) / 2;
+  const c = 2 * Math.PI * r;
+  const total = parts.reduce((s, p) => s + Math.max(0, Number(p.value) || 0), 0);
+  let offset = 0;
+  const shown = parts.filter((p) => Number(p.value) > 0);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${label}: ${parts.map((p) => `${p.name} ${p.value}`).join(", ")}`} style={{ flexShrink: 0 }}>
+      <circle r={r} cx={size / 2} cy={size / 2} fill="none" stroke={dark ? "rgba(255,255,255,0.12)" : "#EEF1F4"} strokeWidth={width} />
+      {total > 0 && shown.map((p) => {
+        const len = (c * Number(p.value)) / total;
+        const gap = shown.length > 1 ? Math.min(2, len / 2) : 0;
+        const arc = (
+          <circle key={p.name} r={r} cx={size / 2} cy={size / 2} fill="none" stroke={p.color} strokeWidth={width}
+            strokeDasharray={`${Math.max(0, len - gap)} ${c - Math.max(0, len - gap)}`} strokeDashoffset={-offset} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        );
+        offset += len;
+        return arc;
+      })}
+    </svg>
+  );
+}
+
+function AttentionRow(
+{ icon: Icon, color, text, sub, last }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: last ? "none" : `1px solid ${C.line}` }}>
       <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -674,6 +905,258 @@ function AttentionRow({ icon: Icon, color, text, sub, last }) {
 
 // ---------------------------------------------------------------- Orders: the refused orders, and the ones nobody answered in 24 hours (a supplier answers a NEW order: accept or refuse)
 const cny2 = (n) => `¥${Number(n).toFixed(2)}`;
+// Orders > Rules: the flow of a pending order, step by step, with what happens at each step set right there (confirmed with the person via mockup).
+// The system follows it by itself; the panel on the right says it in plain words and shows the longest wait.
+function NoAnswerRulesCard({ onSessionExpired }) {
+  const [rules, setRules] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [state, setState] = useState(null);
+  const [waitingNow, setWaitingNow] = useState([]);      // orders waiting for their supplier's answer (step 1 preview)
+  const [confirming, setConfirming] = useState(false);
+  const loadWaiting = () => fetchWaitingOrders(getStoredToken()).then(setWaitingNow).catch(() => setWaitingNow([]));
+  useEffect(() => { fetchNoAnswerRules(getStoredToken()).then((r) => { setRules(r); setDraft(r); }).catch((err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setState(err.message); }); loadWaiting(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!draft) return state ? <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginBottom: 8 }}>{state}</div> : <Card><div style={{ padding: 24, ...body, fontSize: 13, color: C.muted }}>Loading the rules…</div></Card>;
+  const keys = ["waitHours", "remindEveryHours", "onRefuse", "maxResends", "pickBy", "maxPriceIncreasePct", "ifTooDear", "newSupplierMode", "refundMode", "notifyMode", "summaryHour", "onLonger", "onShorter", "shorterMinHours", "tellSupplierDeadline"];
+  const changed = keys.some((k) => String(draft[k]) !== String(rules[k]));
+  const set = (k, v) => { setDraft((d) => ({ ...d, [k]: v })); setState(null); };
+  const chip = (k, v, label, red) => (
+    <button key={String(v)} type="button" onClick={() => set(k, v)} style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 11px", cursor: "pointer", color: draft[k] === v ? "#fff" : C.ink, background: draft[k] === v ? (red ? C.red : C.navy) : "#fff", border: `1px solid ${draft[k] === v ? (red ? C.red : C.navy) : C.line}` }}>{label}</button>
+  );
+  const num = (k, min, max, step = 1) => <input type="number" min={min} max={max} step={step} value={draft[k]} onChange={(e) => set(k, e.target.value === "" ? "" : Number(e.target.value))} style={{ ...body, width: 60, fontSize: 12.5, fontWeight: 800, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", textAlign: "center" }} />;
+  const hint = (t) => <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{t}</span>;
+  const ctl = (label, content) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 0", borderTop: `1px dashed ${C.line}`, ...body, fontSize: 12.5 }}>
+      <b style={{ minWidth: 230 }}>{label}</b>{content}
+    </div>
+  );
+  const branch = (tone, title, content) => {
+    const t = { g: ["#9ed9b7", "#f3fbf6"], r: ["#f2b8b2", "#fff6f5"], y: ["#f6d58c", "#fffaf0"] }[tone];
+    return <div style={{ border: `1.5px solid ${t[0]}`, background: t[1], borderRadius: 10, padding: "8px 10px", ...body, fontSize: 12 }}><b style={{ display: "block", fontSize: 12.5, marginBottom: 4 }}>{title}</b>{content}</div>;
+  };
+  const tagGo = (t) => <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 800, color: C.ink, background: C.signal, borderRadius: 6, padding: "1px 7px" }}>{t}</span>;
+  const tagEnd = (t) => <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 800, color: "#fff", background: C.gauge, borderRadius: 6, padding: "1px 7px" }}>{t}</span>;
+  const step = (n, title, desc, children, last) => (
+    <div style={{ display: "grid", gridTemplateColumns: "44px 1fr", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.navy, color: C.signal, fontWeight: 900, display: "grid", placeItems: "center", ...body }}>{n}</div>
+        {!last && <div style={{ width: 3, flex: 1, background: C.line, margin: "4px 0" }} />}
+      </div>
+      <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12 }}>
+        <div style={{ ...body, fontSize: 14.5, fontWeight: 800 }}>{title}</div>
+        <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 8 }}>{desc}</div>
+        {children}
+      </div>
+    </div>
+  );
+  const w = Math.min(72, Math.max(1, Number(draft.waitHours) || 24));
+  const every = Math.min(12, Math.max(1, Number(draft.remindEveryHours) || 4));
+  const marks = []; for (let h = every; h < w; h += every) marks.push(h);
+  const firstWait = w * (1 + (Number(draft.maxResends) || 0));
+  // What the new answer time does to the orders already waiting (same sums as the API when saving).
+  const timeDiff = w - Number(rules.waitHours);
+  const minLeft = Math.min(12, Math.max(1, Number(draft.shorterMinHours) || 2));
+  const afterSave = (iso) => {
+    const by = new Date(iso).getTime();
+    if (timeDiff > 0 && draft.onLonger === "all") return by + timeDiff * 3600000;
+    if (timeDiff < 0 && draft.onShorter === "all") return Math.max(by + timeDiff * 3600000, Math.min(by, Date.now() + minLeft * 3600000));
+    return by;
+  };
+  const preview = waitingNow.map((o) => ({ ...o, after: afterSave(o.respondBy) }));
+  const movedCount = preview.filter((o) => o.after !== new Date(o.respondBy).getTime()).length;
+  const fmtLeft = (ms) => { if (!(ms > 0)) return "Overdue"; const m = Math.floor(ms / 60000); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`; };
+  const leftColor = (ms, hours) => { const f = ms / (Math.max(1, hours) * 3600000); return !(ms > 0) ? "#3d0707" : f > 0.5 ? "#17663a" : f > 0.1 ? "#d92d20" : "#7a0f0f"; };
+  const changeLine = timeDiff === 0 ? null : movedCount === 0
+    ? <>The <b>{waitingNow.length}</b> order{waitingNow.length === 1 ? "" : "s"} waiting now keep{waitingNow.length === 1 ? "s" : ""} {waitingNow.length === 1 ? "its" : "their"} deadline; only new orders get <b>{w} h</b>.</>
+    : timeDiff > 0 ? <><b>{movedCount}</b> order{movedCount === 1 ? "" : "s"} waiting now get{movedCount === 1 ? "s" : ""} <b>{timeDiff} h more</b>{draft.tellSupplierDeadline ? "; their suppliers are told" : ""}.</>
+    : <><b>{movedCount}</b> order{movedCount === 1 ? "" : "s"} waiting now get{movedCount === 1 ? "s" : ""} <b>less time</b> (up to {-timeDiff} h, never under {minLeft} h left){draft.tellSupplierDeadline ? "; their suppliers are told" : ""}.</>;
+  const plain = [
+    <>The supplier has <b>{w} h</b> to answer, with a reminder every <b>{every} h</b>.</>,
+    ...(changeLine ? [changeLine] : []),
+    draft.onRefuse === "move" ? <>If the supplier <b>refuses</b>, the order goes straight to step 4.</> : <>If the supplier <b>refuses</b>, you decide.</>,
+    Number(draft.maxResends) ? <>No answer: sent back to the same supplier <b>{draft.maxResends}×</b> ({w} h each).</> : <>No answer: <b>not</b> sent back; straight to step 4.</>,
+    <>Then moved to the {draft.pickBy === "price" ? <b>cheapest</b> : <>supplier with <b>most stock</b></>} with the same OEM number, if at most <b>{draft.maxPriceIncreasePct}%</b> dearer{draft.ifTooDear === "move_anyway" ? "; if all are dearer, to the cheapest anyway" : "; if all are dearer, cancelled"}.</>,
+    draft.newSupplierMode === "same" ? <>The new supplier gets the same {w} h and steps.</> : <>The new supplier gets one try of {w} h, then step 5.</>,
+    <>Nobody can take it: cancelled and {draft.refundMode === "auto" ? <b>refunded automatically</b> : <b>you refund by hand</b>}.</>,
+    draft.notifyMode === "each" ? <>You are told at every step.</> : draft.notifyMode === "daily" ? <>You get one summary a day at <b>{String(draft.summaryHour).padStart(2, "0")}:00</b>; failures at once.</> : <>You are told only when something fails.</>,
+  ];
+  const save = async () => {
+    setConfirming(false);
+    setState("Saving…");
+    try {
+      const payload = Object.fromEntries(keys.map((k) => [k, ["waitHours", "remindEveryHours", "maxResends", "maxPriceIncreasePct", "summaryHour"].includes(k) ? Number(draft[k]) : draft[k]]));
+      payload.summaryTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh";
+      payload.shorterMinHours = Number(draft.shorterMinHours);
+      payload.tellSupplierDeadline = draft.tellSupplierDeadline !== false;
+      const r = await saveNoAnswerRules(getStoredToken(), payload); setRules(r); setDraft(r);
+      setState(r.ordersChanged ? `Saved. ${r.ordersChanged} waiting order${r.ordersChanged === 1 ? "" : "s"} got a new deadline.` : "Saved.");
+      loadWaiting();
+    } catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setState(err.message); }
+  };
+  return (
+    <div data-testid="no-answer-rules" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 18, alignItems: "start" }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ ...disp, fontSize: 17, fontWeight: 800 }}>How a pending order works</span>
+          <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.gauge, background: "#e3f6ea", borderRadius: 999, padding: "3px 10px" }}>● Fully automatic</span>
+        </div>
+        {step(1, "The buyer places the order", "Each supplier gets its own part; the stock is set aside.", <>
+          {ctl("Supplier has to answer within", <>{num("waitHours", 1, 72)} hours {hint(`(1 to 72) · now saved: ${rules.waitHours} hours`)}</>)}
+          <div data-testid="answer-time-change" style={{ border: "1.5px dashed #9ed9b7", background: "#f6fcf8", borderRadius: 10, padding: "4px 10px", marginTop: 6 }}>
+            {ctl("If you make it longer", [chip("onLonger", "all", "Orders already waiting get the extra time too"), chip("onLonger", "new", "Only new orders")])}
+            {ctl("If you make it shorter", <>{chip("onShorter", "new", "Only new orders (orders waiting keep their deadline)")}{chip("onShorter", "all", "Orders waiting too, but leave at least")}{draft.onShorter === "all" && <>{num("shorterMinHours", 1, 12)} hour(s)</>}</>)}
+            {ctl("Tell the supplier when its deadline changes", <>{chip("tellSupplierDeadline", true, "Yes")}{chip("tellSupplierDeadline", false, "No")} {hint("(Chinese and English, in the portal)")}</>)}
+          </div>
+          <div data-testid="answer-time-preview" style={{ marginTop: 10, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", background: "#f4f6f9", ...body, fontSize: 12.5 }}>
+              <b>Orders waiting right now ({waitingNow.length})</b>{hint(timeDiff === 0 ? "change the hours to see the effect" : "countdown now → after saving")}
+            </div>
+            {waitingNow.length === 0 ? <div style={{ padding: "10px", ...body, fontSize: 12, color: C.muted }}>No order is waiting for a supplier's answer, so a new time only affects new orders.</div> : (
+              <table style={{ width: "100%", borderCollapse: "collapse", ...body, fontSize: 12 }}>
+                <thead><tr style={{ color: C.muted, textAlign: "left" }}><th style={{ padding: "5px 10px", fontWeight: 700 }}>Order</th><th style={{ fontWeight: 700 }}>Supplier</th><th style={{ fontWeight: 700 }}>Now</th><th style={{ fontWeight: 700 }}>After saving</th></tr></thead>
+                <tbody>{preview.slice(0, 8).map((o) => {
+                  const nowMs = new Date(o.respondBy).getTime() - Date.now(); const afterMs = o.after - Date.now(); const moved = o.after !== new Date(o.respondBy).getTime();
+                  return (
+                    <tr key={o.subOrderId} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <td style={{ padding: "5px 10px", fontWeight: 700 }}>{o.orderId}</td>
+                      <td>{o.supplierName}</td>
+                      <td style={{ color: leftColor(nowMs, Number(rules.waitHours)), fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtLeft(nowMs)}</td>
+                      <td style={{ color: moved ? leftColor(afterMs, w) : C.muted, fontWeight: moved ? 800 : 500, fontVariantNumeric: "tabular-nums" }}>{moved ? `${fmtLeft(afterMs)} (${afterMs > nowMs ? "+" : "−"}${fmtLeft(Math.abs(afterMs - nowMs))})` : "no change"}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            )}
+            {preview.length > 8 && <div style={{ padding: "5px 10px", ...body, fontSize: 11.5, color: C.muted, borderTop: `1px solid ${C.line}` }}>+ {preview.length - 8} more</div>}
+          </div>
+        </>)}
+        {step(2, "Waiting for the supplier's answer", "The supplier hub shows the time left.", <>
+          {ctl("Remind the supplier every", <>{num("remindEveryHours", 1, 12)} hours {hint("(1 to 12)")}</>)}
+          <div style={{ display: "flex", margin: "8px 0 2px", ...body, fontSize: 10.5, color: C.muted }}>
+            {[0, ...marks.slice(0, 8)].map((h) => <div key={h} style={{ flex: 1, textAlign: "center", borderTop: `3px solid ${C.signal}`, paddingTop: 4 }}>{h} h<br />{h === 0 ? "order" : "reminder"}</div>)}
+            {marks.length > 8 && <div style={{ flex: 1, textAlign: "center", borderTop: `3px solid ${C.signal}`, paddingTop: 4 }}>…</div>}
+            <div style={{ flex: 1, textAlign: "center", borderTop: `3px solid ${C.red}`, paddingTop: 4, color: C.red, fontWeight: 800 }}>{w} h<br />time is up</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
+            {branch("g", "✓ Accepts", <>Normal order: ship to the hub, inspection, delivery.<br />{tagEnd("Normal order ✓")}</>)}
+            {branch("r", "✕ Refuses (with a reason)", <>Then:<div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>{chip("onRefuse", "move", "Move to another supplier (step 4)")}{chip("onRefuse", "ask", "Ask me")}</div></>)}
+            {branch("y", "… No answer in time", tagGo("Go to step 3 ↓"))}
+          </div>
+        </>)}
+        {step(3, "No answer: send back to the same supplier", "Each time with the same answer time and reminders. Shown in Refused → ↻ Working on it.",
+          ctl("Send back", <>{[0, 1, 2, 3].map((n) => chip("maxResends", n, String(n)))} {hint("time(s), then step 4")}</>))}
+        {step(4, "Move to another supplier", "Same OEM number and enough stock; never back to a supplier that left or refused this order. The buyer keeps the price.", <>
+          {ctl("Choose the new supplier by", [chip("pickBy", "price", "Lowest price"), chip("pickBy", "stock", "Most stock")])}
+          {ctl("Only if it is at most", <>{num("maxPriceIncreasePct", 1, 15, 0.5)} % dearer than the first supplier {hint("(1 to 15)")}</>)}
+          {ctl("If they all cost more than that", [chip("ifTooDear", "cancel", "Cancel and refund"), chip("ifTooDear", "move_anyway", "Move anyway to the cheapest")])}
+          {ctl("The new supplier gets", [chip("newSupplierMode", "same", "the same answer time and steps"), chip("newSupplierMode", "once", "one try only, then step 5")])}
+          {ctl("If nobody has the part", <span style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 11px", color: "#fff", background: C.red }}>Cancel and refund (step 5)</span>)}
+        </>)}
+        {step(5, "Cancel and refund", "The part is cancelled, its stock goes back on the shelf; the whole order is cancelled when it was the only part.",
+          ctl("Refund", <>{chip("refundMode", "auto", "Automatically, to the card / PayPal used")}{chip("refundMode", "manual", "I do it by hand")} {hint("a failed refund always comes to you")}</>))}
+        {step(6, "What you are told", "Buyers and suppliers are always told each step (English and Arabic).", <>
+          {ctl("Tell me", [chip("notifyMode", "each", "Every time"), chip("notifyMode", "daily", "Once a day (summary)"), chip("notifyMode", "failures", "Only when something fails")])}
+          {draft.notifyMode === "daily" && ctl("Daily summary at", <>{num("summaryHour", 0, 23)}:00 {hint("(your time)")}</>)}
+        </>, true)}
+      </div>
+      <div style={{ position: "sticky", top: 12, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 14 }}>
+        <div style={{ ...body, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>In plain words</div>
+        <ol style={{ paddingLeft: 18, margin: 0, ...body, fontSize: 12.5, lineHeight: 1.6 }}>{plain.map((p, i) => <li key={i}>{p}</li>)}</ol>
+        <div style={{ marginTop: 10, ...body, fontSize: 12.5, background: "#f4f6f9", borderRadius: 8, padding: "8px 10px" }}>
+          <b>Longest wait before the order moves or is cancelled:</b> {firstWait} h ({Math.round((firstWait / 24) * 10) / 10} days)<br />
+          {hint(draft.newSupplierMode === "same" ? `a new supplier can add up to ${firstWait} h more` : `a new supplier adds at most ${w} h`)}
+        </div>
+        {confirming && (
+          <div data-testid="answer-time-confirm" style={{ marginTop: 12, border: `1.5px solid ${C.ink}`, borderRadius: 10, padding: "10px 12px", ...body, fontSize: 12.5, background: "#fffdf5" }}>
+            <b style={{ display: "block", fontSize: 13.5, marginBottom: 4 }}>Save the new answer time?</b>
+            <div>Answer time {rules.waitHours} h → <b>{w} h</b> for new orders.</div>
+            <div style={{ marginTop: 4 }}>{changeLine}</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button type="button" onClick={() => setConfirming(false)} style={{ flex: 1, ...body, fontSize: 12.5, fontWeight: 700, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, cursor: "pointer" }}>Cancel</button>
+              <button type="button" data-testid="answer-time-confirm-save" onClick={save} style={{ flex: 1, ...body, fontSize: 12.5, fontWeight: 800, color: "#fff", background: C.signal, border: "none", borderRadius: 8, padding: 8, cursor: "pointer" }}>Save rules</button>
+            </div>
+          </div>
+        )}
+        <button type="button" data-testid="no-answer-rules-save" disabled={!changed} onClick={() => (timeDiff !== 0 && waitingNow.length > 0 ? setConfirming(true) : save())} style={{ display: "block", width: "100%", marginTop: 12, ...body, fontSize: 13, fontWeight: 800, color: "#fff", background: changed ? C.signal : "#D1D5DB", border: "none", borderRadius: 8, padding: 10, cursor: changed ? "pointer" : "default" }}>Save rules</button>
+        <div style={{ marginTop: 6 }}>{hint(state || (rules.updatedAt ? `Last saved ${new Date(rules.updatedAt).toLocaleString()}` : ""))}</div>
+      </div>
+    </div>
+  );
+}
+
+// The supplier's time left to accept or refuse (same colours as the supplier portal): more than 50% left = green; 50% to 10% = red;
+// the last 10% = dark red, blinking; time up = "Overdue". In the orders list (soonest part) and, large, in each part's card.
+const ADMIN_ANSWER_COLORS = {
+  ok: { fg: "#17663a", bg: "#e3f6ea", t1: "#1f9d6b", t2: "#17663a" },
+  mid: { fg: "#d92d20", bg: "#fde7e7", t1: "#f04438", t2: "#d92d20" },
+  hot: { fg: "#ffffff", bg: "#7a0f0f", t1: "#9b1c1c", t2: "#7a0f0f" },
+  over: { fg: "#ffffff", bg: "#3d0707", t1: "#3d0707", t2: "#2a0505" },
+};
+function useAdminNowTick(enabled) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { if (!enabled) return undefined; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, [enabled]);
+  return now;
+}
+function adminAnswerLeft(dueAt, windowHours, now) {
+  if (!dueAt) return null;
+  const end = new Date(dueAt).getTime(); if (!Number.isFinite(end)) return null;
+  const ms = end - now; const frac = Math.max(0, Math.min(1, ms / (Math.max(1, Number(windowHours) || 24) * 3600000)));
+  const level = ms <= 0 ? "over" : frac > 0.5 ? "ok" : frac > 0.1 ? "mid" : "hot";
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return { ms, frac, level, h: Math.floor(s / 3600), m: Math.floor((s % 3600) / 60), s: s % 60 };
+}
+const adminTwo = (n) => String(n).padStart(2, "0");
+const ADMIN_BLINK_CSS = "@keyframes leapBlink{50%{opacity:.55}}.leap-blink{animation:leapBlink 1s infinite}";
+function AdminAnswerChip({ dueAt, windowHours, waiting, testId }) {
+  const now = useAdminNowTick(Boolean(dueAt));
+  const left = adminAnswerLeft(dueAt, windowHours, now);
+  if (!left) return <span style={{ color: C.muted }}>—</span>;
+  const c = ADMIN_ANSWER_COLORS[left.level];
+  return (
+    <div data-testid={testId} title={waiting > 1 ? `${waiting} supplier parts are waiting; this is the soonest` : "The supplier has to accept or refuse by then"}>
+      <span className={left.level === "hot" ? "leap-blink" : undefined} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, padding: "4px 9px", fontWeight: 800, fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", color: c.fg, background: c.bg }}>
+        {left.level === "over" ? "Overdue" : `⏱ ${adminTwo(left.h)}:${adminTwo(left.m)}:${adminTwo(left.s)}`}
+      </span>
+      {waiting > 1 && <span style={{ ...body, fontSize: 11, color: C.muted, marginLeft: 6 }}>+{waiting - 1}</span>}
+      {left.level !== "over" && <div style={{ width: 70, height: 4, borderRadius: 9, background: "#eef1f5", overflow: "hidden", marginTop: 4 }}><i style={{ display: "block", height: "100%", width: `${Math.round((1 - left.frac) * 100)}%`, background: c.t2 }} /></div>}
+      <style>{ADMIN_BLINK_CSS}</style>
+    </div>
+  );
+}
+function AdminAnswerBig({ subOrder }) {
+  const now = useAdminNowTick(true);
+  const left = adminAnswerLeft(subOrder.respondBy, subOrder.answerWindowHours, now);
+  if (!left) return null;
+  const c = ADMIN_ANSWER_COLORS[left.level];
+  const tile = (n, label) => (
+    <span style={{ position: "relative", background: `linear-gradient(${c.t1} 50%, ${c.t2} 50%)`, color: "#fff", borderRadius: 8, minWidth: 54, padding: "7px 4px 4px", textAlign: "center", boxShadow: "0 3px 6px rgba(0,0,0,.2)" }}>
+      <b style={{ ...disp, display: "block", fontSize: 26, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{adminTwo(n)}</b>
+      <small style={{ ...body, fontSize: 9.5, opacity: 0.8 }}>{label}</small>
+      <span aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(0,0,0,.35)" }} />
+    </span>
+  );
+  const colon = <span style={{ fontWeight: 900, color: c.t2, fontSize: 20, alignSelf: "center" }}>:</span>;
+  const deadline = new Date(subOrder.respondBy).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div data-testid={`admin-answer-countdown-${subOrder.subOrderId}`} role="timer" aria-live="off" style={{ margin: "4px 0 10px 25px", border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", background: "#fafbfc" }}>
+      <div style={{ ...body, fontSize: 12, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Waiting for the supplier's answer{subOrder.timesSent > 1 ? ` · sent ${ordinal(subOrder.timesSent)} time` : ""}</div>
+      {left.level === "over" ? (
+        <div style={{ ...body, textAlign: "center", fontWeight: 900, fontSize: 17, color: c.fg, background: c.bg, borderRadius: 8, padding: "9px 0" }}>Overdue</div>
+      ) : (
+        <div className={left.level === "hot" ? "leap-blink" : undefined} style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+          {tile(left.h, "hours")}{colon}{tile(left.m, "min")}{colon}{tile(left.s, "sec")}
+        </div>
+      )}
+      {left.level !== "over" && <div style={{ height: 7, borderRadius: 9, background: "#eef1f5", overflow: "hidden", marginTop: 8 }}><i style={{ display: "block", height: "100%", width: `${Math.round((1 - left.frac) * 100)}%`, background: c.t2 }} /></div>}
+      <div style={{ ...body, fontSize: 11.5, color: C.muted, textAlign: "center", marginTop: 6 }}>Answer by <b style={{ color: C.ink }}>{deadline}</b> ({subOrder.answerWindowHours} h window). Then the rules in Orders → Rules apply.</div>
+      <style>{ADMIN_BLINK_CSS}</style>
+    </div>
+  );
+}
+
+const ordinal = (n) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
+/* renamed: timeLeft is already the discount rules' helper */ const answerTimeLeft = (iso) => { const ms = new Date(iso).getTime() - Date.now(); if (!(ms > 0)) return "time is up"; const h = Math.floor(ms / 3600000); const m = Math.floor((ms % 3600000) / 60000); return `${h} h ${m} min left`; };
+const HISTORY_TEXT = { sent: "Sent", no_answer: "No answer", resent: "Sent again", moved_auto: "Moved automatically", moved_admin: "Moved by the admin", asked_admin: "Needs attention", cancelled_refund: "Cancelled", refunded: "Refunded", refund_failed: "Refund failed" };
+
 function RefusedOrdersSection({ onSessionExpired, counts, onChanged }) {
   const [filter, setFilter] = useState("open");
   const [rows, setRows] = useState(null);
@@ -684,6 +1167,9 @@ function RefusedOrdersSection({ onSessionExpired, counts, onChanged }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [cands, setCands] = useState({});      // unanswered orders: the other suppliers that can take them (same OEM number), by sub-order
+  const [candPick, setCandPick] = useState({});
+  const [history, setHistory] = useState({});
   const failWith = (err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setError(err.message); };
   const load = () => fetchSupplierResponses(getStoredToken(), filter).then((d) => { setRows(Array.isArray(d) ? d.filter((r) => r && r.subOrderId !== undefined && Array.isArray(r.items)) : []); setError(null); }).catch(failWith);      // anything that is not a list of refused orders is ignored
   useEffect(() => { load(); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -695,18 +1181,25 @@ function RefusedOrdersSection({ onSessionExpired, counts, onChanged }) {
     if (row.kind === "refused" && !row.handledAt && !alts[row.subOrderId]) {
       try { const a = await fetchResponseAlternatives(getStoredToken(), row.subOrderId); setAlts((cur) => ({ ...cur, [row.subOrderId]: a })); } catch (err) { failWith(err); }
     }
+    if (row.kind === "no_answer" && !row.handledAt) {
+      try { const list = await fetchResponseCandidates(getStoredToken(), row.subOrderId); setCands((cur) => ({ ...cur, [row.subOrderId]: list })); const first = list.find((x) => x.withinPrice) || list[0]; if (first) setCandPick((cur) => ({ ...cur, [row.subOrderId]: first.supplierId })); } catch (err) { failWith(err); }
+    }
+    try { const h = await fetchResponseHistory(getStoredToken(), row.subOrderId); setHistory((cur) => ({ ...cur, [row.subOrderId]: h })); } catch (err) { failWith(err); }
   };
   const act = async (call, doneText) => { setBusy(true); setError(null); try { await call(); setMessage(doneText); setOpenId(null); await load(); if (onChanged) onChanged(); } catch (err) { failWith(err); } finally { setBusy(false); } };
   const reassign = (row) => act(() => reassignSupplierResponse(getStoredToken(), row.subOrderId, row.items.map((i) => ({ productId: i.productId, alternativeProductId: picks[i.productId] }))), "Reassigned: the new supplier has been asked, and the buyer was told.");
   const handled = (row) => act(() => markResponseHandled(getStoredToken(), row.subOrderId, note), "Marked as handled.");
+  const moveTo = (row) => { const c = (cands[row.subOrderId] || []).find((x) => x.supplierId === candPick[row.subOrderId]); if (!c) return; act(() => moveSupplierResponse(getStoredToken(), row.subOrderId, c.items.map((i) => ({ productId: i.productId, alternativeProductId: i.alternativeProductId }))), `Moved to ${c.supplierName}: they have 24 hours to answer, and the buyer has been told.`); };
+  const resend = (row) => act(() => resendSupplierResponse(getStoredToken(), row.subOrderId), `Sent again to ${row.supplierName}: they have the same wait again to answer.`);
   const when = (v) => (v ? new Date(v).toLocaleString() : "");
+  const yuan = (n) => (n == null ? "—" : `¥ ${Number(n).toFixed(2)}`);
   return (
     <div data-testid="refused-section" style={{ marginBottom: 16 }}>
-      <Card title={filter === "open" ? "Refused by a supplier, or not answered in 24 hours" : "Handled refused orders"}>
+      <Card title={{ open: "Refused by a supplier, or not answered in time: needs you", working: "Sent back to the same supplier: waiting for its answer", auto: "Done automatically by the rules", handled: "Handled by you" }[filter] || "Refused by a supplier, or not answered in time"}>
         <div style={{ padding: 12 }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            {[["open", "Needs attention"], ["handled", "Handled"]].map(([k, label]) => (
-              <button key={k} data-testid={`refused-filter-${k}`} onClick={() => setFilter(k)} style={{ ...body, padding: "6px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: filter === k ? `2px solid ${C.signal}` : `1px solid ${C.line}`, background: filter === k ? "#FDF1EB" : "#fff", color: k === "open" && counts && counts.open > 0 ? C.red : C.ink }}>{label}{counts ? ` (${counts[k] ?? 0})` : ""}</button>
+          <div data-leap-segments="" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {[["open", "⚠ Needs you"], ["working", "↻ Working on it"], ["auto", "✓ Done automatically"], ["handled", "Handled by you"]].map(([k, label]) => (
+              <button key={k} type="button" aria-pressed={filter === k} data-testid={`refused-filter-${k}`} onClick={() => setFilter(k)} style={{ ...body, padding: "6px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: filter === k ? `2px solid ${C.signal}` : `1px solid ${C.line}`, background: filter === k ? "#FDF1EB" : "#fff", color: k === "open" && counts && counts.open > 0 ? C.red : C.ink }}>{label}{counts ? ` (${counts[k] ?? 0})` : ""}</button>
             ))}
           </div>
           {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginBottom: 8 }}>{error}</div>}
@@ -717,9 +1210,9 @@ function RefusedOrdersSection({ onSessionExpired, counts, onChanged }) {
             <div key={r.subOrderId} data-testid={`refused-row-${r.subOrderId}`} style={{ border: `1px solid ${C.line}`, borderRadius: 10, marginBottom: 8 }}>
               <div onClick={() => toggle(r)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer" }}>
                 <PlateChip small>{r.orderId}</PlateChip>
-                {r.kind === "refused" ? <Badge label="Refused" color={C.red} bg={C.redBg} /> : <Badge label="No answer in 24 h" color={C.torque} bg={C.torqueBg} />}
+                {r.kind === "refused" ? <Badge label="Refused" color={C.red} bg={C.redBg} /> : r.kind === "refund" ? (r.refundStatus === "failed" ? <Badge label="Refund failed → needs you" color={C.red} bg={C.redBg} /> : <Badge label={r.refundIssuedAt ? (r.handledAutomatically ? "Cancelled · refunded automatically" : "Cancelled · refunded") : "Cancelled · refund needed"} color="#8a5a00" bg="#fff4e0" />) : r.waiting && r.resendCount > 0 ? <Badge label={`↻ Sent again · ${ordinal(r.resendCount + 1)} time`} color="#8a5a00" bg="#fff4e0" /> : r.handledAutomatically ? <Badge label="Moved automatically" color={C.gauge} bg="#e3f6ea" /> : <Badge label="No answer" color={C.torque} bg={C.torqueBg} />}
                 <span style={{ ...body, fontSize: 12.5, fontWeight: 600 }}>{r.supplierName}</span>
-                <span style={{ ...body, fontSize: 12.5, color: C.muted, flex: 1 }}>{r.kind === "refused" ? `${r.reasonText}${r.note ? `: ${r.note}` : ""}` : `Not accepted or refused since ${when(r.respondBy)}. NOT cancelled.`}</span>
+                <span style={{ ...body, fontSize: 12.5, color: C.muted, flex: 1 }}>{r.kind === "refused" ? `${r.reasonText}${r.note ? `: ${r.note}` : ""}` : r.kind === "refund" ? `No supplier could take it. $${Number(r.refundAmountUsd).toFixed(2)} for ${r.buyerContact || "the buyer"}${r.refundReference ? ` · ref ${r.refundReference}` : ""}${r.refundStatus === "failed" && r.refundError ? ` · ${r.refundError}` : ""}` : r.waiting ? `Waiting for the supplier's answer · ${answerTimeLeft(r.respondBy)}` : r.handledAutomatically ? (r.handledNote || "Moved to another supplier") : `Not accepted or refused since ${when(r.respondBy)}. NOT cancelled.`}</span>
                 <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{r.handledAt ? (r.reassignedToSubOrderId ? "Reassigned" : "Handled") : when(r.refusedAt || r.escalatedAt)}</span>
               </div>
               {openId === r.subOrderId && (
@@ -741,14 +1234,42 @@ function RefusedOrdersSection({ onSessionExpired, counts, onChanged }) {
                       )}
                     </div>
                   ))}
-                  {!r.handledAt && (
+                  {r.kind === "no_answer" && !r.handledAt && (
+                    <div data-testid={`no-answer-candidates-${r.subOrderId}`} style={{ marginTop: 8 }}>
+                      <div style={{ ...body, fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Move to another supplier with the same OEM number:</div>
+                      {(cands[r.subOrderId] || []).map((c, idx) => (
+                        <label key={c.supplierId} style={{ display: "flex", alignItems: "center", gap: 8, ...body, fontSize: 12.5, padding: "5px 9px", marginTop: 5, borderRadius: 8, cursor: "pointer", border: candPick[r.subOrderId] === c.supplierId ? `2px solid ${C.signal}` : `1px solid ${C.line}` }}>
+                          <input type="radio" name={`cand-${r.subOrderId}`} checked={candPick[r.subOrderId] === c.supplierId} onChange={() => setCandPick((cur) => ({ ...cur, [r.subOrderId]: c.supplierId }))} />
+                          <span style={{ flex: 1 }}><b>{c.supplierName}</b> · stock {c.minStock}{idx === 0 ? " · best by your rules" : ""}</span>
+                          {c.increasePct != null && <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 6, padding: "1px 6px", color: c.withinPrice ? C.gauge : C.red, background: c.withinPrice ? "#e3f6ea" : "#fde7e7" }}>{c.increasePct > 0 ? `+${c.increasePct}%` : `${c.increasePct}%`}</span>}
+                          <span style={{ color: C.muted }}>{yuan(c.totalCny)}</span>
+                        </label>
+                      ))}
+                      {cands[r.subOrderId] && cands[r.subOrderId].length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted }}>No other supplier has every item with the same OEM number and enough stock.</div>}
+                    </div>
+                  )}
+                  {r.kind === "refund" && !r.handledAt && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                      <span style={{ ...body, fontSize: 12.5 }}>Refund <b>${Number(r.refundAmountUsd).toFixed(2)}</b> in Stripe / PayPal, then:</span>
+                      <input data-testid={`refund-ref-${r.subOrderId}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Payment reference" maxLength={120} style={{ ...body, minWidth: 200, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 12.5 }} />
+                      <button data-testid={`refunded-${r.subOrderId}`} disabled={busy || note.trim().length < 3} onClick={() => act(() => markResponseRefunded(getStoredToken(), r.subOrderId, note), "Marked as refunded: the buyer has been told.")} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Mark refunded</button>
+                    </div>
+                  )}
+                  {!r.handledAt && r.kind !== "refund" && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                      {r.kind === "no_answer" && (cands[r.subOrderId] || []).length > 0 && <button data-testid={`move-${r.subOrderId}`} disabled={busy || !candPick[r.subOrderId]} onClick={() => moveTo(r)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.navy, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Move to {(cands[r.subOrderId] || []).find((x) => x.supplierId === candPick[r.subOrderId])?.supplierName || "the chosen supplier"}</button>}
+                      {r.kind === "no_answer" && <button data-testid={`resend-${r.subOrderId}`} disabled={busy} onClick={() => resend(r)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>↻ Send again to {r.supplierName}</button>}
                       {r.kind === "refused" && <button data-testid={`reassign-${r.subOrderId}`} disabled={busy || !r.items.every((i) => picks[i.productId])} onClick={() => reassign(r)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, opacity: busy || !r.items.every((i) => picks[i.productId]) ? 0.5 : 1, cursor: "pointer" }}>Reassign to the chosen supplier</button>}
                       <input data-testid={`handled-note-${r.subOrderId}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" maxLength={300} style={{ ...body, flex: 1, minWidth: 160, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 12.5 }} />
                       <button data-testid={`handled-${r.subOrderId}`} disabled={busy} onClick={() => handled(r)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Mark as handled</button>
                     </div>
                   )}
                   {r.handledNote && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 8 }}>Note: {r.handledNote}</div>}
+                  {(history[r.subOrderId] || []).length > 0 && (
+                    <div data-testid={`history-${r.subOrderId}`} style={{ ...body, fontSize: 12, color: C.muted, marginTop: 10, borderLeft: `3px solid ${C.line}`, paddingLeft: 10 }}>
+                      {history[r.subOrderId].map((h, i) => <div key={i} style={{ padding: "2px 0" }}>{when(h.at)} · <b style={{ color: C.ink }}>{HISTORY_TEXT[h.kind] || h.kind}</b>{h.detail ? ` · ${h.detail}` : ""}{h.byAdmin ? " (admin)" : ""}</div>)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -833,6 +1354,77 @@ async function exportOrdersWorkbook({ orders, tabName, onProgress }) {
   URL.revokeObjectURL(url);
 }
 
+// Orders > Cancelled (migration 145): every cancelled part, newest first: who cancelled it, when, why, and its refund.
+// A refund that failed, or that waits because Orders > Rules says "refund by hand", has "Try again" and "Mark refunded" (with the provider's reference).
+function CancelledOrdersSection({ rows, onOpenOrder, onSessionExpired, onChanged }) {
+  const [who, setWho] = useState("all");
+  const [busyId, setBusyId] = useState(null);
+  const [refs, setRefs] = useState({});
+  const [message, setMessage] = useState(null);
+  const WHO = { buyer: ["The buyer", C.torque, C.torqueBg], admin: ["Leap", C.navy, "#E7EDF2"], supplier: ["Supplier refused", C.amber, C.amberBg], no_answer: ["No answer", C.amber, C.amberBg] };
+  const REFUND = {
+    auto_done: ["Refunded automatically", C.gauge, C.gaugeBg], manual_done: ["Refunded by hand", C.gauge, C.gaugeBg],
+    failed: ["Refund failed", C.red, C.redBg], pending: ["Refund waiting", C.amber, C.amberBg],
+    none: ["Nothing to refund", C.muted, "#EEEFF1"], unknown: ["No refund record", C.muted, "#EEEFF1"],
+  };
+  const waiting = rows.filter((r) => r.canMarkRefunded);
+  const shown = rows.filter((r) => (who === "all" ? true : who === "waiting" ? r.canMarkRefunded : r.cancelledBy === who));
+  const act = async (id, fn) => {
+    setBusyId(id); setMessage(null);
+    try { await fn(); await onChanged(); }
+    catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setMessage(err.message); }
+    finally { setBusyId(null); }
+  };
+  const count = (k) => (k === "all" ? rows.length : k === "waiting" ? waiting.length : rows.filter((r) => r.cancelledBy === k).length);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div data-leap-segments="" role="group" aria-label="Who cancelled" style={{ display: "flex", gap: 6 }}>
+        {[["all", "All"], ["waiting", "Refund waiting"], ["buyer", "By the buyer"], ["admin", "By Leap"], ["supplier", "Supplier refused"], ["no_answer", "No answer"]].map(([k, label]) => (
+          <button key={k} type="button" aria-pressed={who === k} onClick={() => setWho(k)}>{label} <span style={{ ...mono, fontSize: 11.5, color: k === "waiting" && waiting.length ? C.redInk : C.muted }}>{count(k)}</span></button>
+        ))}
+      </div>
+      {message && <div role="alert" style={{ ...body, fontSize: 13, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "10px 14px" }}>{message}</div>}
+      <Card style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+          <thead><tr><Th>Order</Th><Th>Part</Th><Th>Cancelled by</Th><Th>When</Th><Th>Why</Th><Th align="right">Refund</Th><Th>Refund status</Th></tr></thead>
+          <tbody>
+            {shown.length === 0 && <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No cancelled orders here.</td></tr>}
+            {shown.map((r) => {
+              const [whoLabel, whoColor, whoBg] = WHO[r.cancelledBy] || [r.cancelledBy, C.muted, "#EEEFF1"];
+              const [refLabel, refColor, refBg] = REFUND[r.refundStatus] || [r.refundStatus, C.muted, "#EEEFF1"];
+              return (
+                <tr key={r.subOrderId}>
+                  <Td><button type="button" title="Open the order" onClick={() => onOpenOrder(r.orderId)} style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}><PlateChip small>{r.orderId}</PlateChip></button></Td>
+                  <Td style={{ maxWidth: 260 }}>{r.items || "—"}<span style={{ display: "block", fontSize: 12, color: C.muted }}>{r.supplierName}{r.buyer ? ` · ${r.buyer}` : ""}</span></Td>
+                  <Td><Badge label={whoLabel} color={whoColor} bg={whoBg} /></Td>
+                  <Td style={{ color: C.muted, whiteSpace: "nowrap" }}>{r.cancelledAt ? new Date(r.cancelledAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</Td>
+                  <Td style={{ maxWidth: 240, fontSize: 12.5 }}>{r.reason || "—"}</Td>
+                  <Td align="right" style={{ ...mono, fontWeight: 700 }}>{r.refundAmount != null ? `$${r.refundAmount.toFixed(2)}` : "—"}</Td>
+                  <Td>
+                    <Badge label={refLabel} color={refColor} bg={refBg} />
+                    {r.refundReference && r.refundReference !== "no-payment-taken" && <span style={{ display: "block", ...mono, fontSize: 11.5, color: C.muted, marginTop: 4 }}>{r.refundReference}</span>}
+                    {r.refundReference === "no-payment-taken" && <span style={{ display: "block", fontSize: 11.5, color: C.muted, marginTop: 4 }}>No payment had been taken</span>}
+                    {r.refundError && !r.refundedAt && <span style={{ display: "block", fontSize: 11.5, color: C.redInk, marginTop: 4, maxWidth: 260 }}>{r.refundError}</span>}
+                    {r.canMarkRefunded && (
+                      <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                        {r.canRetry && <button type="button" disabled={busyId === r.subOrderId} onClick={() => act(r.subOrderId, () => retryCancellationRefund(getStoredToken(), r.subOrderId))} style={{ ...body, height: 30, padding: "0 12px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Try again</button>}
+                        <input data-leap-plain="" aria-label={`Refund reference for ${r.orderId}`} placeholder="Stripe / PayPal reference" value={refs[r.subOrderId] || ""} onChange={(e) => setRefs({ ...refs, [r.subOrderId]: e.target.value })}
+                          style={{ ...body, height: 30, width: 170, boxSizing: "border-box", padding: "0 10px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, fontSize: 12 }} />
+                        <button type="button" disabled={busyId === r.subOrderId || (refs[r.subOrderId] || "").trim().length < 3} onClick={() => act(r.subOrderId, () => markCancellationRefunded(getStoredToken(), r.subOrderId, refs[r.subOrderId]))}
+                          style={{ ...body, height: 30, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: "#fff", color: C.ink, fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: (refs[r.subOrderId] || "").trim().length < 3 ? 0.5 : 1 }}>Mark refunded</button>
+                      </div>
+                    )}
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 function OrdersPage({ onOpenOrder, onSessionExpired }) {
   const [orders, setOrders] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
@@ -841,11 +1433,22 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   // Refused by a supplier or not answered in 24 hours: their own tab, with Needs attention / Handled (each counted).
   const [refused, setRefused] = useState({ open: [], handled: [] });
   const [exporting, setExporting] = useState(null);      // { done, total } while the export fetches each order's detail
+  // The redesign (approved mockup): tick orders to act on several at once; click a row to see it in the side panel (the order number opens it).
+  const [picked, setPicked] = useState(() => new Set());
+  const [previewId, setPreviewId] = useState(null);
+  const togglePick = (id) => setPicked((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const loadRefused = () => Promise.all([fetchSupplierResponses(getStoredToken(), "open"), fetchSupplierResponses(getStoredToken(), "handled")])
     .then(([open, handled]) => setRefused({ open: Array.isArray(open) ? open : [], handled: Array.isArray(handled) ? handled : [] }))
     .catch((err) => { if (err instanceof SessionExpiredError) onSessionExpired(); });
   useEffect(() => { loadRefused(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useAutoRefresh(loadRefused, { enabled: loadState === "ready" });
+  // Orders > Cancelled (migration 145): every cancelled part, by whom, why, and its refund
+  const [cancellations, setCancellations] = useState([]);
+  const loadCancellations = () => fetchCancellations(getStoredToken())
+    .then((list) => setCancellations(Array.isArray(list) ? list : []))
+    .catch((err) => { if (err instanceof SessionExpiredError) onSessionExpired(); });
+  useEffect(() => { loadCancellations(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(loadCancellations, { enabled: loadState === "ready" });
 
   useEffect(() => {
     let cancelled = false;
@@ -877,20 +1480,22 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   const needsAssign = (o) => Boolean(o.assigned) && o.assigned.of > 0 && o.assigned.done < o.assigned.of && o.status !== "cancelled";
   const matches = (o, f) => {
     if (f === "all") return true;
+    if (f === "ended") return Boolean(o.progress && o.progress.ended);      // finished through a hub-found fault (patch-orders-fault-done)
     if (f === "assign") return needsAssign(o);
     if (o.hubStatus == null) return false;
     if (f === "to_ship") return TO_SHIP_HUB_STATUSES.includes(o.hubStatus);
     if (f === "shipped") return o.hubStatus === "shipped_to_buyer";
     if (f === "delivered") return o.hubStatus === "delivered";
-    if (f === "dispute") return o.hubStatus === "flagged";
+    if (f === "dispute") return o.hubStatus === "flagged" || o.hubStatus === "returned_to_supplier" || o.hubStatus === "discarded_at_hub";      // open fault cases only: finished ones read "closed"
     return false;
   };
   const refusedOrderIds = new Set([...refused.open, ...refused.handled].map((r) => r.orderId));
   // each tab shows how many orders it holds (Refused: the orders with a refused or unanswered supplier part, open or handled)
-  const countOf = (f) => (f === "refused" ? refusedOrderIds.size : orders.filter((o) => matches(o, f)).length);
+  const refundWaiting = cancellations.filter((c) => c.canMarkRefunded).length;
+  const countOf = (f) => (f === "rules" ? null : f === "cancelled" ? cancellations.length : f === "refused" ? refusedOrderIds.size : orders.filter((o) => matches(o, f)).length);      // Rules: no count
   const filtered = filter === "refused" ? orders.filter((o) => refusedOrderIds.has(o.id)) : orders.filter((o) => matches(o, filter));
-  const filters = [["all", "All"], ["assign", "Need assign"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"], ["refused", "Refused"]];
-  const redCount = (id) => (id === "refused" && refused.open.length > 0) || (id === "assign" && countOf("assign") > 0);      // red while something waits
+  const filters = [["all", "All"], ["assign", "Need assign"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["ended", "Replaced / refunded"], ["dispute", "Disputes"], ["refused", "Refused"], ["cancelled", "Cancelled"], ["rules", "⚙ Rules"]];
+  const redCount = (id) => (id === "refused" && refused.open.length > 0) || (id === "assign" && countOf("assign") > 0) || (id === "cancelled" && refundWaiting > 0);      // red while something waits
 
   return (
     <div>
@@ -912,14 +1517,16 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
               setExporting(null);
             }
           }}
-          style={toolbarButtonStyle(filtered.length === 0 || Boolean(exporting))}
+          style={{ ...toolbarButtonStyle(filtered.length === 0 || Boolean(exporting)), ...(filter === "rules" || filter === "cancelled" ? { display: "none" } : {}) }}
         >
           <Download size={13} /> {exporting ? `Exporting… ${exporting.done}/${exporting.total}` : "Export"}
         </button>
       </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading orders…</div></Card>}
+        {filter === "rules" && <NoAnswerRulesCard onSessionExpired={onSessionExpired} />}
         {filter === "refused" && <RefusedOrdersSection onSessionExpired={onSessionExpired} counts={{ open: refused.open.length, handled: refused.handled.length }} onChanged={loadRefused} />}
+        {filter === "cancelled" && <CancelledOrdersSection rows={cancellations} onOpenOrder={onOpenOrder} onSessionExpired={onSessionExpired} onChanged={loadCancellations} />}
         {loadState === "error" && (
           <Card>
             <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>
@@ -927,15 +1534,40 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
             </div>
           </Card>
         )}
-        {loadState === "ready" && filter !== "refused" && (
-          <Card>
+        {loadState === "ready" && filter !== "refused" && filter !== "rules" && filter !== "cancelled" && (() => {
+          const shownIds = filtered.map((o) => o.id);
+          const pickedShown = shownIds.filter((id) => picked.has(id));
+          const allPicked = shownIds.length > 0 && pickedShown.length === shownIds.length;
+          const preview = previewId ? orders.find((o) => o.id === previewId) : null;
+          return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {pickedShown.length > 0 && (
+            <div data-testid="orders-bulk-bar" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", borderRadius: 10, background: C.navy, color: "#fff", boxShadow: SHADOW.navyRaised }}>
+              <b style={{ ...body, fontSize: 13.5 }}>{pickedShown.length} selected</b>
+              <span style={{ ...body, fontSize: 12.5, color: C.onNavyMuted }}>of {shownIds.length} in this list</span>
+              <span style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" disabled={Boolean(exporting)} onClick={async () => {
+                  const chosen = filtered.filter((o) => picked.has(o.id));
+                  setExporting({ done: 0, total: chosen.length });
+                  try { await exportOrdersWorkbook({ orders: chosen, tabName: `${filter}-selected`, onProgress: (done, total) => setExporting({ done, total }) }); }
+                  catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setErrorMessage(err.message); }
+                  finally { setExporting(null); }
+                }} style={{ ...body, height: 32, padding: "0 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 800, cursor: "pointer", boxShadow: SHADOW.goldRaised }}>
+                  {exporting ? `Exporting… ${exporting.done}/${exporting.total}` : "Export selected"}
+                </button>
+                <button type="button" onClick={() => setPicked(new Set())} style={{ ...body, height: 32, padding: "0 14px", borderRadius: 8, border: `1px solid ${C.onNavyMuted}`, background: "transparent", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Clear</button>
+              </span>
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: preview ? "minmax(0, 1fr) 340px" : "minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+          <Card style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Delivery status</Th><Th>Assign status</Th><Th>Hub status</Th><Th></Th></tr>
+                <tr><Th><input type="checkbox" aria-label="Select all orders in this list" checked={allPicked} onChange={() => setPicked(allPicked ? new Set() : new Set(shownIds))} /></Th><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Delivery status</Th><Th>Assign status</Th><Th>Hub status</Th><Th>Supplier answer</Th><Th></Th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
+                  <tr><td colSpan={10} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
                 )}
                 {filtered.map(o => {
                   const hubMeta = getHubStatusMeta(o.hubStatus);
@@ -945,8 +1577,10 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
                   const placed = new Date(o.placedAt);
                   const ddmmyy = `${String(placed.getDate()).padStart(2, "0")}/${String(placed.getMonth() + 1).padStart(2, "0")}/${String(placed.getFullYear()).slice(2)}`;
                   return (
-                    <tr key={o.id} onClick={() => onOpenOrder(o.id)} style={{ cursor: "pointer" }}>
-                      <Td><PlateChip small>{o.id}</PlateChip></Td>
+                    <tr key={o.id} onClick={() => setPreviewId((cur) => (cur === o.id ? null : o.id))} onDoubleClick={() => onOpenOrder(o.id)} aria-selected={previewId === o.id || picked.has(o.id)}
+                      style={{ cursor: "pointer", background: previewId === o.id ? C.goldTint : picked.has(o.id) ? "#FEF8E7" : undefined }}>
+                      <Td style={{ width: 36 }}><input type="checkbox" aria-label={`Select ${o.id}`} checked={picked.has(o.id)} onClick={(e) => e.stopPropagation()} onChange={() => togglePick(o.id)} /></Td>
+                      <Td><button type="button" title="Open the order" onClick={(e) => { e.stopPropagation(); onOpenOrder(o.id); }} style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}><PlateChip small>{o.id}</PlateChip></button></Td>
                       <Td>{o.buyerName || (o.guestEmail ? `Guest · ${o.guestEmail}` : (o.userId || "—"))}</Td>
                       <Td align="right" style={{ fontWeight: 700 }}>${Number(o.total).toFixed(2)} {o.currencyCode}</Td>
                       <Td style={{ color: C.muted }}>{ddmmyy}</Td>
@@ -967,16 +1601,57 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
                         )}
                       </Td>
                       <Td><Badge label={hubMeta.label} color={hubMeta.color} bg={hubMeta.bg} /></Td>
-                      <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
+                      <Td><AdminAnswerChip dueAt={o.answerDueAt} windowHours={o.answerWindowHours} waiting={o.answerWaiting} testId={`admin-answer-chip-${o.id}`} /></Td>
+                      <Td align="right"><button type="button" aria-label={`Open ${o.id}`} onClick={(e) => { e.stopPropagation(); onOpenOrder(o.id); }} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 4, display: "inline-flex" }}><ChevronRight size={15} color={C.muted} /></button></Td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </Card>
-        )}
+          {preview && <OrderPreviewPanel order={preview} onOpen={() => onOpenOrder(preview.id)} onClose={() => setPreviewId(null)} />}
+          </div>
+          </div>
+          );
+        })()}
       </div>
     </div>
+  );
+}
+
+// The Orders page's side panel: the clicked order at a glance (progress, buyer, money, hub, supplier answer), and the way into it.
+function OrderPreviewPanel({ order: o, onOpen, onClose }) {
+  const hubMeta = getHubStatusMeta(o.hubStatus);
+  const pr = o.progress || { percent: 0, label: "—", cancelled: false, flagged: false };
+  const barColor = pr.flagged ? C.red : pr.percent === 100 ? C.gauge : C.torque;
+  const asg = o.assigned || { done: 0, of: 0 };
+  const lbl = { ...body, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted };
+  const fact = (label, value) => <div><div style={lbl}>{label}</div><div style={{ ...body, fontSize: 13, color: C.ink, marginTop: 4 }}>{value}</div></div>;
+  return (
+    <aside aria-label={`Order ${o.id}`} data-testid="order-preview" style={{ position: "sticky", top: 16, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: SHADOW.card, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div><div style={lbl}>Order</div><div style={{ ...mono, fontSize: 20, fontWeight: 700, color: C.ink, marginTop: 4 }}>{o.id}</div></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {pr.cancelled ? <Badge label="Cancelled" color={C.muted} bg="#EEEFF1" /> : o.hubStatus ? <Badge label={hubMeta.label} color={hubMeta.color} bg={hubMeta.bg} /> : null}
+          <button type="button" aria-label="Close the preview" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.line}`, background: C.card, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><X size={14} /></button>
+        </div>
+      </div>
+      {!pr.cancelled && (
+        <div>
+          <div style={{ ...body, display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.ink, marginBottom: 6 }}><b>{pr.label}</b><span style={{ ...mono, fontWeight: 700, color: barColor }}>{pr.percent}%</span></div>
+          <div style={{ height: 8, borderRadius: 999, background: C.surfaceHigh, border: `1px solid ${C.line}`, overflow: "hidden" }}><div style={{ height: "100%", width: `${pr.percent}%`, background: barColor, borderRadius: 999 }} /></div>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+        {fact("Buyer", o.buyerName || (o.guestEmail ? `Guest · ${o.guestEmail}` : "—"))}
+        {fact("Total", <span style={{ ...mono, fontWeight: 700 }}>{Number(o.total).toFixed(2)} {o.currencyCode}</span>)}
+        {fact("Placed", o.placedAt ? new Date(o.placedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—")}
+        {fact("Hub", asg.of === 0 ? "—" : asg.done >= asg.of ? "Assigned" : asg.of > 1 ? `Not assigned (${asg.done} of ${asg.of})` : "Not assigned")}
+      </div>
+      <div><div style={lbl}>Supplier answer</div><div style={{ marginTop: 6 }}><AdminAnswerChip dueAt={o.answerDueAt} windowHours={o.answerWindowHours} waiting={o.answerWaiting} testId={`preview-answer-chip-${o.id}`} /></div></div>
+      <button type="button" onClick={onOpen} style={{ ...body, height: 40, borderRadius: 10, border: "none", background: C.signal, color: C.onSignal, fontSize: 13.5, fontWeight: 800, cursor: "pointer", boxShadow: SHADOW.goldRaised, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Open order <ChevronRight size={15} /></button>
+      <div style={{ ...body, fontSize: 11.5, color: C.muted, textAlign: "center" }}>Tip: double-click a row to open it straight away.</div>
+    </aside>
   );
 }
 
@@ -1208,9 +1883,9 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   if (loadState === "loading") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Supplier</div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Supplier</div>
         </div>
         <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading supplier…</div>
       </div>
@@ -1219,91 +1894,117 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   if (loadState === "error") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Supplier</div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Supplier</div>
         </div>
         <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this supplier: {errorMessage}</div>
       </div>
     );
   }
 
+  // patch-suppliers-redesign: a navy band (initials, name, status, ships-from country with its pencil, contact email, and the numbers);
+  // then the products as a list on the left, the payment terms and the return address on the right.
+  const initials = String(supplier.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const products = supplier.products || [];
+  const liveCount = products.filter((p) => p.status === "active").length;
+  const stockTotal = products.reduce((n, p) => n + (Number(p.stockQuantity) || 0), 0);
+  const productStatus = (st) => (st === "active" ? { label: "Live", color: C.gauge, bg: C.gaugeBg } : st === "inactive" ? { label: "Hidden", color: C.muted, bg: "#EEEFF1" } : { label: "Waiting for review", color: C.amber, bg: C.amberBg });
+  const bandStat = (value, label) => (
+    <div key={label} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 12, padding: "9px 14px", minWidth: 92 }}>
+      <div style={{ ...mono, fontSize: 19, fontWeight: 800, color: "#fff" }}>{value.toLocaleString()}</div>
+      <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.onNavyMuted }}>{label}</div>
+    </div>
+  );
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-        <div>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>{supplier.name}</div>
-          <div style={{ ...body, fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 6 }}>
-            {isEditingCountry ? (
-              <>
-                <input
-                  autoFocus
-                  value={countryDraft}
-                  onChange={(e) => setCountryDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
-                  placeholder="English"
-                  style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 110 }}
-                />
-                <input
-                  value={countryArDraft}
-                  onChange={(e) => setCountryArDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
-                  placeholder="العربية"
-                  dir="rtl"
-                  style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 110 }}
-                />
-                <button onClick={handleUpdateCountry} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.signal, background: "none", border: "none", cursor: isSavingCountry ? "default" : "pointer" }}>
-                  {isSavingCountry ? "Saving…" : "Save"}
-                </button>
-                <button onClick={() => setIsEditingCountry(false)} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
-              </>
-            ) : (
-              <>
-                <span>{supplier.country}{supplier.countryAr ? ` (${supplier.countryAr})` : ""}</span>
-                <button onClick={() => { setCountryDraft(supplier.country || ""); setCountryArDraft(supplier.countryAr || ""); setIsEditingCountry(true); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }} title="Edit ships-from country">
-                  <Pencil size={11} color={C.muted} />
-                </button>
-              </>
-            )}
-            <span>· {supplier.contactEmail || "no contact email"}</span>
+      <div data-leap-header="" style={{ padding: "22px 32px 24px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <span aria-hidden="true" style={{ width: 58, height: 58, borderRadius: 14, background: C.signal, color: C.onSignal, display: "flex", alignItems: "center", justifyContent: "center", ...disp, fontWeight: 800, fontSize: 20, flexShrink: 0 }}>{initials}</span>
+          <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{supplier.name}</div>
+              {supplier.verificationStatus === "verified" && <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />}
+              {supplier.verificationStatus === "pending" && <Badge label="Pending review" color={C.amber} bg={C.amberBg} />}
+              {supplier.verificationStatus === "rejected" && <Badge label="Rejected" color={C.red} bg={C.redBg} />}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <div style={{ ...body, fontSize: 12.5, color: "#fff", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 999, padding: "4px 12px" }}>
+                <Globe size={13} color={C.onNavyMuted} />
+                {isEditingCountry ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={countryDraft}
+                      onChange={(e) => setCountryDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
+                      placeholder="English"
+                      style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 110, minHeight: 0 }}
+                    />
+                    <input
+                      value={countryArDraft}
+                      onChange={(e) => setCountryArDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
+                      placeholder="العربية"
+                      dir="rtl"
+                      style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 110, minHeight: 0 }}
+                    />
+                    <button onClick={handleUpdateCountry} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.signal, background: "none", border: "none", cursor: isSavingCountry ? "default" : "pointer" }}>
+                      {isSavingCountry ? "Saving…" : "Save"}
+                    </button>
+                    <button onClick={() => setIsEditingCountry(false)} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, color: C.onNavyMuted, background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <span>Ships from {supplier.country || "—"}{supplier.countryAr ? <> (<span dir="rtl" style={{ unicodeBidi: "isolate" }}>{supplier.countryAr}</span>)</> : ""}</span>
+                    <button onClick={() => { setCountryDraft(supplier.country || ""); setCountryArDraft(supplier.countryAr || ""); setIsEditingCountry(true); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }} title="Edit ships-from country">
+                      <Pencil size={12} color={C.signal} />
+                    </button>
+                  </>
+                )}
+              </div>
+              <span style={{ ...body, fontSize: 12.5, color: C.onNavyMuted }}>{supplier.contactEmail || "no contact email"}</span>
+            </div>
           </div>
-        </div>
-        <div style={{ marginLeft: "auto" }}>
-          {supplier.verificationStatus === "verified" && <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />}
-          {supplier.verificationStatus === "pending" && <Badge label="Pending review" color={C.amber} bg={C.amberBg} />}
-          {supplier.verificationStatus === "rejected" && <Badge label="Rejected" color={C.red} bg={C.redBg} />}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {bandStat(products.length, "products")}
+            {bandStat(liveCount, "live")}
+            {bandStat(stockTotal, "in stock")}
+          </div>
         </div>
       </div>
       {errorMessage && (
-        <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, padding: "10px 28px" }}>{errorMessage}</div>
+        <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, padding: "10px 32px" }}>{errorMessage}</div>
       )}
-      <div style={{ padding: 24 }}>
-        <div style={{ marginBottom: 16 }}>
+      <div style={{ padding: "24px 24px 0" }}>
+        <SupplierVerificationCard supplierId={supplierId} onSessionExpired={onSessionExpired} />
+      </div>
+      <div style={{ padding: 24, display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(320px, 1fr)", gap: 18, alignItems: "start" }}>
+        <Card title={`Products (${products.length})`}>
+          {products.length === 0 && <div style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No products yet.</div>}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {products.map((p, i) => {
+              const st = productStatus(p.status);
+              const low = Number(p.stockQuantity) <= 0;
+              return (
+                <div key={p.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto auto", gap: 14, alignItems: "center", padding: "11px 16px", borderTop: i ? `1px solid ${C.line}` : "none" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                    <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{p.category}</div>
+                  </div>
+                  <span style={{ ...mono, fontSize: 13, fontWeight: 800, color: C.ink, whiteSpace: "nowrap" }}>{p.currencyCode} {Number(p.price).toFixed(2)}</span>
+                  <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: low ? C.red : C.muted, whiteSpace: "nowrap" }}>{p.stockQuantity} in stock</span>
+                  <Badge label={st.label} color={st.color} bg={st.bg} />
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <SupplierPaymentTermsCard supplierId={supplierId} onSessionExpired={onSessionExpired} />
-        </div>
-        <div style={{ marginBottom: 16 }}>
           <SupplierReturnAddressCard supplierId={supplierId} onSessionExpired={onSessionExpired} />
         </div>
-        <Card title={`Products (${supplier.products.length})`}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><Th>Product</Th><Th>Category</Th><Th align="right">Price</Th><Th align="right">Stock</Th><Th>Status</Th></tr></thead>
-            <tbody>
-              {supplier.products.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No products yet.</td></tr>
-              )}
-              {supplier.products.map((p) => (
-                <tr key={p.id}>
-                  <Td style={{ fontWeight: 700 }}>{p.name}</Td>
-                  <Td style={{ color: C.muted }}>{p.category}</Td>
-                  <Td align="right">{p.currencyCode} {Number(p.price).toFixed(2)}</Td>
-                  <Td align="right">{p.stockQuantity}</Td>
-                  <Td style={{ color: C.muted }}>{p.status}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
       </div>
     </div>
   );
@@ -1397,6 +2098,14 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
   const [errorMessage, setErrorMessage] = useState(null);
   const [isMessagingBuyer, setIsMessagingBuyer] = useState(false);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
+  // Leap cancels the order or some of its parts (migration 145): which parts, why, and how it went
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelPick, setCancelPick] = useState(() => new Set());
+  const [cancelReason, setCancelReason] = useState("buyer_request");
+  const [cancelNote, setCancelNote] = useState("");
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
+  const [cancelDone, setCancelDone] = useState(null);
 
   const load = () => {
     fetchOrderById(getStoredToken(), orderId)
@@ -1457,9 +2166,9 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
   if (loadState === "loading") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Order</div>
         </div>
         <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading order details…</div>
       </div>
@@ -1468,9 +2177,9 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
   if (loadState === "error") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Order</div>
         </div>
         <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this order: {errorMessage}</div>
       </div>
@@ -1479,69 +2188,275 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
 
   const meta = getOrderStatusMeta(order.status === "cancelled" ? "cancelled" : (order.displayStatus || order.status));
   const buyerLabel = order.userId || order.guestEmail || "Unknown";
+  // ---- the redesign (patch-admin-order-detail): a header with the order's money and journey, then one card per supplier's part
+  const money = (n) => `${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${order.currencyCode || ""}`.trim();
+  const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
+  const parts = order.supplierSubOrders || [];
+  const itemCount = parts.reduce((s, so) => s + (so.items || []).reduce((t, it) => t + Number(it.quantity || 0), 0), 0);
+  const itemsTotal = parts.reduce((s, so) => s + (so.items || []).reduce((t, it) => t + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0), 0);
+  // how far a part has got: 0 paid, 1 sent by the supplier, 2 at the hub, 3 checked and packed, 4 on its way to the buyer, 5 delivered
+  const STAGES = ["Paid", "Supplier sent it", "At the hub", "Checked and packed", "On its way", "Delivered"];
+  const stageOf = (so) => {
+    const st = effectiveHubStatus(so.hubShipment);
+    if (!st) return 0;
+    return { awaiting_receipt: 1, received: 2, opened: 2, flagged: 2, closed: 2, returned_to_supplier: 2, discarded_at_hub: 2, inspected: 3, packed: 3, shipped_to_buyer: 4, delivered: 5 }[st] ?? 0;
+  };
+  const liveParts = parts.filter((so) => so.status !== "cancelled");
+  const orderStage = order.status === "cancelled" || liveParts.length === 0 ? -1 : Math.min(...liveParts.map(stageOf));
+  const problem = liveParts.some((so) => effectiveHubStatus(so.hubShipment) === "flagged");
+  const EVENT_LABEL = { ...Object.fromEntries(Object.entries(HUB_STATUS_META).map(([k, v]) => [k, v.label])), awaiting_receipt: "Supplier sent it to the hub" };
+  const lbl = { ...body, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted };
+  const glassBtn = { ...body, display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-        <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
-        <PlateChip>{order.id}</PlateChip>
-        <Badge label={meta.label} color={meta.color} bg={meta.bg} />
-        {order.isReplacement && <Badge label={`Replacement for ${order.replacementOf}`} color={C.torque} bg={C.torqueBg} />}
-      </div>
-      <div style={{ padding: 24, display: "flex", gap: 16 }}>
-        <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Supplier sub-orders">
-            <div style={{ padding: 6 }}>
-              {order.supplierSubOrders.map((so, i) => (
-                <div key={i} style={{ padding: "12px 12px", borderBottom: i < order.supplierSubOrders.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: so.items?.length ? 8 : 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <Store size={15} color={C.muted} />
-                      <span style={{ ...body, fontSize: 13, fontWeight: 600, color: C.ink }}>{so.supplierName || so.supplierId}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {so.trackingNumber && <span style={{ ...body, fontSize: 11, color: C.muted }}>Supplier → hub</span>}
-                      {so.trackingNumber && <PlateChip small>{so.trackingNumber}</PlateChip>}
-                      {so.hubTrackingNumber && <span style={{ ...body, fontSize: 11, color: C.muted }}>Hub → buyer</span>}
-                      {so.hubTrackingNumber && <PlateChip small>{so.hubTrackingNumber}</PlateChip>}
-                      <Badge label={getHubStatusMeta(effectiveHubStatus(so.hubShipment)).label} color={getHubStatusMeta(effectiveHubStatus(so.hubShipment)).color} bg={getHubStatusMeta(effectiveHubStatus(so.hubShipment)).bg} />
-                    </div>
+      <div data-leap-header="" style={{ position: "relative", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)`, padding: "24px 32px 26px" }}>
+        <span aria-hidden="true" style={{ position: "absolute", inset: "0 0 55% 0", background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0))", pointerEvents: "none" }} />
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal }}>Order</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+              <span style={{ ...mono, fontSize: 26, fontWeight: 700, letterSpacing: "-0.01em", color: "#fff" }}>{order.id}</span>
+              <Badge label={meta.label} color={meta.color} bg={meta.bg} />
+              {order.isReplacement && <Badge label={`Replacement for ${order.replacementOf}`} color={C.torque} bg={C.torqueBg} />}
+            </div>
+            <div style={{ ...body, fontSize: 13, color: C.onNavyMuted, marginTop: 4 }}>Placed {new Date(order.placedAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" onClick={handleMessageBuyer} disabled={isMessagingBuyer} style={{ ...glassBtn, opacity: isMessagingBuyer ? 0.6 : 1 }}><MessageSquare size={15} />{isMessagingBuyer ? "Opening…" : "Message buyer"}</button>
+            <button type="button" onClick={handleMessageSupplier} style={{ ...glassBtn, border: "none", background: C.signal, color: C.onSignal, fontWeight: 800, boxShadow: SHADOW.goldRaised }}><Store size={15} />Message supplier(s)</button>
+          </div>
+        </div>
+
+        {/* the journey of the whole order: as far as its slowest part has got */}
+        <div style={{ position: "relative", marginTop: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, padding: "16px 18px" }}>
+          {orderStage === -1 ? (
+            <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: "#fff" }}>This order was cancelled.</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${STAGES.length}, minmax(0, 1fr))`, gap: 0 }}>
+              {STAGES.map((name, i) => {
+                const done = i <= orderStage;               // reached
+                const now = i === orderStage + 1;           // what it is waiting for next
+                return (
+                  <div key={name} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 8 }}>
+                    {i > 0 && <span aria-hidden="true" style={{ position: "absolute", top: 13, right: "50%", width: "100%", height: 3, borderRadius: 3, background: i <= orderStage ? C.gauge : "rgba(255,255,255,0.16)" }} />}
+                    <span style={{ position: "relative", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", ...mono, fontSize: 12, fontWeight: 800,
+                      background: done ? C.gauge : now ? (problem ? C.red : C.signal) : "rgba(255,255,255,0.10)", color: done ? "#fff" : now ? (problem ? "#fff" : C.onSignal) : C.onNavyMuted,
+                      border: done || now ? "none" : "1px solid rgba(255,255,255,0.22)", boxShadow: now && !problem ? SHADOW.goldRaised : "none" }}>{done ? <Check size={14} /> : i + 1}</span>
+                    <span style={{ ...body, fontSize: 12, fontWeight: now ? 800 : 600, color: done || now ? "#fff" : C.onNavyMuted, lineHeight: 1.3 }}>{name}{now && problem ? " · a hub flagged a problem" : ""}</span>
                   </div>
-                  {so.items?.map((item, j) => (
-                    <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0 6px 25px", ...body, fontSize: 12.5, color: C.muted }}>
-                      <span>{item.name} × {item.quantity}</span>
-                      <span>${Number(item.unitPrice).toFixed(2)}</span>
-                    </div>
-                  ))}
-                  <HubAssignmentPanel key={so.hubId || "unassigned"} subOrder={so} onAssigned={load} onSessionExpired={onSessionExpired} />
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </Card>
-        </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Buyer">
-            <div style={{ padding: 16 }}>
-              <div style={{ ...body, fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>{buyerLabel}</div>
-              <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 10 }}>
-                {order.isGuestOrder ? "Guest checkout" : "Registered account"}
-              </div>
-              <div style={{ ...body, fontSize: 12, color: C.muted }}>
-                Placed {new Date(order.placedAt).toLocaleString()}
-              </div>
-            </div>
-          </Card>
-          <OrderAddressCard order={order} onSessionExpired={onSessionExpired} />
-          <Card title="Actions">
-            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              <button onClick={handleMessageBuyer} disabled={isMessagingBuyer} style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: isMessagingBuyer ? "default" : "pointer", textAlign: "left", opacity: isMessagingBuyer ? 0.6 : 1 }}>{isMessagingBuyer ? "Opening…" : "Message buyer"}</button>
-              <button onClick={handleMessageSupplier} style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>Message supplier(s)</button>
-              <button style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.red}`, background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>Issue refund</button>
-            </div>
-          </Card>
+          )}
         </div>
       </div>
+
+      <div style={{ padding: "24px 28px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* four facts at a glance */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+          {[
+            ["Order total", money(order.total)],
+            ["Parts", `${itemCount} ${itemCount === 1 ? "item" : "items"} · ${parts.length} ${parts.length === 1 ? "supplier" : "suppliers"}`],
+            ["Buyer", order.isGuestOrder ? "Guest checkout" : "Registered account"],
+            ["Ship to", order.address ? [order.address.city, order.address.country].filter(Boolean).join(", ") || "—" : "No address yet"],
+          ].map(([k, v]) => (
+            <div key={k} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: SHADOW.card, padding: "14px 18px" }}>
+              <div style={lbl}>{k}</div>
+              <div style={{ ...(k === "Order total" ? mono : body), fontSize: k === "Order total" ? 20 : 15, fontWeight: 700, color: C.ink, marginTop: 6 }}>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(300px, 1fr)", gap: 20, alignItems: "start" }}>
+          {/* one card per supplier's part */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>Supplier sub-orders</span>
+              <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: C.muted }}>{parts.length}</span>
+            </div>
+            {parts.map((so, i) => {
+              const hm = getHubStatusMeta(effectiveHubStatus(so.hubShipment));
+              const events = so.hubShipment?.events || [];
+              return (
+                <div key={i} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: SHADOW.card, overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "14px 18px", borderBottom: `1px solid ${C.line}`, background: "linear-gradient(180deg, #FFFFFF, #FBFCFD)" }}>
+                    <span aria-hidden="true" style={{ width: 34, height: 34, borderRadius: 10, background: C.navy, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Store size={16} color={C.signal} /></span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{so.supplierName || so.supplierId}</div>
+                      <div style={{ ...body, fontSize: 12, color: C.muted }}>Part {i + 1} of {parts.length}{so.status === "cancelled" ? ` · cancelled${so.cancelledBy ? ` by ${{ buyer: "the buyer", admin: "Leap", supplier: "the supplier (refused)", no_answer: "the rules (no answer)" }[so.cancelledBy] || so.cancelledBy}` : ""}${so.cancelledAt ? ` on ${new Date(so.cancelledAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}` : ""}</div>
+                      {so.status === "cancelled" && (so.cancelReason || so.refundAmount != null) && (
+                        <div style={{ ...body, fontSize: 12, color: C.ink, marginTop: 4 }}>
+                          {so.cancelReason && <span>{so.cancelReason}</span>}
+                          {so.refundAmount != null && <span style={{ color: so.refundStatus === "failed" ? C.redInk : so.refundedAt ? C.gaugeInk : C.amberInk, fontWeight: 700 }}>{so.cancelReason ? " · " : ""}Refund ${Number(so.refundAmount).toFixed(2)}: {so.refundedAt ? "sent" : so.refundStatus === "failed" ? "failed (see Orders › Cancelled)" : "waiting"}</span>}
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ marginLeft: "auto" }}>{so.hubShipment ? <Badge label={hm.label} color={hm.color} bg={hm.bg} /> : <Badge label={so.status === "cancelled" ? "Cancelled" : "Waiting for the supplier"} color={so.status === "cancelled" ? C.red : C.amber} bg={so.status === "cancelled" ? C.redBg : C.amberBg} />}</span>
+                  </div>
+
+                  {(so.trackingNumber || so.hubTrackingNumber) && (
+                    <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "12px 18px", borderBottom: `1px solid ${C.line}`, background: C.surfaceHigh }}>
+                      {so.trackingNumber && <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>Supplier → hub</span><PlateChip small>{so.trackingNumber}</PlateChip></span>}
+                      {so.hubTrackingNumber && <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>Hub → buyer</span><PlateChip small>{so.hubTrackingNumber}</PlateChip></span>}
+                    </div>
+                  )}
+
+                  {so.answerWaiting && <div style={{ padding: "12px 18px 0" }}><AdminAnswerBig subOrder={so} /></div>}
+
+                  <div style={{ padding: "6px 18px" }}>
+                    {(so.items || []).map((item, j) => (
+                      <div key={j} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 0", borderBottom: j < so.items.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                        {item.imageUrl
+                          ? <img src={/^(https?:|data:|blob:)/.test(item.imageUrl) ? item.imageUrl : `${API_BASE_URL}${item.imageUrl.startsWith("/") ? "" : "/"}${item.imageUrl}`} alt="" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", border: `1px solid ${C.line}`, flexShrink: 0, background: C.surfaceHigh }} />
+                          : <span aria-hidden="true" style={{ width: 52, height: 52, borderRadius: 10, border: `1px solid ${C.line}`, background: C.surfaceHigh, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Package size={18} color={C.muted} /></span>}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{item.name} × {item.quantity}</div>
+                          <div style={{ ...mono, fontSize: 12, color: C.muted, marginTop: 2 }}>{usd(item.unitPrice)} each</div>
+                        </div>
+                        <div style={{ ...mono, fontSize: 14, fontWeight: 700, color: C.ink }}>{usd(Number(item.unitPrice) * Number(item.quantity))}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ padding: "0 18px 14px" }}>
+                    <HubAssignmentPanel key={so.hubId || "unassigned"} subOrder={so} onAssigned={load} onSessionExpired={onSessionExpired} />
+                  </div>
+
+                  {events.length > 0 && (
+                    <details style={{ borderTop: `1px solid ${C.line}` }}>
+                      <summary style={{ ...body, cursor: "pointer", padding: "12px 18px", fontSize: 13, fontWeight: 700, color: C.ink, listStyle: "revert" }}>What the hub did ({events.length})</summary>
+                      <ol style={{ listStyle: "none", margin: 0, padding: "4px 18px 16px" }}>
+                        {events.map((ev, k) => (
+                          <li key={k} style={{ position: "relative", display: "flex", gap: 12, padding: "8px 0" }}>
+                            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: "50%", marginTop: 4, flexShrink: 0, background: k === events.length - 1 ? C.signal : C.navySoft, boxShadow: k === events.length - 1 ? "0 0 0 3px #FDF3D8" : "none" }} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{EVENT_LABEL[ev.step] || ev.step}</div>
+                              <div style={{ ...body, fontSize: 12, color: C.muted }}>
+                                {new Date(ev.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                {ev.performedBy ? ` · ${ev.performedBy}` : ""}{ev.photos?.length ? ` · ${ev.photos.length} photo${ev.photos.length === 1 ? "" : "s"}` : ""}
+                              </div>
+                              {ev.notes && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginTop: 4, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 10px" }}>{ev.notes}</div>}
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* the side: money, buyer, address, actions */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+            <Card title="Payment">
+              <div style={{ padding: "14px 20px 18px", display: "flex", flexDirection: "column", gap: 10, ...body, fontSize: 13.5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Items</span><span style={mono}>{usd(itemsTotal)}</span></div>
+                {order.shippingFee > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Shipping</span><span style={mono}>{usd(order.shippingFee)}</span></div>}
+                {order.discountAmount > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Discount{order.promoCode ? ` (${order.promoCode})` : ""}</span><span style={{ ...mono, color: C.gaugeInk }}>−{usd(order.discountAmount)}</span></div>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: `1px solid ${C.line}`, paddingTop: 10, marginTop: 2 }}><b>Paid</b><span style={{ ...mono, fontSize: 18, fontWeight: 700 }}>{money(order.total)}</span></div>
+              </div>
+            </Card>
+            <Card title="Buyer">
+              <div style={{ padding: "14px 20px 18px", display: "flex", gap: 12, alignItems: "center" }}>
+                <span aria-hidden="true" style={{ width: 40, height: 40, borderRadius: "50%", background: C.navy, color: C.signal, display: "inline-flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{String(buyerLabel).charAt(0).toUpperCase()}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...body, fontWeight: 700, fontSize: 13.5, overflowWrap: "anywhere" }}>{buyerLabel}</div>
+                  <div style={{ ...body, fontSize: 12, color: C.muted }}>{order.isGuestOrder ? "Guest checkout" : "Registered account"}</div>
+                </div>
+              </div>
+            </Card>
+            <OrderAddressCard order={order} onSessionExpired={onSessionExpired} />
+            <Card title="Cancel">
+              <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                {cancelDone && <div role="status" style={{ ...body, fontSize: 12.5, fontWeight: 600, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 10, padding: "8px 12px" }}>{cancelDone}</div>}
+                {parts.some((so) => so.cancellable) ? (
+                  <>
+                    <div style={{ ...body, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>Cancel the whole order or some of its parts. The buyer is refunded as set in Orders › Rules (step 5), and the buyer and the supplier are told.</div>
+                    <button type="button" onClick={() => { setCancelPick(new Set(parts.filter((so) => so.cancellable).map((so) => so.subOrderId))); setCancelReason("buyer_request"); setCancelNote(""); setCancelError(null); setCancelOpen(true); }}
+                      style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 40, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.red}`, background: C.redBg, color: C.redInk, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                      <X size={15} />Cancel order…
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ ...body, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{order.status === "cancelled" ? "This order is cancelled." : "Nothing here can be cancelled any more: every part is on its way to the buyer, delivered, cancelled, or handled as a fault."}</div>
+                )}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+      {cancelOpen && (() => {
+        const REASONS = [["buyer_request", "The buyer asked to cancel"], ["out_of_stock", "The part is out of stock"], ["price_error", "The price was wrong"], ["cannot_deliver", "We cannot deliver to this address"], ["duplicate", "Duplicate order"], ["suspicious", "Suspicious order (not shown to the buyer)"], ["other", "Other (write why)"]];
+        const open = parts.filter((so) => so.cancellable);
+        const chosen = open.filter((so) => cancelPick.has(so.subOrderId));
+        const refund = order.isReplacement ? 0 : chosen.reduce((s, so) => s + (so.items || []).reduce((t, it) => t + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0), 0);
+        const noteNeeded = cancelReason === "other" && cancelNote.trim().length < 3;
+        const whole = chosen.length === open.length && open.length === parts.filter((so) => so.status !== "cancelled").length;
+        const submit = async () => {
+          setCancelBusy(true); setCancelError(null);
+          try {
+            const r = await adminCancelOrder(getStoredToken(), order.id, { subOrderIds: chosen.map((so) => so.subOrderId), reason: cancelReason, note: cancelNote });
+            setCancelOpen(false);
+            setCancelDone(r.orderCancelled ? "The order was cancelled. The buyer and the supplier were told." : `${chosen.length === 1 ? "The part was" : `${chosen.length} parts were`} cancelled. The buyer and the supplier were told.`);
+            load();
+          } catch (err) {
+            if (err instanceof SessionExpiredError) return onSessionExpired();
+            setCancelError(err.message);
+          } finally { setCancelBusy(false); }
+        };
+        return (
+          <div onClick={() => !cancelBusy && setCancelOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+            <div role="dialog" aria-modal="true" aria-label={`Cancel order ${order.id}`} onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 520, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}>
+              <div style={{ padding: "20px 24px 14px", borderBottom: `1px solid ${C.line}` }}>
+                <div style={{ ...disp, fontSize: 19, fontWeight: 800, color: C.ink }}>Cancel order {order.id}</div>
+                <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 4 }}>Choose what to cancel and why. This cannot be undone.</div>
+              </div>
+              <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 8 }}>What to cancel</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {open.map((so) => (
+                      <label key={so.subOrderId} style={{ ...body, display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${cancelPick.has(so.subOrderId) ? C.red : C.line}`, background: cancelPick.has(so.subOrderId) ? "#FFF7F6" : "#fff", cursor: "pointer" }}>
+                        <input type="checkbox" checked={cancelPick.has(so.subOrderId)} onChange={() => setCancelPick((cur) => { const n = new Set(cur); if (n.has(so.subOrderId)) n.delete(so.subOrderId); else n.add(so.subOrderId); return n; })} style={{ marginTop: 2 }} />
+                        <span style={{ minWidth: 0 }}>
+                          <b style={{ display: "block", fontSize: 13 }}>{so.supplierName || so.supplierId}</b>
+                          <span style={{ display: "block", fontSize: 12, color: C.muted }}>{(so.items || []).map((it) => `${it.name} × ${it.quantity}`).join(", ")}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {parts.length > open.length && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 8 }}>{parts.length - open.length} other {parts.length - open.length === 1 ? "part is" : "parts are"} not listed: already on its way to the buyer, delivered, cancelled, or handled as a fault.</div>}
+                </div>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink }}>Why</span>
+                  <select value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} style={{ ...body, height: 40, padding: "0 10px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, fontSize: 13 }}>
+                    {REASONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink }}>Note {cancelReason === "other" ? "(needed)" : "(optional)"}</span>
+                  <textarea value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} rows={2} maxLength={300} placeholder={cancelReason === "suspicious" ? "For the admins only" : "Shown to the buyer with the reason"} style={{ ...body, padding: "8px 10px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, fontSize: 13, resize: "vertical" }} />
+                </label>
+                <div style={{ ...body, fontSize: 13, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <span style={{ color: C.muted }}>{order.isReplacement ? "A free replacement: nothing to refund" : "Refund to the buyer (their share of what they paid)"}</span>
+                  <b style={mono}>${refund.toFixed(2)}</b>
+                </div>
+                {cancelError && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "8px 12px" }}>{cancelError}</div>}
+              </div>
+              <div style={{ padding: "14px 24px 20px", display: "flex", justifyContent: "flex-end", gap: 10, borderTop: `1px solid ${C.line}` }}>
+                <button type="button" disabled={cancelBusy} onClick={() => setCancelOpen(false)} style={{ ...body, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, background: "#fff", color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Keep the order</button>
+                <button type="button" disabled={cancelBusy || chosen.length === 0 || noteNeeded} onClick={submit}
+                  style={{ ...body, height: 40, padding: "0 18px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", opacity: cancelBusy || chosen.length === 0 || noteNeeded ? 0.5 : 1 }}>
+                  {cancelBusy ? "Cancelling…" : whole ? "Cancel the whole order" : `Cancel ${chosen.length} ${chosen.length === 1 ? "part" : "parts"}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {supplierPickerOpen && (
         <div onClick={() => setSupplierPickerOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, padding: 16, width: 280, boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
@@ -1560,9 +2475,11 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
 
 function SuppliersPage({ onOpenSupplier, onSessionExpired }) {
   const [suppliers, setSuppliers] = useState([]);
+  const [supplierFilter, setSupplierFilter] = useState("all");      // all | pending | verified | rejected (the redesign's pills)
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [actioningId, setActioningId] = useState(null);
+  const [supplierQuery, setSupplierQuery] = useState("");      // patch-suppliers-redesign
 
   const load = () => {
     setLoadState("loading");
@@ -1598,78 +2515,166 @@ function SuppliersPage({ onOpenSupplier, onSessionExpired }) {
 
   const verifiedCount = suppliers.filter(s => s.verificationStatus === "verified").length;
   const pendingCount = suppliers.filter(s => s.verificationStatus === "pending").length;
+  const rejectedCount = suppliers.filter(s => s.verificationStatus === "rejected").length;
+  const pending = suppliers.filter(s => s.verificationStatus === "pending");
+  // the table: everyone already decided (pending suppliers have their own cards above it), narrowed by the chosen pill
+  const listed = suppliers.filter((s) => (supplierFilter === "all" ? s.verificationStatus !== "pending" : s.verificationStatus === supplierFilter));
+  const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const check = (ok, yes, no) => <Badge label={ok ? yes : no} color={ok ? C.gauge : C.amber} bg={ok ? C.gaugeBg : C.amberBg} />;
+
+  // patch-suppliers-redesign: number tiles on top, the filter pills with a search and Export, the suppliers waiting for verification as cards
+  // (as before), and everyone else as cards too (initials, country, status, contact, products, payment terms, joined).
+  const supQ = supplierQuery.trim().toLowerCase();
+  const matches = (s) => !supQ || [s.name, s.country, s.contactEmail].some((v) => v && String(v).toLowerCase().includes(supQ));
+  const listedShown = listed.filter(matches);
+  const pendingShown = pending.filter(matches);
+  const totalListings = suppliers.reduce((n, s) => n + (Number(s.listingCount) || 0), 0);
+  const statTile = (value, label, tone) => {
+    const t = { navy: [C.navy, "#fff", C.onNavyMuted], green: ["#EEF8F3", C.gaugeInk, C.muted], gold: [C.goldTint, C.amberInk, C.muted], red: [C.redBg, C.redInk, C.muted], plain: ["#fff", C.ink, C.muted] }[tone];
+    return (
+      <div key={label} style={{ background: t[0], border: `1px solid ${tone === "navy" ? C.navy : C.line}`, borderRadius: 14, padding: "12px 16px", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+        <div style={{ ...mono, fontSize: 24, fontWeight: 800, color: t[1] }}>{value.toLocaleString()}</div>
+        <div style={{ ...body, fontSize: 12, fontWeight: 700, color: t[2] }}>{label}</div>
+      </div>
+    );
+  };
 
   return (
     <div>
       <TopBar title="Suppliers" subtitle={loadState === "ready" ? `${verifiedCount} verified · ${pendingCount} pending review` : "Loading…"} />
-      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
-        {/* Real export (new) -- same reusable exportToExcel() util already
-            used for Orders/Payouts/Audit Log, just never added here. */}
-        <button
-          disabled={suppliers.length === 0}
-          onClick={() => exportToExcel({
-            filename: `suppliers-${new Date().toISOString().slice(0, 10)}`,
-            sheetName: "Suppliers",
-            columns: [
-              { header: "Supplier", key: "name", width: 30 },
-              { header: "Contact email", key: "contactEmail", width: 30 },
-              { header: "Listings", key: "listingCount", width: 12 },
-              { header: "Status", key: "verificationStatus", width: 16 },
-              { header: "Joined", key: "createdAt", width: 16 },
-            ],
-            rows: suppliers.map((s) => ({
-              name: s.name, contactEmail: s.contactEmail || "—", listingCount: s.listingCount,
-              verificationStatus: s.verificationStatus, createdAt: new Date(s.createdAt).toLocaleDateString(),
-            })),
-          })}
-          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: suppliers.length === 0 ? "default" : "pointer", opacity: suppliers.length === 0 ? 0.5 : 1 }}
-        >
-          <Download size={13} /> Export
-        </button>
+      {loadState === "ready" && (
+        <div style={{ padding: "18px 24px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+          {statTile(suppliers.length, "suppliers", "navy")}
+          {statTile(verifiedCount, "verified", "green")}
+          {statTile(pendingCount, "waiting for verification", pendingCount > 0 ? "gold" : "plain")}
+          {statTile(rejectedCount, "rejected", rejectedCount > 0 ? "red" : "plain")}
+          {statTile(totalListings, "products listed", "plain")}
+        </div>
+      )}
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <FilterButtons label="Filter suppliers" activeId={supplierFilter} onSelect={setSupplierFilter}
+          items={[
+            { id: "all", label: "All", count: suppliers.length },
+            { id: "pending", label: "Pending review", count: pendingCount, alert: pendingCount > 0 },
+            { id: "verified", label: "Verified", count: verifiedCount, tone: "green" },
+            { id: "rejected", label: "Rejected", count: rejectedCount },
+          ]} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, boxSizing: "border-box", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 250 }}>
+            <Search size={14} color={C.muted} />
+            <input value={supplierQuery} onChange={(e) => setSupplierQuery(e.target.value)} placeholder="Search name, country, email…" aria-label="Search suppliers" data-leap-plain="" style={{ ...body, fontSize: 12.5, border: "none", outline: "none", background: "none", width: "100%", color: C.ink }} />
+          </div>
+          {/* Real export (new) -- same reusable exportToExcel() util already
+              used for Orders/Payouts/Audit Log, just never added here. */}
+          <button
+            disabled={suppliers.length === 0}
+            onClick={() => exportToExcel({
+              filename: `suppliers-${new Date().toISOString().slice(0, 10)}`,
+              sheetName: "Suppliers",
+              columns: [
+                { header: "Supplier", key: "name", width: 30 },
+                { header: "Contact email", key: "contactEmail", width: 30 },
+                { header: "Listings", key: "listingCount", width: 12 },
+                { header: "Status", key: "verificationStatus", width: 16 },
+                { header: "Joined", key: "createdAt", width: 16 },
+              ],
+              rows: suppliers.map((s) => ({
+                name: s.name, contactEmail: s.contactEmail || "—", listingCount: s.listingCount,
+                verificationStatus: s.verificationStatus, createdAt: new Date(s.createdAt).toLocaleDateString(),
+              })),
+            })}
+            style={toolbarButtonStyle(suppliers.length === 0)}
+          >
+            <Download size={13} /> Export
+          </button>
+        </div>
       </div>
-      <div style={{ padding: 24 }}>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading suppliers…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load suppliers: {errorMessage}</div></Card>}
-        {loadState === "ready" && (
-          <Card>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr><Th>Supplier</Th><Th>Contact</Th><Th align="right">Listings</Th><Th>Status</Th><Th>Payment terms</Th><Th>Joined</Th><Th></Th></tr>
-              </thead>
-              <tbody>
-                {suppliers.map(s => (
-                  <tr key={s.id} onClick={() => onOpenSupplier(s.id)} style={{ cursor: "pointer" }}>
-                    <Td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><Store size={13} color={C.muted} /><span style={{ fontWeight: 600 }}>{s.name}</span></span></Td>
-                    <Td style={{ color: C.muted }}>{s.contactEmail || "—"}</Td>
-                    <Td align="right">{s.listingCount.toLocaleString()}</Td>
-                    <Td>
-                      {s.verificationStatus === "verified" && <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />}
-                      {s.verificationStatus === "pending" && <Badge label="Pending review" color={C.amber} bg={C.amberBg} />}
+
+        {/* waiting for verification: one card each, with what they have sent and the decision buttons */}
+        {loadState === "ready" && pendingShown.length > 0 && (supplierFilter === "all" || supplierFilter === "pending") && (
+          <section aria-label="Waiting for verification" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>Waiting for verification</span>
+              <Badge label={`${pendingShown.length} waiting`} color={C.amber} bg={C.amberBg} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+              {pendingShown.map((s) => (
+                <div key={s.id} data-testid={`supplier-card-${s.id}`} style={{ background: C.card, border: `1px solid ${C.signal}`, borderRadius: 14, boxShadow: SHADOW.card, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                  <div style={{ height: 4, background: C.signal }} />
+                  <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                      <span aria-hidden="true" style={{ width: 46, height: 46, borderRadius: 12, background: C.navy, color: C.signal, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{initialsOf(s.name)}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <button type="button" onClick={() => onOpenSupplier(s.id)} title="Open the supplier" style={{ ...body, display: "block", maxWidth: "100%", padding: 0, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: 15, fontWeight: 800, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</button>
+                        <div style={{ ...body, fontSize: 12.5, color: C.muted }}>{[s.country, `applied ${new Date(s.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`].filter(Boolean).join(" · ")}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {check(Boolean(s.contactEmail), "Contact email", "No contact email")}
+                      {check(Boolean(s.country), "Country set", "No country")}
+                      {s.hasPayoutMethod !== undefined && check(Boolean(s.hasPayoutMethod), "Bank account", "No bank account")}
+                    </div>
+                    {s.verification && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 10px", borderRadius: 10, background: s.verification.sent === s.verification.required ? C.gaugeBg : C.amberBg }}>
+                        <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: s.verification.sent === s.verification.required ? C.gaugeInk : C.amberInk }}>Documents: {s.verification.sent} of {s.verification.required} sent</span>
+                        <TrustBadge trust={s.verification.trust} small />
+                      </div>
+                    )}
+                    <div style={{ ...body, fontSize: 12.5, color: C.muted }}>{s.listingCount === 1 ? "1 product drafted" : `${s.listingCount.toLocaleString()} products drafted`}{s.contactEmail ? ` · ${s.contactEmail}` : ""}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" disabled={actioningId === s.id} onClick={() => handleVerify(s.id, "verified")}
+                        style={{ ...body, flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, height: 38, borderRadius: 10, border: "none", background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: actioningId === s.id ? "default" : "pointer", opacity: actioningId === s.id ? 0.5 : 1, boxShadow: SHADOW.goldRaised }}>
+                        <Check size={14} />Approve
+                      </button>
+                      <button type="button" disabled={actioningId === s.id} onClick={() => handleVerify(s.id, "rejected")}
+                        style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 38, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, background: C.card, color: C.redInk, fontSize: 13, fontWeight: 700, cursor: actioningId === s.id ? "default" : "pointer", opacity: actioningId === s.id ? 0.5 : 1 }}>
+                        <X size={14} />Reject
+                      </button>
+                      <button type="button" onClick={() => onOpenSupplier(s.id)} aria-label={`Open ${s.name}`}
+                        style={{ ...body, display: "inline-flex", alignItems: "center", height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, background: C.card, color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        Open
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {loadState === "ready" && !(supplierFilter === "pending") && (
+          <section aria-label="Suppliers" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pendingShown.length > 0 && supplierFilter === "all" && <span style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>All other suppliers</span>}
+            {listedShown.length === 0 && <div style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff" }}>{supQ ? `No supplier matches “${supplierQuery}”.` : "No suppliers here."}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+              {listedShown.map((s) => {
+                const verified = s.verificationStatus === "verified";
+                return (
+                  <div key={s.id} data-testid={`supplier-row-${s.id}`} onClick={() => onOpenSupplier(s.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") onOpenSupplier(s.id); }}
+                    style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 12px" }}>
+                      <span aria-hidden="true" style={{ width: 42, height: 42, borderRadius: 12, background: verified ? C.navy : C.surfaceHigh, color: verified ? C.signal : C.muted, border: verified ? "none" : `1px solid ${C.line}`, display: "inline-flex", alignItems: "center", justifyContent: "center", ...body, fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{initialsOf(s.name)}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                        <div style={{ ...body, fontSize: 12, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[s.country, s.contactEmail || "no contact email"].filter(Boolean).join(" · ")}</div>
+                        {s.verification && s.verification.trust.level !== "none" && <div style={{ marginTop: 5 }}><TrustBadge trust={s.verification.trust} small /></div>}
+                      </div>
+                      {verified && <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />}
                       {s.verificationStatus === "rejected" && <Badge label="Rejected" color={C.red} bg={C.redBg} />}
-                    </Td>
-                    <Td style={{ color: C.muted, fontSize: 12 }}>{s.verificationStatus === "verified" ? (s.paymentTermText || "—") : "set after verification"}</Td>
-                    <Td style={{ color: C.muted }}>{new Date(s.createdAt).toLocaleDateString()}</Td>
-                    <Td align="right">
-                      {s.verificationStatus === "pending" ? (
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button
-                            disabled={actioningId === s.id}
-                            onClick={(e) => { e.stopPropagation(); handleVerify(s.id, "verified"); }}
-                            style={{ display: "flex", alignItems: "center", gap: 4, background: C.gaugeBg, color: C.gauge, border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: actioningId === s.id ? "default" : "pointer", opacity: actioningId === s.id ? 0.5 : 1, ...body }}
-                          ><Check size={12} />Approve</button>
-                          <button
-                            disabled={actioningId === s.id}
-                            onClick={(e) => { e.stopPropagation(); handleVerify(s.id, "rejected"); }}
-                            style={{ display: "flex", alignItems: "center", gap: 4, background: C.redBg, color: C.red, border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: actioningId === s.id ? "default" : "pointer", opacity: actioningId === s.id ? 0.5 : 1, ...body }}
-                          ><X size={12} />Reject</button>
-                        </div>
-                      ) : <MoreHorizontal size={15} color={C.muted} />}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center", padding: "10px 14px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+                      <span style={{ ...body, fontSize: 12, color: C.muted }}><b style={{ ...mono, color: C.ink, fontSize: 13 }}>{s.listingCount.toLocaleString()}</b> {s.listingCount === 1 ? "product" : "products"}</span>
+                      <span style={{ ...body, fontSize: 11.5, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="Payment terms">{verified ? (s.paymentTermText || "—") : "set after verification"}</span>
+                      <span style={{ ...body, fontSize: 11.5, color: C.muted, display: "inline-flex", alignItems: "center", gap: 4 }}>since {new Date(s.createdAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}<ChevronRight size={14} color={C.muted} /></span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
       </div>
     </div>
@@ -2119,21 +3124,233 @@ function ModerationPage({ onSessionExpired }) {
 // etc.), not a new drag-and-drop library.
 // The page's header (the common page design) above the delivery rules screen.
 const DELIVERY_TABS = [
+  { id: "flow", label: "⚙ How it works", subtitle: "How the delivery date shown to buyers is worked out" },
   { id: "rules", label: "Delivery rules", subtitle: "How long a parcel takes from each warehouse country to each group of destination countries" },
   { id: "groups", label: "Destination country groups", subtitle: "The groups of destination countries the delivery rules are written for" },
 ];
-function DeliveryRulesPage({ onSessionExpired }) {
-  const [tab, setTab] = useState("rules");
-  const current = DELIVERY_TABS.find((t) => t.id === tab);
+// Delivery Rules > "⚙ How it works": how the delivery date a buyer sees is worked out, step by step, with the settings inside each step
+// (confirmed with the person via mockup). Rules and country groups stay in their own tabs; step 3 shows the list and which rule wins.
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+function DeliveryFlowCard({ rules, groups, countries, warehouseCountries, onSessionExpired, onGoTo }) {
+  const [saved, setSaved] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [state, setState] = useState(null);
+  const [tryIt, setTryIt] = useState({ warehouseCountry: warehouseCountries[0] || "China", destinationIsoCode: "SA", weightKg: 2, lengthCm: "", widthCm: "", heightCm: "" });
+  const [preview, setPreview] = useState(null);
+  useEffect(() => { fetchDeliverySettings(getStoredToken()).then((s) => { setSaved(s); setDraft(s); }).catch((err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setState(err.message); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!draft) return undefined;
+    const id = setTimeout(() => {
+      previewDelivery(getStoredToken(), { ...tryIt, weightKg: tryIt.weightKg === "" ? null : Number(tryIt.weightKg), lengthCm: tryIt.lengthCm === "" ? null : Number(tryIt.lengthCm), widthCm: tryIt.widthCm === "" ? null : Number(tryIt.widthCm), heightCm: tryIt.heightCm === "" ? null : Number(tryIt.heightCm), destinationIsoCode: tryIt.destinationIsoCode || null, settings: draft })
+        .then(setPreview).catch((err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setPreview({ error: err.message }); });
+    }, 250);
+    return () => clearTimeout(id);
+  }, [draft, tryIt]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!draft) return state ? <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red }}>{state}</div> : <span style={{ ...body, color: C.muted }}>Loading…</span>;
+  const keys = ["fallbackCountryIso", "noRuleAction", "fallbackDays", "prepDays", "inspectionDays", "offDays", "showMode", "rangeDays", "notifyMode", "summaryHour", "fallbackPriceCnyPerKg", "minShippingCny", "volumetricDivisor"];
+  const changed = keys.some((k) => JSON.stringify(draft[k]) !== JSON.stringify(saved[k]));
+  const set = (k, v) => { setDraft((d) => ({ ...d, [k]: v })); setState(null); };
+  const chip = (k, v, label) => (      // patch-delivery-rules-redesign: larger chips
+    <button key={String(v)} type="button" aria-pressed={draft[k] === v} onClick={() => set(k, v)} style={{ ...body, fontSize: 12.5, fontWeight: 700, borderRadius: 999, height: 32, padding: "0 13px", cursor: "pointer", color: draft[k] === v ? "#fff" : C.ink, background: draft[k] === v ? C.navy : "#fff", border: `1px solid ${draft[k] === v ? C.navy : C.lineStrong}`, boxShadow: draft[k] === v ? "0 1px 3px rgba(11,49,70,0.25)" : "none" }}>{label}</button>
+  );
+  const dayChip = (d) => { const on = draft.offDays.includes(d); return (
+    <button key={d} type="button" onClick={() => set("offDays", on ? draft.offDays.filter((x) => x !== d) : [...draft.offDays, d].sort())} disabled={!on && draft.offDays.length >= 3} style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 11px", cursor: "pointer", color: on ? "#fff" : C.ink, background: on ? C.navy : "#fff", border: `1px solid ${on ? C.navy : C.line}` }}>{WEEKDAYS[d]}</button>
+  ); };
+  const num = (k, min, max) => <input type="number" min={min} max={max} value={draft[k]} onChange={(e) => set(k, e.target.value === "" ? "" : Number(e.target.value))} style={{ ...body, width: 56, fontSize: 12.5, fontWeight: 800, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", textAlign: "center" }} />;
+  const hint = (t) => <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{t}</span>;
+  const ctl = (label, content) => (<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 0", borderTop: `1px dashed ${C.line}`, ...body, fontSize: 12.5 }}><b style={{ minWidth: 220 }}>{label}</b>{content}</div>);
+  const branch = (tone, title, content) => { const t = { g: ["#9ed9b7", "#f3fbf6"], r: ["#f2b8b2", "#fff6f5"], y: ["#f6d58c", "#fffaf0"] }[tone]; return <div style={{ border: `1.5px solid ${t[0]}`, background: t[1], borderRadius: 10, padding: "8px 10px", ...body, fontSize: 12 }}><b style={{ display: "block", fontSize: 12.5, marginBottom: 4 }}>{title}</b>{content}</div>; };
+  const tagGo = (t) => <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 800, color: C.ink, background: C.signal, borderRadius: 6, padding: "1px 7px" }}>{t}</span>;
+  const link = (t, tab) => <button type="button" onClick={() => onGoTo && onGoTo(tab)} style={{ ...body, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11.5, fontWeight: 800, color: C.torque, marginRight: 14 }}>{t}</button>;
+  const step = (n, title, desc, children, last) => (
+    <div style={{ display: "grid", gridTemplateColumns: "44px 1fr", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.navy, color: C.signal, fontWeight: 900, fontSize: 15, display: "grid", placeItems: "center", boxShadow: `0 0 0 4px ${C.goldTint}`, ...body }}>{n}</div>
+        {!last && <div style={{ width: 3, flex: 1, background: `linear-gradient(${C.lineStrong}, ${C.line})`, margin: "6px 0", borderRadius: 2 }} />}
+      </div>
+      <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 16px", marginBottom: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05), 0 4px 12px rgba(11,49,70,0.04)" }}>
+        <div style={{ ...disp, fontSize: 15, fontWeight: 800, color: C.ink }}>{title}</div>
+        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>{desc}</div>
+        {children}
+      </div>
+    </div>
+  );
+  const countryName = (iso) => (countries.find((c) => c.isoCode === iso) || {}).name || iso;
+  const sizeText = (r) => (r.minVolumeCm3 != null && r.maxVolumeCm3 != null ? `${r.minVolumeCm3}–${r.maxVolumeCm3} cm³` : r.maxVolumeCm3 != null ? `up to ${r.maxVolumeCm3} cm³` : r.minVolumeCm3 != null ? `over ${r.minVolumeCm3} cm³` : "any");
+  const checkOf = (i) => (preview && !preview.error && Array.isArray(preview.checks) ? preview.checks[i] : null);
+  const weightText = (r) => (r.minWeightKg != null && r.maxWeightKg != null ? `${r.minWeightKg}–${r.maxWeightKg} kg` : r.maxWeightKg != null ? `up to ${r.maxWeightKg} kg` : r.minWeightKg != null ? `over ${r.minWeightKg} kg` : "any");
+  const fmt = (days) => { if (days == null) return null; const d = new Date(Date.now() + days * 86400000); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
+  const plain = [
+    <>The buyer's country comes from their address, else their internet address; if neither, <b>{countryName(draft.fallbackCountryIso)}</b>.</>,
+    <>A part with no weight or size is <b>hidden</b> from buyers (its shipping cannot be priced).</>,
+    <>Your <b>{rules.length} rule{rules.length === 1 ? "" : "s"}</b> are checked top to bottom; the first that fits gives the days.</>,
+    draft.noRuleAction === "days" ? <>If none fits: <b>{draft.fallbackDays} days</b>.</> : <>If none fits: <b>no date is shown</b>.</>,
+    <>Shipping in the price: the rule's price (or the buyer country's own) × the chargeable weight (÷ <b>{draft.volumetricDivisor}</b>), at least <b>¥{draft.minShippingCny}</b>; {draft.fallbackPriceCnyPerKg != null ? <>with no rule or no price: <b>¥{draft.fallbackPriceCnyPerKg}/kg</b>.</> : <>with no rule or no price: the product is <b>hidden</b>.</>}</>,
+    <>Then <b>+{draft.prepDays}</b> day(s) to prepare and <b>+{draft.inspectionDays}</b> for inspection{draft.offDays.length ? <>, skipping <b>{draft.offDays.map((d) => WEEKDAYS[d]).join(", ")}</b></> : ""}.</>,
+    draft.showMode === "date" ? <>The buyer sees <b>one date</b>.</> : <>The buyer sees a <b>range of ±{draft.rangeDays} day(s)</b>.</>,
+    draft.notifyMode === "each" ? <>You are told as soon as more things are missing (at most once an hour).</> : draft.notifyMode === "daily" ? <>You get a summary every day at <b>{String(draft.summaryHour).padStart(2, "0")}:00</b>.</> : <>You are told at <b>{String(draft.summaryHour).padStart(2, "0")}:00</b> only when something is missing.</>,
+  ];
+  const save = async () => {
+    setState("Saving…");
+    try { const s = await saveDeliverySettings(getStoredToken(), { ...draft, summaryTz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh" }); setSaved(s); setDraft(s); setState("Saved. Buyers see the new dates within a minute."); }
+    catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setState(err.message); }
+  };
+  const sel = { ...body, fontSize: 12.5, fontWeight: 700, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", background: "#fff" };
+  const winner = preview && !preview.error ? preview.ruleIndex : -1;
   return (
-    <div>
-      <TopBar title={current.label} subtitle={current.subtitle} tabs={{ label: "Delivery Rules", tabs: DELIVERY_TABS.map(({ id, label }) => ({ id, label })), activeId: tab, onSelect: setTab }} />
-      <DeliveryRulesBody section={tab} onSessionExpired={onSessionExpired} />
+    <div data-testid="delivery-flow" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 310px", gap: 18, alignItems: "start" }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ ...disp, fontSize: 17, fontWeight: 800 }}>How a delivery date is worked out</span>
+          <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.gauge, background: "#e3f6ea", borderRadius: 999, padding: "3px 10px" }}>● Fully automatic</span>
+        </div>
+        {(() => {      // patch-delivery-rules-redesign: where things stand, each tile opens its tab
+          const inGroup = new Set(groups.flatMap((g) => g.members.map((m) => m.isoCode)));
+          const loose = countries.filter((c) => !inGroup.has(c.isoCode)).length;
+          const tile = (value, text, tab, warn) => (
+            <button key={text} type="button" onClick={() => tab && onGoTo && onGoTo(tab)} style={{ ...body, textAlign: "left", background: warn ? C.amberBg : "#fff", border: `1px solid ${warn ? "#F1D9A8" : C.line}`, borderRadius: 12, padding: "10px 14px", cursor: tab ? "pointer" : "default", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+              <div style={{ ...mono, fontSize: 20, fontWeight: 800, color: warn ? C.amberInk : C.ink }}>{value}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: C.muted }}>{text}{tab ? " →" : ""}</div>
+            </button>
+          );
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 16 }}>
+              {tile(rules.length, rules.length === 1 ? "delivery rule" : "delivery rules", "rules")}
+              {tile(groups.length, groups.length === 1 ? "country group" : "country groups", "groups")}
+              {tile(loose, "countries in no group", "groups", loose > 0)}
+              {tile(warehouseCountries.length, warehouseCountries.length === 1 ? "warehouse country" : "warehouse countries", null)}
+            </div>
+          );
+        })()}
+        {step(1, "Where the part goes", "The buyer's country: from their default address; if they have none (or are not logged in), from their internet address.",
+          ctl("If the country cannot be found, use", <select value={draft.fallbackCountryIso} onChange={(e) => set("fallbackCountryIso", e.target.value)} style={sel}>{countries.map((c) => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}</select>))}
+        {step(2, "Where it ships from, and its size", "The supplier's warehouse country; the part's weight and size (the product's own, else the part's usual ones, shown as \"approx.\").",
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {branch("g", "✓ Weight and size known", <>Go on to the rules.<br />{tagGo("Go to step 3 ↓")}</>)}
+            {branch("r", "✕ No weight or size at all", <>The product is hidden from buyers: its shipping cannot be priced. It is listed in your summary (step 7) so it can be fixed.</>)}
+          </div>)}
+        {step(3, "Match your rules, top to bottom", "The first rule that fits (warehouse country, destination group, weight, size) gives the days and the shipping price; a country with its own price and days uses those.", <>
+          <table style={{ width: "100%", borderCollapse: "collapse", ...body, fontSize: 12 }}>
+            <thead><tr>{["#", "From", "To", "Weight", "Size", "Days", "¥/kg", "Try it"].map((h) => <th key={h} style={{ textAlign: "left", padding: "5px 8px", color: C.muted, fontWeight: 600, fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rules.length === 0 && <tr><td colSpan={8} style={{ padding: "8px", color: C.muted }}>No rules yet: every product gets the step 4 result.</td></tr>}
+              {rules.map((r, i) => (
+                <tr key={r.id} style={{ background: i === winner ? "#fff4e0" : "transparent", fontWeight: i === winner ? 700 : 400 }}>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{i + 1}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{r.warehouseCountry || "Any"}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{r.destinationGroupName || "Any"}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{weightText(r)}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{sizeText(r)}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{r.deliveryDays}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}` }}>{r.priceCnyPerKg != null ? `¥${r.priceCnyPerKg}` : "general"}{(r.countryPrices || []).length ? <span style={{ color: C.muted }}> · {r.countryPrices.length} countr{r.countryPrices.length === 1 ? "y" : "ies"}</span> : null}</td>
+                  <td style={{ padding: "5px 8px", borderTop: `1px solid ${C.line}`, fontWeight: 600, color: !checkOf(i) ? C.muted : checkOf(i).fits ? C.gauge : C.red }}>
+                    {!checkOf(i) ? "…" : checkOf(i).wins ? "✓ fits · wins" : checkOf(i).fits ? "✓ fits (a rule above wins)" : `✗ ${checkOf(i).reasons.join("; ")}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 6 }}>{link("✎ Edit the rules →", "rules")}{link(`Country groups (${groups.length}) →`, "groups")}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+            {branch("g", "✓ A rule fits", <>Its days are used.<br />{tagGo("Go to step 5 ↓")}</>)}
+            {branch("y", "… No rule fits", tagGo("Go to step 4 ↓"))}
+          </div>
+        </>)}
+        {step(4, "No rule fits", "Used only when none of your rules matches.",
+          <>{ctl("Then", <>{chip("noRuleAction", "days", "Use a number of days")}{draft.noRuleAction === "days" && <>{num("fallbackDays", 1, 60)} days {hint("(1 to 60)")}</>}{chip("noRuleAction", "hide", "Hide the delivery date")}</>)}
+          {ctl("General shipping price", <>¥ <input type="number" min={0} step="0.5" value={draft.fallbackPriceCnyPerKg ?? ""} placeholder="none" onChange={(e) => set("fallbackPriceCnyPerKg", e.target.value === "" ? null : Number(e.target.value))} style={{ ...body, width: 70, fontSize: 12.5, fontWeight: 800, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", textAlign: "center" }} /> per kg {hint("(RMB, 0.01 to 10000; also used by a rule with no price; empty = such a product is hidden)")}</>)}</>)}
+        {step(5, "Work out the shipping price", "Added to the product's price for the buyer's country (Pricing > Fee components > Shipping from Delivery Rules).", <>
+          {ctl("Price per kg", hint("the rule's price for the buyer's country if it has one, else the rule's default; if no rule fits or the rule has no price, the general price (step 4)"))}
+          {ctl("Chargeable weight", <>the greater of the weight and L × W × H ÷ {num("volumetricDivisor", 4000, 6000)} {hint("(4000 to 6000; air freight is 5000)")}</>)}
+          {ctl("Minimum per item", <>¥ {num("minShippingCny", 0, 300)} {hint("(RMB, 0 to 300, so a tiny part still pays something)")}</>)}
+          <div style={{ marginTop: 6 }}>{link("✎ Set prices for each rule and country →", "rules")}</div>
+        </>)}
+        {step(6, "Turn the days into the date the buyer sees", "Counted from the day the buyer orders.", <>
+          {ctl("Add for the supplier to prepare", <>{num("prepDays", 0, 10)} day(s) {hint("(0 to 10)")}</>)}
+          {ctl("Add for the hub inspection", <>{num("inspectionDays", 0, 10)} day(s) {hint("(0 to 10)")}</>)}
+          {ctl("Do not count", <>{[5, 6, 0].map(dayChip)} {hint("(no deliveries on these days; at most 3)")}</>)}
+          {ctl("Show the buyer", <>{chip("showMode", "date", "One date (\"Arrives Nov 17\")")}{chip("showMode", "range", "A range (\"Nov 16–18\")")}{draft.showMode === "range" && <>± {num("rangeDays", 1, 5)} day(s)</>}</>)}
+        </>)}
+        {step(7, "What you are told", "So no product is left with a wrong or missing date: products with no weight or size, products with no rule for some country group, buyer countries in no group.", <>
+          {ctl("Tell me", [chip("notifyMode", "each", "As soon as more is missing"), chip("notifyMode", "daily", "Once a day (summary)"), chip("notifyMode", "failures", "Only when something is missing")])}
+          {draft.notifyMode !== "each" && ctl("At", <>{num("summaryHour", 0, 23)}:00 {hint("(your time)")}</>)}
+        </>, true)}
+      </div>
+      <div style={{ position: "sticky", top: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+          <div style={{ margin: "-14px -14px 12px", padding: "11px 14px", borderRadius: "14px 14px 0 0", background: `linear-gradient(120deg, ${C.navyDeep}, ${C.navy} 60%, ${C.navySoft} 140%)`, ...disp, fontSize: 14, fontWeight: 800, color: "#fff" }}>Try it <span style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.onNavyMuted }}>· a product, as a buyer would see it</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: "6px 8px", alignItems: "center", ...body, fontSize: 12 }}>
+            <span>Ships from</span><select value={tryIt.warehouseCountry} onChange={(e) => setTryIt((t) => ({ ...t, warehouseCountry: e.target.value }))} style={sel}>{(warehouseCountries.length ? warehouseCountries : ["China"]).map((w) => <option key={w}>{w}</option>)}</select>
+            <span>Buyer in</span><select value={tryIt.destinationIsoCode} onChange={(e) => setTryIt((t) => ({ ...t, destinationIsoCode: e.target.value }))} style={sel}><option value="">(unknown)</option>{countries.map((c) => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}</select>
+            <span>Weight</span><span><input type="number" min={0} step={0.5} value={tryIt.weightKg} onChange={(e) => setTryIt((t) => ({ ...t, weightKg: e.target.value }))} style={{ ...sel, width: 70 }} /> kg</span>
+            <span>Size (cm)</span><span style={{ display: "flex", gap: 4, alignItems: "center" }}>{["lengthCm", "widthCm", "heightCm"].map((k, i) => <React.Fragment key={k}>{i > 0 && "×"}<input type="number" min={0} placeholder={["L", "W", "H"][i]} value={tryIt[k]} onChange={(e) => setTryIt((t) => ({ ...t, [k]: e.target.value }))} style={{ ...sel, width: 52 }} /></React.Fragment>)}</span>
+          </div>
+          <div style={{ marginTop: 10, background: "#f4f6f9", borderRadius: 8, padding: 10, ...body, fontSize: 12.5 }}>
+            {!preview ? hint("Working it out…") : preview.error ? <span style={{ color: C.red }}>{preview.error}</span> : <>
+              {!tryIt.destinationIsoCode && <div>Country not found → <b>{countryName(preview.destinationIsoCode)}</b></div>}
+              <div>{preview.matched ? <>Rule <b>#{preview.ruleIndex + 1}</b>: {preview.ruleDays} days</> : <>No rule fits → {preview.hidden ? <b>no date shown</b> : <b>{draft.fallbackDays} days</b>}</>}</div>
+              {!preview.hidden && <div>+ {draft.prepDays} prepare + {draft.inspectionDays} inspection{draft.offDays.length ? `, not counting ${draft.offDays.map((d) => WEEKDAYS[d].slice(0, 3)).join("/")}` : ""} = <b>{preview.days} calendar days</b></div>}
+              {preview.shipping && <div style={{ marginTop: 4 }}>Shipping in the price: {preview.shipping.ok ? <><b>¥{preview.shipping.amountCny.toFixed(2)}</b> {hint(`(¥${preview.shipping.rateCnyPerKg}/kg${preview.shipping.countryPrice ? " for this country" : preview.shipping.matched ? "" : ", general price"} × ${preview.shipping.chargeableKg.toFixed(2)} kg${preview.shipping.minimumApplied ? ", minimum" : ""})`)}</> : preview.shipping.reason === "missing_size" ? hint("enter the weight and size") : <b style={{ color: C.red }}>no price: the product is hidden</b>}</div>}
+              <div style={{ marginTop: 8, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", background: "#fff" }}>Buyer sees: <span style={{ display: "inline-block", background: "#e3f6ea", color: "#17663a", fontWeight: 800, borderRadius: 6, padding: "2px 8px" }}>{preview.hidden ? "In stock" : preview.range ? `In stock · Delivery ${fmt(preview.days - preview.range)} – ${fmt(preview.days + preview.range)}` : `In stock · Arrives ${fmt(preview.days)}`}</span></div>
+            </>}
+          </div>
+          {hint("Size is optional; without it, rules with a size (volume) limit cannot fit. The rules table (step 3) says why each rule fits or not.")}
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+          <div style={{ ...disp, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>In plain words</div>
+          <ol style={{ paddingLeft: 18, margin: 0, ...body, fontSize: 12.5, lineHeight: 1.6 }}>{plain.map((p, i) => <li key={i}>{p}</li>)}</ol>
+        </div>
+        <div style={{ background: C.navy, borderRadius: 14, padding: 14, boxShadow: "0 8px 24px rgba(7,32,47,0.25)" }}>
+          {changed && <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.signal, marginBottom: 8 }}>● You have unsaved changes</div>}
+          <button type="button" data-testid="delivery-flow-save" disabled={!changed} onClick={save} style={{ display: "block", width: "100%", ...body, fontSize: 13.5, fontWeight: 800, color: C.onSignal, background: changed ? C.signal : "#5B7282", border: "none", borderRadius: 10, height: 42, cursor: changed ? "pointer" : "default" }}>Save rules</button>
+          <div style={{ marginTop: 8, ...body, fontSize: 11.5, color: C.onNavyMuted }}>{state || (saved.updatedAt ? `Last saved ${new Date(saved.updatedAt).toLocaleString()}` : "")}</div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function DeliveryRulesBody({ onSessionExpired, section = "rules" }) {
+function DeliveryRulesPage({ onSessionExpired }) {
+  const [tab, setTab] = useState("flow");
+  const current = DELIVERY_TABS.find((t) => t.id === tab);
+  return (
+    <div>
+      <TopBar title={current.label} subtitle={current.subtitle} tabs={{ label: "Delivery Rules", tabs: DELIVERY_TABS.map(({ id, label }) => ({ id, label })), activeId: tab, onSelect: setTab }} />
+      <DeliveryRulesBody section={tab} onSessionExpired={onSessionExpired} onGoTo={setTab} />
+    </div>
+  );
+}
+
+// Delivery rules: chosen countries with their own shipping price (RMB per kg) and their own delivery days (patch-delivery-prices, confirmed with the person via mockup)
+function CountryPricesCell({ rule, countries, onSave }) {
+  const list = rule.countryPrices || [];
+  const nameOf = (iso) => (countries.find((c) => c.isoCode === iso) || {}).name || iso;
+  const save = (next) => onSave(next.map(({ isoCode, priceCnyPerKg, deliveryDays }) => ({ isoCode, priceCnyPerKg, deliveryDays })));
+  const edit = (iso, key, value) => {
+    const n = Number(value);
+    const row = list.find((x) => x.isoCode === iso);
+    if (!(n > 0) || !row || row[key] === n) return;
+    save(list.map((x) => (x.isoCode === iso ? { ...x, [key]: key === "deliveryDays" ? Math.round(n) : n } : x)));
+  };
+  const inp = { ...mono, width: 58, height: 26, boxSizing: "border-box", fontSize: 12, fontWeight: 700, border: `1px solid ${C.lineStrong}`, borderRadius: 7, padding: "0 6px", textAlign: "right", background: "#fff", color: C.ink };      // patch-delivery-rules-redesign
+  return (
+    <div data-testid="country-prices" style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      {list.map((x) => (
+        <span key={`${x.isoCode}-${x.priceCnyPerKg}-${x.deliveryDays}`} style={{ ...body, fontSize: 12, fontWeight: 700, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 10, padding: "4px 6px 4px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}>
+          {nameOf(x.isoCode)} <span style={{ color: C.muted, fontWeight: 600 }}>¥</span><input type="number" data-leap-plain="" aria-label={`${nameOf(x.isoCode)} price per kg`} min={0} step="0.5" defaultValue={x.priceCnyPerKg} onBlur={(e) => edit(x.isoCode, "priceCnyPerKg", e.target.value)} style={inp} /><span style={{ color: C.muted, fontWeight: 600 }}>/kg</span>
+          <input type="number" data-leap-plain="" aria-label={`${nameOf(x.isoCode)} delivery days`} min={1} max={120} defaultValue={x.deliveryDays} onBlur={(e) => edit(x.isoCode, "deliveryDays", e.target.value)} style={{ ...inp, width: 44 }} /><span style={{ color: C.muted, fontWeight: 600 }}>days</span>
+          <button type="button" onClick={() => save(list.filter((y) => y.isoCode !== x.isoCode))} title="Remove this country" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}><X size={10} color={C.muted} /></button>
+        </span>
+      ))}
+      <select value="" aria-label="Add a country price" onChange={(e) => { if (e.target.value) save([...list, { isoCode: e.target.value, priceCnyPerKg: rule.priceCnyPerKg || 10, deliveryDays: rule.deliveryDays }]); }} style={{ ...body, fontSize: 12, fontWeight: 700, height: 34, minHeight: 0, border: `1px dashed ${C.lineStrong}`, borderRadius: 10, padding: "0 10px", background: "#fff", color: C.ink }}>
+        <option value="">+ Country price</option>
+        {countries.filter((c) => !list.some((x) => x.isoCode === c.isoCode)).map((c) => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function DeliveryRulesBody({ onSessionExpired, section = "rules", onGoTo }) {
   const [groups, setGroups] = useState([]);
   const [rules, setRules] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -2141,6 +3358,7 @@ function DeliveryRulesBody({ onSessionExpired, section = "rules" }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
+  const [pendingRuleDelete, setPendingRuleDelete] = useState(null); const [pendingGroupDelete, setPendingGroupDelete] = useState(null);      // patch-delivery-rules-redesign
 
   const refresh = async () => {
     try {
@@ -2265,138 +3483,174 @@ function DeliveryRulesBody({ onSessionExpired, section = "rules" }) {
         <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
       )}
 
-      {section === "groups" && (<Card title="Destination country groups" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-            {groups.map((g) => (
-              <div key={g.id} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, minWidth: 180 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{g.name}</span>
-                  <button onClick={() => handleDeleteGroup(g.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }} title="Delete group">
-                    <X size={13} color={C.muted} />
-                  </button>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                  {g.members.map((m) => (
-                    <span key={m.isoCode} style={{ ...body, fontSize: 11, background: C.canvas, borderRadius: 20, padding: "2px 6px 2px 8px", display: "flex", alignItems: "center", gap: 3 }}>
-                      {m.name}
-                      <button onClick={() => handleRemoveMember(g.id, m.isoCode)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}>
-                        <X size={9} color={C.muted} />
-                      </button>
-                    </span>
-                  ))}
-                  <select
-                    value=""
-                    onChange={(e) => { if (e.target.value) handleAddMember(g.id, e.target.value); }}
-                    style={{ ...body, fontSize: 11, border: `1px dashed ${C.line}`, borderRadius: 20, padding: "2px 6px", background: "none" }}
-                  >
-                    <option value="">+ Add country</option>
-                    {countries.filter((c) => !g.members.some((m) => m.isoCode === c.isoCode)).map((c) => (
-                      <option key={c.isoCode} value={c.isoCode}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()}
-              placeholder="New group name"
-              style={{ ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px", flex: 1, maxWidth: 220 }}
-            />
-            <button onClick={handleCreateGroup} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer" }}>
-              Add group
+      {section === "flow" && <DeliveryFlowCard rules={rules} groups={groups} countries={countries} warehouseCountries={warehouseCountries} onSessionExpired={onSessionExpired} onGoTo={onGoTo} />}
+      {section === "groups" && (
+        <div data-testid="delivery-groups">
+          {/* patch-delivery-rules-redesign: the add form in a gold card, a warning card for the countries in no group, then one card per group:
+              its countries as chips (+ Add country), which rules use it, and Delete (asks first). */}
+          <div style={{ border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 14, padding: 14, marginBottom: 16, display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <label style={{ display: "block", flex: "1 1 260px", maxWidth: 420 }}>
+              <span style={{ ...disp, display: "block", fontSize: 14.5, fontWeight: 800, color: C.ink, marginBottom: 2 }}>Add a group</span>
+              <span style={{ ...body, display: "block", fontSize: 11.5, color: C.muted, marginBottom: 8 }}>e.g. “Gulf countries”: then add its countries, and write rules for it</span>
+              <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()} placeholder="New group name"
+                style={{ ...body, width: "100%", boxSizing: "border-box", height: 40, fontSize: 13, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "0 12px", background: "#fff" }} />
+            </label>
+            <button onClick={handleCreateGroup} disabled={!newGroupName.trim()} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${newGroupName.trim() ? C.signalDark : "#D1D5DB"}`, background: newGroupName.trim() ? C.signal : "#D1D5DB", color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: newGroupName.trim() ? "pointer" : "default" }}>
+              <Plus size={15} /> Add group
             </button>
           </div>
-        </div>
-      </Card>)}
-
-      {section === "rules" && (<Card title="Delivery rules">
-        <div style={{ padding: 16 }}>
-          <p style={{ ...body, fontSize: 12, color: C.muted, marginTop: 0, marginBottom: 14 }}>First matching rule wins — order matters, use the arrows to reorder.</p>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <Th></Th>
-                <Th>Weight (kg)</Th>
-                <Th>Volume (cm³)</Th>
-                <Th>Warehouse</Th>
-                <Th>Destination</Th>
-                <Th>Days</Th>
-                <Th></Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((rule, i) => (
-                <tr key={rule.id}>
-                  <Td>
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      <button onClick={() => handleMove(i, "up")} disabled={i === 0} style={{ background: "none", border: "none", cursor: i === 0 ? "default" : "pointer", display: "flex", opacity: i === 0 ? 0.3 : 1 }}>
-                        <ChevronUp size={14} color={C.muted} />
-                      </button>
-                      <button onClick={() => handleMove(i, "down")} disabled={i === rules.length - 1} style={{ background: "none", border: "none", cursor: i === rules.length - 1 ? "default" : "pointer", display: "flex", opacity: i === rules.length - 1 ? 0.3 : 1 }}>
-                        <ChevronDown size={14} color={C.muted} />
-                      </button>
+          {(() => {
+            const inGroup = new Set(groups.flatMap((g) => g.members.map((m) => m.isoCode)));
+            const loose = countries.filter((c) => !inGroup.has(c.isoCode));
+            if (loose.length === 0) return <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 12, padding: "10px 14px", marginBottom: 16 }}>✓ Every country is in a group.</div>;
+            return (
+              <div style={{ border: "1px solid #F1D9A8", background: C.amberBg, borderRadius: 12, padding: "10px 14px", marginBottom: 16 }}>
+                <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.amberInk }}>{loose.length} {loose.length === 1 ? "country is" : "countries are"} in no group: only rules for “Any country” can fit buyers there.</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                  {loose.slice(0, 40).map((c) => <span key={c.isoCode} style={{ ...body, fontSize: 11, color: C.amberInk, background: "#fff", border: "1px solid #F1D9A8", borderRadius: 999, padding: "1px 8px" }}>{c.name}</span>)}
+                  {loose.length > 40 && <span style={{ ...body, fontSize: 11, color: C.amberInk }}>+{loose.length - 40} more</span>}
+                </div>
+              </div>
+            );
+          })()}
+          {groups.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff" }}>No groups yet.</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+            {groups.map((g) => {
+              const usedBy = rules.map((r, i) => (String(r.destinationGroupId) === String(g.id) ? i + 1 : null)).filter(Boolean);
+              return (
+                <div key={g.id} data-testid="country-group" style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: `1px solid ${C.line}` }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 10, background: C.navy, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Globe size={16} color={C.signal} /></span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{g.name}</div>
+                      <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{g.members.length} {g.members.length === 1 ? "country" : "countries"} · {usedBy.length ? `used by rule${usedBy.length === 1 ? "" : "s"} ${usedBy.map((n) => `#${n}`).join(", ")}` : "no rule uses it yet"}</div>
                     </div>
-                  </Td>
-                  <Td>
-                    <input type="number" defaultValue={rule.minWeightKg ?? ""} placeholder="any" style={numInputStyle}
-                      onBlur={(e) => handleUpdateRule(rule.id, { minWeightKg: e.target.value === "" ? null : Number(e.target.value) })} />
-                    {" – "}
-                    <input type="number" defaultValue={rule.maxWeightKg ?? ""} placeholder="any" style={numInputStyle}
-                      onBlur={(e) => handleUpdateRule(rule.id, { maxWeightKg: e.target.value === "" ? null : Number(e.target.value) })} />
-                  </Td>
-                  <Td>
-                    <input type="number" defaultValue={rule.minVolumeCm3 ?? ""} placeholder="any" style={numInputStyle}
-                      onBlur={(e) => handleUpdateRule(rule.id, { minVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
-                    {" – "}
-                    <input type="number" defaultValue={rule.maxVolumeCm3 ?? ""} placeholder="any" style={numInputStyle}
-                      onBlur={(e) => handleUpdateRule(rule.id, { maxVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
-                  </Td>
-                  <Td>
-                    <select
-                      value={rule.warehouseCountry || ""}
-                      onChange={(e) => handleUpdateRule(rule.id, { warehouseCountry: e.target.value || null })}
-                      style={{ ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px" }}
-                    >
-                      <option value="">any</option>
-                      {rule.warehouseCountry && !warehouseCountries.includes(rule.warehouseCountry) && (
-                        <option value={rule.warehouseCountry}>{rule.warehouseCountry} (no longer in use)</option>
-                      )}
-                      {warehouseCountries.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {pendingGroupDelete === g.id ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <button type="button" onClick={() => { setPendingGroupDelete(null); handleDeleteGroup(g.id); }} style={{ ...body, fontSize: 12, fontWeight: 800, color: "#fff", background: C.red, border: "none", borderRadius: 8, height: 28, padding: "0 10px", cursor: "pointer" }}>Delete</button>
+                        <button type="button" onClick={() => setPendingGroupDelete(null)} style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>Keep</button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setPendingGroupDelete(g.id)} title="Delete group" aria-label={`Delete ${g.name}`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><X size={14} color={C.red} /></button>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 14px", flex: 1, alignContent: "flex-start" }}>
+                    {g.members.length === 0 && <span style={{ ...body, fontSize: 12, color: C.muted }}>No countries yet.</span>}
+                    {g.members.map((m) => (
+                      <span key={m.isoCode} style={{ ...body, fontSize: 12, fontWeight: 600, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 999, padding: "3px 4px 3px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ ...mono, fontSize: 10, fontWeight: 800, color: C.muted }}>{m.isoCode}</span>{m.name}
+                        <button onClick={() => handleRemoveMember(g.id, m.isoCode)} aria-label={`Remove ${m.name}`} style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", border: `1px solid ${C.line}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><X size={10} color={C.muted} /></button>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ padding: "10px 14px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+                    <select value="" onChange={(e) => { if (e.target.value) handleAddMember(g.id, e.target.value); }} aria-label={`Add a country to ${g.name}`}
+                      style={{ ...body, width: "100%", height: 34, fontSize: 12.5, fontWeight: 700, border: `1px dashed ${C.lineStrong}`, borderRadius: 9, padding: "0 10px", background: "#fff", color: C.ink }}>
+                      <option value="">+ Add a country</option>
+                      {countries.filter((c) => !g.members.some((m) => m.isoCode === c.isoCode)).map((c) => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
                     </select>
-                  </Td>
-                  <Td>
-                    <select
-                      value={rule.destinationGroupId || ""}
-                      onChange={(e) => handleUpdateRule(rule.id, { destinationGroupId: e.target.value || null })}
-                      style={{ ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px" }}
-                    >
-                      <option value="">any</option>
-                      {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                  </Td>
-                  <Td>
-                    <input type="number" defaultValue={rule.deliveryDays} style={{ ...numInputStyle, width: 44 }}
-                      onBlur={(e) => { const v = Number(e.target.value); if (v > 0) handleUpdateRule(rule.id, { deliveryDays: v }); }} />
-                  </Td>
-                  <Td>
-                    <button onClick={() => handleDeleteRule(rule.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }} title="Delete rule">
-                      <X size={14} color={C.muted} />
-                    </button>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button onClick={handleAddRule} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.signal, background: "none", border: `1px dashed ${C.line}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", marginTop: 14, width: "100%" }}>
-            + Add rule
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {section === "rules" && (
+        <div data-testid="delivery-rules">
+          {/* patch-delivery-rules-redesign: each rule as a card (its number, a sentence that says what it does, the fields, the country prices),
+              the order arrows and Delete (asks first) in its header; a big "+ Add rule" at the end. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div>
+              <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>{rules.length} delivery {rules.length === 1 ? "rule" : "rules"}</div>
+              <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>Checked from the top: the <b>first rule that fits</b> gives the days and the shipping price. Use the arrows to change the order.</div>
+            </div>
+            <button onClick={() => onGoTo && onGoTo("flow")} style={{ ...body, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Try a product in “How it works” →</button>
+          </div>
+          {rules.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff", marginBottom: 14 }}>No rules yet: every product gets the “no rule fits” result (How it works, step 4).</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {rules.map((rule, i) => {
+              const range = (a, b, unit) => (a != null && b != null ? `${a}–${b} ${unit}` : b != null ? `up to ${b} ${unit}` : a != null ? `over ${a} ${unit}` : null);
+              const groupName = (groups.find((g) => String(g.id) === String(rule.destinationGroupId)) || {}).name;
+              const sentence = [
+                <b key="f">{rule.warehouseCountry || "Any warehouse"}</b>, " → ", <b key="t">{groupName || "any country"}</b>,
+                range(rule.minWeightKg, rule.maxWeightKg, "kg") ? ` · ${range(rule.minWeightKg, rule.maxWeightKg, "kg")}` : " · any weight",
+                range(rule.minVolumeCm3, rule.maxVolumeCm3, "cm³") ? ` · ${range(rule.minVolumeCm3, rule.maxVolumeCm3, "cm³")}` : "",
+              ];
+              const label = (t) => <span style={{ ...body, display: "block", fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 5 }}>{t}</span>;
+              const box = { ...body, height: 36, boxSizing: "border-box", fontSize: 13, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: "0 10px", background: "#fff", color: C.ink };
+              const numBox = { ...box, width: 80, minHeight: 0 };
+              return (
+                <div key={rule.id} data-testid="delivery-rule" style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: C.surfaceHigh, borderBottom: `1px solid ${C.line}` }}>
+                    <span style={{ width: 30, height: 30, borderRadius: "50%", background: C.navy, color: C.signal, ...body, fontWeight: 900, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ ...body, fontSize: 13.5, color: C.ink, minWidth: 0, flex: 1 }}>{sentence}</span>
+                    <span style={{ ...body, fontSize: 13, fontWeight: 800, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 999, padding: "4px 12px", whiteSpace: "nowrap" }}>{rule.deliveryDays} days</span>
+                    <span style={{ ...mono, fontSize: 12.5, fontWeight: 800, color: rule.priceCnyPerKg != null ? C.ink : C.muted, whiteSpace: "nowrap" }}>{rule.priceCnyPerKg != null ? `¥${rule.priceCnyPerKg}/kg` : "general price"}</span>
+                    <span style={{ display: "inline-flex", gap: 4 }}>
+                      {[["up", ChevronUp, "Move up", i === 0], ["down", ChevronDown, "Move down", i === rules.length - 1]].map(([dir, Icon, title, off]) => (
+                        <button key={dir} type="button" onClick={() => handleMove(i, dir)} disabled={off} title={title} aria-label={`${title} rule ${i + 1}`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: off ? "default" : "pointer", opacity: off ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><Icon size={14} color={C.ink} /></button>
+                      ))}
+                    </span>
+                    {pendingRuleDelete === rule.id ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <button type="button" onClick={() => { setPendingRuleDelete(null); handleDeleteRule(rule.id); }} style={{ ...body, fontSize: 12, fontWeight: 800, color: "#fff", background: C.red, border: "none", borderRadius: 8, height: 28, padding: "0 10px", cursor: "pointer" }}>Delete rule {i + 1}</button>
+                        <button type="button" onClick={() => setPendingRuleDelete(null)} style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>Keep</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setPendingRuleDelete(rule.id)} title="Delete rule" aria-label={`Delete rule ${i + 1}`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><X size={14} color={C.red} /></button>
+                    )}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14, padding: "14px 14px 6px" }}>
+                    <label style={{ display: "block" }}>{label("Ships from")}
+                      <select value={rule.warehouseCountry || ""} onChange={(e) => handleUpdateRule(rule.id, { warehouseCountry: e.target.value || null })} style={{ ...box, width: "100%" }}>
+                        <option value="">Any warehouse</option>
+                        {rule.warehouseCountry && !warehouseCountries.includes(rule.warehouseCountry) && <option value={rule.warehouseCountry}>{rule.warehouseCountry} (no longer in use)</option>}
+                        {warehouseCountries.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: "block" }}>{label("Goes to")}
+                      <select value={rule.destinationGroupId || ""} onChange={(e) => handleUpdateRule(rule.id, { destinationGroupId: e.target.value || null })} style={{ ...box, width: "100%" }}>
+                        <option value="">Any country</option>
+                        {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </label>
+                    <div>{label("Weight (kg)")}
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input type="number" aria-label={`Rule ${i + 1} weight from`} defaultValue={rule.minWeightKg ?? ""} placeholder="any" style={numBox} onBlur={(e) => handleUpdateRule(rule.id, { minWeightKg: e.target.value === "" ? null : Number(e.target.value) })} />
+                        <span style={{ color: C.muted }}>to</span>
+                        <input type="number" aria-label={`Rule ${i + 1} weight to`} defaultValue={rule.maxWeightKg ?? ""} placeholder="any" style={numBox} onBlur={(e) => handleUpdateRule(rule.id, { maxWeightKg: e.target.value === "" ? null : Number(e.target.value) })} />
+                      </span>
+                    </div>
+                    <div>{label("Size (cm³)")}
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input type="number" aria-label={`Rule ${i + 1} size from`} defaultValue={rule.minVolumeCm3 ?? ""} placeholder="any" style={numBox} onBlur={(e) => handleUpdateRule(rule.id, { minVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
+                        <span style={{ color: C.muted }}>to</span>
+                        <input type="number" aria-label={`Rule ${i + 1} size to`} defaultValue={rule.maxVolumeCm3 ?? ""} placeholder="any" style={numBox} onBlur={(e) => handleUpdateRule(rule.id, { maxVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
+                      </span>
+                    </div>
+                    <div>{label("Delivery days")}
+                      <input type="number" aria-label={`Rule ${i + 1} days`} defaultValue={rule.deliveryDays} style={{ ...numBox, fontWeight: 800 }} onBlur={(e) => { const v = Number(e.target.value); if (v > 0) handleUpdateRule(rule.id, { deliveryDays: v }); }} />
+                    </div>
+                    <div>{label("Default price (¥ per kg)")}
+                      <input type="number" min={0} step="0.5" aria-label={`Rule ${i + 1} price`} defaultValue={rule.priceCnyPerKg ?? ""} placeholder="general" title="RMB per chargeable kg for all countries; empty = the general price (How it works, step 4)" style={{ ...numBox, fontWeight: 800 }}
+                        onBlur={(e) => { const v = e.target.value === "" ? null : Number(e.target.value); if (v !== (rule.priceCnyPerKg ?? null) && (v === null || v > 0)) handleUpdateRule(rule.id, { priceCnyPerKg: v }); }} />
+                    </div>
+                  </div>
+                  <div style={{ padding: "6px 14px 14px" }}>
+                    {label(`Countries with their own price and days (${(rule.countryPrices || []).length})`)}
+                    <CountryPricesCell rule={rule} countries={countries} onSave={(list) => handleUpdateRule(rule.id, { countryPrices: list })} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={handleAddRule} style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", marginTop: 14, height: 52, borderRadius: 14, border: `2px dashed ${C.signal}`, background: C.goldTint, color: C.ink, fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+            <Plus size={16} /> Add rule
           </button>
         </div>
-      </Card>)}
+      )}
     </div>
   );
 }
@@ -2787,6 +4041,10 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   const [generations, setGenerations] = useState([]);
   const [selectedGenerationId, setSelectedGenerationId] = useState("");
   const [selectedYear, setSelectedYear] = useState("");
+  // patch-admin-fitment-versions: Add a vehicle = Brand, Model, Year, Version (the website's order; no generation step). The year is "<generationId>:<year>".
+  const [yearVersions, setYearVersions] = useState([]);
+  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const [fitmentNote, setFitmentNote] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -2830,35 +4088,77 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
     setParts(newCategory ? await fetchPartsForCategory(newCategory) : []);
   };
 
+  // patch-admin-fitment-versions: Brand, Model, Year, Version -- the same order as the website's car picker.
+  const yearVersionTicket = useRef(0);
+  const resetYearAndVersion = () => { yearVersionTicket.current += 1; setSelectedGenerationId(""); setSelectedYear(""); setYearVersions([]); setSelectedVersionId(""); };
   const handleBrandChange = async (brandId) => {
-    setSelectedBrandId(brandId);
-    setSelectedModelId(""); setModels([]); setSelectedGenerationId(""); setGenerations([]); setSelectedYear("");
+    setSelectedBrandId(brandId); setFitmentNote(null);
+    setSelectedModelId(""); setModels([]); setGenerations([]); resetYearAndVersion();
     if (brandId) setModels(await fetchModelsForBrand(brandId));
   };
   const handleModelChange = async (modelId) => {
-    setSelectedModelId(modelId);
-    setSelectedGenerationId(""); setGenerations([]); setSelectedYear("");
+    setSelectedModelId(modelId); setFitmentNote(null);
+    setGenerations([]); resetYearAndVersion();
     if (modelId) setGenerations(await fetchGenerationsForModel(modelId));
   };
+  // One entry per year, newest first; a year two generations cover is offered once, for the first one that covers it (as on the website).
+  const yearChoices = (() => {
+    const seen = new Map();
+    for (const g of generations) {
+      const end = g.yearEnd ?? new Date().getFullYear();
+      for (let y = end; y >= g.yearStart; y--) if (!seen.has(y)) seen.set(y, g.id);
+    }
+    return [...seen.entries()].sort((a, b) => b[0] - a[0]);
+  })();
+  const handleYearChange = async (value) => {
+    resetYearAndVersion(); setFitmentNote(null);
+    if (!value) return;
+    const [generationId, year] = value.split(":");
+    setSelectedGenerationId(generationId); setSelectedYear(year);
+    const ticket = yearVersionTicket.current;
+    try {
+      const list = await fetchVersionsForGeneration(generationId);
+      if (ticket === yearVersionTicket.current) setYearVersions(Array.isArray(list) ? list : []);
+    } catch { /* no versions shown: the car is added for every version */ }
+  };
+  const versionText = (v) => [v.name, v.engine].filter(Boolean).join(" · ");
 
-  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
-  const yearOptions = selectedGeneration
-    ? Array.from({ length: (selectedGeneration.yearEnd || new Date().getFullYear()) - selectedGeneration.yearStart + 1 }, (_, i) => selectedGeneration.yearStart + i)
-    : [];
-
+  // Adding the same car (brand, model, year) again does not make a second row: a version is added to its list, or "All versions" widens it.
   const handleAddFitment = () => {
     if (!selectedGenerationId || !selectedYear) return;
     const brand = brands.find((b) => b.id === selectedBrandId);
     const model = models.find((m) => m.id === selectedModelId);
-    setFitment([...fitment, {
-      generationId: selectedGenerationId,
-      year: Number(selectedYear),
-      brandName: brand?.name,
-      modelName: model?.name,
-      // a one-year entry is named by its year: print "Geely Coolray · 2021", not "Geely Coolray (2021) · 2021"
-      label: selectedGeneration?.name === String(selectedYear) ? `${brand?.name} ${model?.name} · ${selectedYear}` : `${brand?.name} ${model?.name} (${selectedGeneration?.name}) · ${selectedYear}`,
-    }]);
-    setSelectedBrandId(""); setModels([]); setSelectedModelId(""); setGenerations([]); setSelectedGenerationId(""); setSelectedYear("");
+    const year = Number(selectedYear);
+    const version = yearVersions.find((v) => v.id === selectedVersionId) || null;
+    const label = `${brand?.name} ${model?.name} · ${year}`;
+    const at = fitment.findIndex((f) => f.generationId === selectedGenerationId && Number(f.year) === year && !f.engineId && !f.transmissionId);
+    if (at >= 0) {
+      const cur = fitment[at];
+      const curIds = cur.versionIds || [];
+      if (!version) {
+        if (curIds.length === 0) { setFitmentNote(`${label} is already in the list for every version.`); return; }
+        setFitment(fitment.map((f, i) => (i === at ? { ...f, versionIds: [], versions: [] } : f)));
+      } else {
+        if (curIds.length === 0) { setFitmentNote(`${label} is already in the list for every version, ${version.name} included.`); return; }
+        if (curIds.includes(version.id)) { setFitmentNote(`${label} · ${version.name} is already in the list.`); return; }
+        setFitment(fitment.map((f, i) => (i === at ? { ...f, versionIds: [...curIds, version.id], versions: [...(f.versions || []), { id: version.id, name: version.name, engine: version.engine }] } : f)));
+      }
+    } else {
+      setFitment([...fitment, {
+        generationId: selectedGenerationId, year, brandName: brand?.name, modelName: model?.name, label,
+        versionIds: version ? [version.id] : [], versions: version ? [{ id: version.id, name: version.name, engine: version.engine }] : [],
+      }]);
+    }
+    setFitmentNote(null);
+    setSelectedVersionId("");      // brand, model and year stay chosen, so another version of the same car is one more click
+  };
+
+  // A car narrowed to some versions loses one version; the last one removed removes the car (no versions left would mean "every version").
+  const handleRemoveFitmentVersion = (index, versionId) => {
+    const f = fitment[index];
+    const ids = (f.versionIds || []).filter((id) => id !== versionId);
+    if (ids.length === 0) return setFitment(fitment.filter((_, i) => i !== index));
+    setFitment(fitment.map((x, i) => (i === index ? { ...x, versionIds: ids, versions: (x.versions || []).filter((v) => v.id !== versionId) } : x)));
   };
 
   const handleRemoveFitment = (index) => setFitment(fitment.filter((_, i) => i !== index));
@@ -2948,7 +4248,7 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
         widthCm: widthCm === "" ? null : Number(widthCm),
         heightCm: heightCm === "" ? null : Number(heightCm),
         images,
-        fitment: fitment.map((f) => ({ generationId: f.generationId, year: f.year, engineId: f.engineId, transmissionId: f.transmissionId })),
+        fitment: fitment.map((f) => ({ generationId: f.generationId, year: f.year, engineId: f.engineId, transmissionId: f.transmissionId, versionIds: f.versionIds || [] })),      // [] = every version
       };
       if (nameEn !== (product.name || "")) payload.nameEn = nameEn;
       if (nameAr !== (product.nameAr || "")) payload.nameAr = nameAr;
@@ -2967,6 +4267,25 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   const inputStyle = { ...body, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", width: "100%", boxSizing: "border-box" };
   const labelStyle = { ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, display: "block", marginBottom: 4 };
 
+  // patch-admin-product-redesign: the save bar appears only when something changed since the product was loaded (or last saved);
+  // the gallery shows one big photo and the others as thumbnails.
+  const editSnapshot = JSON.stringify({ nameEn, nameAr, descriptionEn, descriptionAr, category, part, oemNumber, stockQuantity, lowStockThreshold, weightKg, lengthCm, widthCm, heightCm, images, fitment });
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  // patch-admin-photo-menu: the "..." menu of one photo (its index), or null
+  const [photoMenu, setPhotoMenu] = useState(null);
+  useEffect(() => {
+    if (photoMenu === null) return undefined;
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest("[data-photo-menu]"))) setPhotoMenu(null); };
+    const onKey = (e) => { if (e.key === "Escape") setPhotoMenu(null); };
+    document.addEventListener("mousedown", onDown); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [photoMenu]);
+  useEffect(() => { if (loadState === "ready" && savedSnapshot === null) setSavedSnapshot(editSnapshot); }, [loadState]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (saveSuccess) setSavedSnapshot(editSnapshot); }, [saveSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  const isDirty = savedSnapshot !== null && editSnapshot !== savedSnapshot;
+  const DESC_MIN = 100; const DESC_MAX = 150;      // patch-admin-description-bar: the same limits as the API (productValidation.js)
+
   if (loadState === "loading") return <div style={{ padding: 24 }}><span style={{ ...body, color: C.muted }}>Loading…</span></div>;
   if (loadState === "error" || !product) return (
     <div style={{ padding: 24 }}>
@@ -2975,178 +4294,416 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
     </div>
   );
 
+  // patch-admin-product-redesign: a navy band (photo, name, OEM, supplier, status, price, stock), then two columns -- the photos, the names and
+  // descriptions and the vehicle fitment; beside them the classification, the stock and the shipping size -- and a save bar that appears on change.
+  const imgSrc = (url) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
+  const shownPhoto = images.length ? Math.min(photoIndex, images.length - 1) : -1;
+  const statusMeta = product.status === "active" ? { label: "Live", color: C.gauge, bg: C.gaugeBg }
+    : product.status === "inactive" ? { label: "Hidden", color: C.muted, bg: "#EEEFF1" }
+    : { label: "Waiting for review", color: C.amber, bg: C.amberBg };
+  const categoryName = (categories.find((c) => c.id === category) || {}).nameEn || category || "—";
+  const stockNum = stockQuantity === "" ? null : Number(stockQuantity);
+  const lowAt = lowStockThreshold === "" ? null : Number(lowStockThreshold);
+  const stockState = stockNum === null ? null : stockNum <= 0 ? "out" : lowAt !== null && stockNum <= lowAt ? "low" : "ok";
+  const dims = [lengthCm, widthCm, heightCm].map((v) => (v === "" ? null : Number(v)));
+  const volumeL = dims.every((v) => v !== null && Number.isFinite(v)) ? (dims[0] * dims[1] * dims[2]) / 1000 : null;
+  const volWeight = volumeL !== null ? (volumeL * 1000) / 5000 : null;
+  const eff = product.effectiveShipping || {};
+  const usesPartSize = eff.source && eff.source !== "product";
+  // patch-admin-product-weight: the fee weight = the greater of the actual weight and L x W x H / divisor (the divisor is the Delivery Rules setting).
+  // While all four boxes are empty the product uses its part's numbers (as the API does); a half-filled set is shown as missing until it is complete.
+  const divisor = Number(product.volumetricDivisor) || 5000;
+  const numOrNull = (v) => (v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+  const ownVals = [weightKg, lengthCm, widthCm, heightCm].map(numOrNull);
+  const hasOwnAny = [weightKg, lengthCm, widthCm, heightCm].some((v) => v !== "");
+  const ownComplete = ownVals.every((v) => v !== null && v > 0);
+  const ownPartial = hasOwnAny && !ownComplete;
+  const partVals = eff.source === "part" ? [eff.weightKg, eff.lengthCm, eff.widthCm, eff.heightCm].map(numOrNull) : [null, null, null, null];
+  const feeSource = ownComplete ? "product" : !hasOwnAny && partVals.every((v) => v !== null) ? "part" : "missing";
+  const [feeActual, feeL, feeW, feeH] = feeSource === "product" ? ownVals : feeSource === "part" ? partVals : [null, null, null, null];
+  const feeSize = feeL === null ? null : (feeL * feeW * feeH) / divisor;
+  const feeKg = feeActual === null || feeSize === null ? null : Math.max(feeActual, feeSize);
+  const feeUsed = feeKg === null ? null : feeSize > feeActual ? "size" : "actual";
+  const fmtKg = (n) => (Math.round(n * 100) / 100).toFixed(2);
+  const fmtNum = (n) => String(Math.round(n * 10) / 10);
+  const fitmentGroups = fitment.reduce((acc, f, i) => {
+    const key = f.brandName && f.modelName ? `${f.brandName} ${f.modelName}` : f.label.replace(/ \(.*\)/, "").replace(/ · \d{4}$/, "");      // patch-admin-fitment-versions
+    (acc[key] = acc[key] || []).push({ ...f, index: i });
+    return acc;
+  }, {});
+  const pill = (label, color, bg) => (
+    <span style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, color, background: bg, borderRadius: 999, padding: "3px 10px" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />{label}
+    </span>
+  );
+  const field = (label, control, help = null) => (
+    <div>
+      <label style={labelStyle}>{label}</label>
+      {control}
+      {help}
+    </div>
+  );
+  const sectionTitle = (text, extra = null) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+      <span style={{ width: 4, height: 18, borderRadius: 2, background: C.signal }} />
+      <span style={{ ...disp, fontSize: 15.5, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{text}</span>
+      {extra && <span style={{ marginLeft: "auto" }}>{extra}</span>}
+    </div>
+  );
+  const panel = { background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: SHADOW.card, padding: 18 };
+  const photoMenuItem = { ...body, display: "flex", alignItems: "center", gap: 9, width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 7, border: "none", background: "none", fontSize: 13, fontWeight: 700, color: C.ink, cursor: "pointer", textAlign: "left" };      // patch-admin-photo-menu
+  const photoButton = (bg) => ({ position: "absolute", border: "none", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 12, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", background: bg, boxShadow: "0 1px 3px rgba(0,0,0,0.25)" });
+
   return (
-    <div style={{ padding: 24, maxWidth: 760 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <button onClick={onBack} style={{ ...body, fontSize: 12.5, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>← Back to Products</button>
-        <ProductPageDelete productId={productId} onBack={onBack} onSessionExpired={onSessionExpired} />
+    <div style={{ minHeight: "100%", background: C.canvas }}>
+      {/* ---------------- the band ---------------- */}
+      <div data-leap-header="" style={{ background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)`, padding: "18px 28px 22px" }}>
+        <button onClick={onBack} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.onNavyMuted, background: "none", border: "none", cursor: "pointer", padding: 0, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <ChevronLeft size={15} /> Back to Products
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 14, flexWrap: "wrap" }}>
+          <div style={{ width: 76, height: 76, borderRadius: 14, overflow: "hidden", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {images[0] ? <img src={imgSrc(images[0])} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={26} color={C.onNavyMuted} />}
+          </div>
+          <div style={{ flex: "1 1 360px", minWidth: 0 }}>
+            <div style={{ ...disp, fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.25 }}>{nameEn || product.name || "Untitled product"}</div>
+            {nameAr && <div dir="rtl" style={{ ...body, fontSize: 13.5, color: C.onNavyMuted, marginTop: 3, textAlign: "left" }}>{nameAr}</div>}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              {pill(statusMeta.label, statusMeta.color, statusMeta.bg)}
+              {oemNumber && <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: "#fff", border: "1px solid rgba(255,255,255,0.35)", borderRadius: 6, padding: "2px 8px" }}>OEM {oemNumber}</span>}
+              <span style={{ ...body, fontSize: 12.5, color: C.onNavyMuted }}>{categoryName}{part ? ` › ${part}` : ""}</span>
+              {product.supplierName && <span style={{ ...body, fontSize: 12.5, color: C.onNavyMuted }}>· {product.supplierName}</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexShrink: 0, flexWrap: "wrap" }}>
+            <div style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 12, padding: "10px 16px", minWidth: 120 }}>
+              <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.onNavyMuted }}>Price</div>
+              <div style={{ ...mono, fontSize: 20, fontWeight: 800, color: "#fff", marginTop: 2 }}>{product.price.toFixed(2)} <span style={{ fontSize: 12, color: C.onNavyMuted }}>{product.currencyCode}</span></div>
+              <div style={{ ...body, fontSize: 10.5, color: C.onNavyMuted }}>set by the supplier</div>
+            </div>
+            <div style={{ background: "rgba(255,255,255,0.08)", border: `1px solid ${stockState === "out" || stockState === "low" ? C.red : "rgba(255,255,255,0.16)"}`, borderRadius: 12, padding: "10px 16px", minWidth: 100 }}>
+              <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.onNavyMuted }}>Stock</div>
+              <div style={{ ...mono, fontSize: 20, fontWeight: 800, color: stockState === "out" || stockState === "low" ? "#FFB4AC" : "#fff", marginTop: 2 }}>{stockQuantity === "" ? "—" : stockQuantity}</div>
+              <div style={{ ...body, fontSize: 10.5, color: C.onNavyMuted }}>{stockState === "out" ? "out of stock" : stockState === "low" ? "low stock" : "in stock"}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <ProductPageDelete productId={productId} onBack={onBack} onSessionExpired={onSessionExpired} />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {errorMessage && <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
-      {saveSuccess && <div style={{ ...body, fontSize: 12.5, color: C.gauge, background: C.gaugeBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>Saved.</div>}
-
-      <Card title="Basic info" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div>
-            <label style={labelStyle}>Name (English)</label>
-            <input style={inputStyle} value={nameEn} onChange={(e) => setNameEn(e.target.value)} maxLength={100} />
-            <span style={{ ...body, fontSize: 10.5, color: nameEn.length < nameMins.en || nameEn.length > 100 ? C.red : C.muted }}>{nameEn.length}/100 (min {nameMins.en})</span>
-          </div>
-          <div>
-            <label style={labelStyle}>Name (Arabic)</label>
-            <input style={{ ...inputStyle, direction: "rtl" }} value={nameAr} onChange={(e) => setNameAr(e.target.value)} maxLength={100} />
-            <span style={{ ...body, fontSize: 10.5, color: nameAr.length < nameMins.ar || nameAr.length > 100 ? C.red : C.muted }}>{nameAr.length}/100 (min {nameMins.ar})</span>
-          </div>
-          <div>
-            <label style={labelStyle}>Description (English)</label>
-            <textarea style={{ ...inputStyle, minHeight: 70 }} value={descriptionEn} onChange={(e) => setDescriptionEn(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>Description (Arabic)</label>
-            <textarea style={{ ...inputStyle, minHeight: 70, direction: "rtl" }} value={descriptionAr} onChange={(e) => setDescriptionAr(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>Category</label>
-            <select style={inputStyle} value={category} onChange={(e) => handleCategoryChange(e.target.value)}>
-              <option value="">Select…</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Part Class.</label>
-            <select style={inputStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={!category}>
-              <option value="">Select…</option>
-              {part && !parts.some((p) => p.nameEn === part) && (
-                <option value={part}>{part} (no longer in this category)</option>
-              )}
-              {parts.map((p) => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>OEM number</label>
-            <input style={inputStyle} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
-          </div>
+      {(errorMessage || saveSuccess) && (
+        <div style={{ padding: "18px 28px 0" }}>
+          {errorMessage && <div role="alert" style={{ ...body, fontSize: 13, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "10px 14px" }}>{errorMessage}</div>}
+          {saveSuccess && !errorMessage && <div role="status" style={{ ...body, fontSize: 13, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 10, padding: "10px 14px" }}>Saved.</div>}
         </div>
-      </Card>
+      )}
 
-      <Card title="Price (read-only — set by the supplier only)" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16 }}>
-          <span style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{product.price.toFixed(2)} {product.currencyCode}</span>
-        </div>
-      </Card>
+      <div style={{ padding: "18px 28px 28px", display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(300px, 1fr)", gap: 18, alignItems: "start" }}>
+        {/* ---------------- left: photos, names, fitment ---------------- */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+          <div style={panel}>
+            {sectionTitle(`Photos (${images.length})`,
+              <label style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.onSignal, background: C.signal, border: `1px solid ${C.signalDark}`, borderRadius: 8, padding: "6px 12px", cursor: isUploadingPhoto ? "default" : "pointer" }}>
+                {isUploadingPhoto ? "Uploading…" : "+ Add photo"}
+                <input type="file" accept="image/*" onChange={handleUploadPhoto} disabled={isUploadingPhoto} style={{ display: "none" }} />
+              </label>)}
+            {images.length === 0 ? (
+              <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: "36px 12px", border: `1px dashed ${C.lineStrong}`, borderRadius: 12 }}>No photos yet. Add the first one.</div>
+            ) : (
+              <>
+                <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", background: C.canvas, border: `1px solid ${C.line}`, aspectRatio: "16 / 10" }}>
+                  <img src={imgSrc(images[shownPhoto])} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                  <span style={{ ...body, position: "absolute", left: 10, top: 10, fontSize: 11, fontWeight: 800, color: "#fff", background: "rgba(7,32,47,0.7)", borderRadius: 999, padding: "3px 9px" }}>{shownPhoto + 1} / {images.length}{shownPhoto === 0 ? " · main photo" : ""}</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 14 }}>
+                  {images.map((url, i) => (
+                    <div key={i} style={{ position: "relative", width: 84, height: 84 }}>
+                      <button type="button" onClick={() => setPhotoIndex(i)} aria-label={`Show photo ${i + 1}`} style={{ padding: 0, width: "100%", height: "100%", borderRadius: 10, overflow: "hidden", border: `2px solid ${i === shownPhoto ? C.signal : C.line}`, cursor: "pointer", background: C.canvas }}>
+                        <img src={imgSrc(url)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      </button>
+                      {/* patch-admin-photo-menu: one "..." button per photo; its menu has Replace, Download and Delete */}
+                      <button type="button" data-photo-menu="" onClick={() => setPhotoMenu(photoMenu === i ? null : i)} aria-label={`Photo ${i + 1} options`} aria-haspopup="menu" aria-expanded={photoMenu === i} title="Options"
+                        style={{ position: "absolute", right: 5, bottom: 5, width: 24, height: 24, borderRadius: 7, border: `1px solid ${C.line}`, background: photoMenu === i ? C.navy : "rgba(255,255,255,0.95)", color: photoMenu === i ? "#fff" : C.ink, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.18)" }}>
+                        <MoreHorizontal size={15} />
+                      </button>
+                      {photoMenu === i && (
+                        <div role="menu" data-photo-menu="" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 30, minWidth: 168, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 10px 28px rgba(7,32,47,0.18)", padding: 5 }}>
+                          <label role="menuitem" style={{ ...photoMenuItem, cursor: isUploadingPhoto ? "default" : "pointer", opacity: isUploadingPhoto ? 0.5 : 1 }}>
+                            <RotateCcw size={14} color={C.torque} /> Replace
+                            <input type="file" accept="image/*" onChange={(e) => { setPhotoMenu(null); handleReplacePhoto(i, e); }} disabled={isUploadingPhoto} style={{ display: "none" }} />
+                          </label>
+                          <button type="button" role="menuitem" onClick={() => { setPhotoMenu(null); handleDownloadPhoto(url, i); }} style={photoMenuItem}>
+                            <Download size={14} color={C.navy} /> Download
+                          </button>
+                          <div style={{ height: 1, background: C.line, margin: "4px 2px" }} />
+                          <button type="button" role="menuitem" onClick={() => { setPhotoMenu(null); handleRemovePhoto(i); if (photoIndex >= i && photoIndex > 0) setPhotoIndex(photoIndex - 1); }} style={{ ...photoMenuItem, color: C.red }}>
+                            <X size={14} color={C.red} /> Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 10 }}>The first photo is the one buyers see first. Click ⋯ on a photo to replace, download or delete it.</div>
+              </>
+            )}
+          </div>
 
-      <Card title="Stock" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div>
-            <label style={labelStyle}>Stock quantity</label>
-            <input type="number" style={inputStyle} value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} />
+          <div style={panel} data-testid="names-card">
+            {/* patch-admin-product-names: one card per language (English, Arabic) with its own status, a length bar for the name (the minimum marked),
+                a counter for the description; and, when the supplier wrote one, its original Chinese text to check the translation against. */}
+            {sectionTitle("Names & descriptions", (() => {
+              const namesOk = [nameEn, nameAr].every((n, i) => n.trim().length >= (i ? nameMins.ar : nameMins.en));
+              const descsOk = [descriptionEn, descriptionAr].every((d) => { const n = d.trim().length; return n === 0 || (n >= DESC_MIN && n <= DESC_MAX); });      // patch-admin-description-bar
+              const ready = namesOk && descsOk;
+              return pill(ready ? "All ready" : !namesOk ? "A name is too short" : "A description needs fixing", ready ? C.gauge : C.red, ready ? C.gaugeBg : C.redBg);
+            })())}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {[
+                { code: "EN", title: "English", name: nameEn, setName: setNameEn, desc: descriptionEn, setDesc: setDescriptionEn, min: nameMins.en, rtl: false },
+                { code: "AR", title: "العربية", name: nameAr, setName: setNameAr, desc: descriptionAr, setDesc: setDescriptionAr, min: nameMins.ar, rtl: true },
+              ].map((l) => {
+                const len = l.name.trim().length;
+                const short = len < l.min;
+                const descLen = l.desc.trim().length;
+                const words = descLen ? l.desc.trim().split(/\s+/).length : 0;
+                // patch-admin-description-bar: a description must be 100 to 150 characters (the API refuses a changed one outside that)
+                const descShort = descLen > 0 && descLen < DESC_MIN; const descLong = descLen > DESC_MAX;
+                const status = short ? { t: len === 0 ? "No name" : "Name too short", c: C.red, bg: C.redBg }
+                  : descLen === 0 ? { t: "No description", c: C.amber, bg: C.amberBg }
+                  : descShort ? { t: "Description too short", c: C.red, bg: C.redBg }
+                  : descLong ? { t: "Description too long", c: C.red, bg: C.redBg }
+                  : { t: "Ready", c: C.gauge, bg: C.gaugeBg };
+                // the bar: fills up to the limit, a mark at the minimum; red until the minimum, green after it, amber in the last 10%
+                const lengthBar = (n, min, max, extra = null) => {
+                  const under = n < min; const over = n > max;
+                  const left = max - n;
+                  return (
+                    <>
+                      <div style={{ position: "relative", height: 5, borderRadius: 3, background: "#E8EBEF", marginTop: 7 }}>
+                        <div style={{ position: "absolute", [l.rtl ? "right" : "left"]: 0, top: 0, bottom: 0, width: `${Math.min(100, (n / max) * 100)}%`, borderRadius: 3, background: under || over ? C.red : left <= max * 0.1 ? C.amber : C.gauge, transition: "width 0.15s" }} />
+                        <div title={`Minimum ${min}`} style={{ position: "absolute", [l.rtl ? "right" : "left"]: `${(min / max) * 100}%`, top: -3, width: 2, height: 11, background: C.ink, opacity: 0.45, borderRadius: 1 }} />
+                      </div>
+                      <div style={{ ...body, display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10.5, marginTop: 4, color: under || over ? C.red : C.muted }}>
+                        <span style={{ fontWeight: 700, color: under || over ? C.red : left <= max * 0.1 ? C.amberInk : C.gaugeInk }}>
+                          {under ? `${min - n} more ${min - n === 1 ? "character" : "characters"} needed` : over ? `${n - max} too many` : `${left} ${left === 1 ? "character" : "characters"} left`}
+                        </span>
+                        <span style={mono}>{n}/{max} · min {min}{extra}</span>
+                      </div>
+                    </>
+                  );
+                };
+                return (
+                  <div key={l.code} data-testid={`names-${l.code.toLowerCase()}`} style={{ border: `1px solid ${short ? "#EBC2BD" : C.line}`, borderRadius: 12, overflow: "hidden", background: "#fff", minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: C.surfaceHigh, borderBottom: `1px solid ${C.line}` }}>
+                      <span style={{ ...mono, fontSize: 10.5, fontWeight: 800, color: "#fff", background: C.navy, borderRadius: 5, padding: "2px 6px" }}>{l.code}</span>
+                      <span style={{ ...body, fontSize: 13, fontWeight: 800, color: C.ink }}>{l.title}</span>
+                      <span style={{ marginLeft: "auto" }}>{pill(status.t, status.c, status.bg)}</span>
+                    </div>
+                    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div>
+                        <label style={labelStyle}>Product name</label>
+                        <input aria-label={`Name (${l.code === "EN" ? "English" : "Arabic"})`} dir={l.rtl ? "rtl" : "ltr"} style={{ ...inputStyle, fontSize: 14, fontWeight: 700 }} value={l.name} onChange={(e) => l.setName(e.target.value)} maxLength={100} />
+                        {lengthBar(len, l.min, 100)}
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Description</label>
+                        <textarea aria-label={`Description (${l.code === "EN" ? "English" : "Arabic"})`} dir={l.rtl ? "rtl" : "ltr"} style={{ ...inputStyle, minHeight: 130, resize: "vertical", lineHeight: 1.5, borderColor: descShort || descLong ? C.red : undefined }} value={l.desc} onChange={(e) => l.setDesc(e.target.value)} maxLength={DESC_MAX + 50} placeholder={l.rtl ? "وصف القطعة للمشتري…" : "What the buyer should know about this part…"} />
+                        {lengthBar(descLen, DESC_MIN, DESC_MAX, ` · ${words} ${words === 1 ? "word" : "words"}`)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {(product.nameZh || product.descriptionZh) && (
+              <details style={{ marginTop: 12, border: `1px dashed ${C.lineStrong}`, borderRadius: 10, padding: "8px 12px", background: C.surfaceHigh }}>
+                <summary style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink, cursor: "pointer" }}>
+                  <span style={{ ...mono, fontSize: 10.5, fontWeight: 800, color: C.navy, border: `1px solid ${C.navy}`, borderRadius: 5, padding: "1px 5px", marginRight: 6 }}>ZH</span>
+                  The supplier's original (Chinese) — to check the translation
+                </summary>
+                {product.nameZh && <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink, marginTop: 8 }}>{product.nameZh}</div>}
+                {product.descriptionZh && <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 4, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{product.descriptionZh}</div>}
+              </details>
+            )}
           </div>
-          <div>
-            <label style={labelStyle}>Low-stock threshold</label>
-            <input type="number" style={inputStyle} value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} />
-          </div>
-        </div>
-      </Card>
-
-      <Card title="Weight & dimensions" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14 }}>
-          <div>
-            <label style={labelStyle}>Weight (kg)</label>
-            <input type="number" style={inputStyle} value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>Length (cm)</label>
-            <input type="number" style={inputStyle} value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>Width (cm)</label>
-            <input type="number" style={inputStyle} value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>Height (cm)</label>
-            <input type="number" style={inputStyle} value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-          </div>
-        </div>
-      </Card>
-
-      <Card title={`Photos (${images.length})`} style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-            {images.map((url, i) => (
-              <div key={i} style={{ position: "relative", width: 80, height: 80 }}>
-                <img src={url.startsWith("http") ? url : `${API_BASE_URL}${url}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
-                <label style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.45)", borderRadius: 8, opacity: 0, cursor: isUploadingPhoto ? "default" : "pointer", transition: "opacity 0.15s" }} onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = 0; }}>
-                  <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: "#fff" }}>Replace</span>
-                  <input type="file" accept="image/*" onChange={(e) => handleReplacePhoto(i, e)} disabled={isUploadingPhoto} style={{ display: "none" }} />
-                </label>
-                <button onClick={() => handleRemovePhoto(i)} style={{ position: "absolute", top: -6, right: -6, background: C.red, color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: 11, lineHeight: 1 }}>×</button>
-                <button onClick={() => handleDownloadPhoto(url, i)} title="Download this photo" style={{ position: "absolute", bottom: -6, left: -6, background: C.ink, color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Download size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <label style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.signal, cursor: isUploadingPhoto ? "default" : "pointer" }}>
-            {isUploadingPhoto ? "Uploading…" : "+ Add photo"}
-            <input type="file" accept="image/*" onChange={handleUploadPhoto} disabled={isUploadingPhoto} style={{ display: "none" }} />
-          </label>
-        </div>
-      </Card>
-
-      <Card title={`Vehicle fitment (${fitment.length})`} style={{ marginBottom: 20 }}>
-        <div style={{ padding: 16 }}>
-          <FitmentSummary fitment={fitment} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-            {fitment.map((f, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px" }}>
-                <span style={{ ...body, fontSize: 12.5, color: C.ink }}>{f.label}</span>
-                <button onClick={() => handleRemoveFitment(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12 }}>Remove</button>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
-            <div>
-              <label style={labelStyle}>Brand</label>
-              <select style={inputStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
+          <div style={panel}>
+            {sectionTitle(`Vehicle fitment (${fitment.length})`)}
+            <FitmentSummary fitment={fitment} />
+            {fitment.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, marginBottom: 12 }}>No vehicles yet. Add the cars this part fits below.</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+              {Object.entries(fitmentGroups).map(([car, rows]) => (
+                <div key={car} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", background: C.surfaceHigh }}>
+                  <div style={{ ...body, fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>{car}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {rows.map((f) => (
+                      <div key={f.index} style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 6, background: "#fff", border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "4px 4px 4px 10px" }}>
+                        <span style={{ ...mono, fontSize: 12, fontWeight: 800, color: C.ink }}>{f.year}</span>
+                        {(f.versions || []).length === 0 ? (
+                          <span style={{ ...body, fontSize: 11.5, color: C.muted }}>All versions</span>
+                        ) : f.versions.map((v) => (
+                          <span key={v.id} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700, color: C.torqueInk, background: C.torqueBg, borderRadius: 999, padding: "2px 3px 2px 8px" }}>
+                            {versionText(v)}
+                            <button onClick={() => handleRemoveFitmentVersion(f.index, v.id)} aria-label={`Remove ${f.label} · ${v.name}`} title="Remove this version" style={{ width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.8)", color: C.red, cursor: "pointer", fontSize: 11, lineHeight: 1 }}>×</button>
+                          </span>
+                        ))}
+                        <button onClick={() => handleRemoveFitment(f.index)} aria-label={`Remove ${f.label}`} title="Remove this year" style={{ width: 18, height: 18, borderRadius: "50%", border: "none", background: C.redBg, color: C.red, cursor: "pointer", fontSize: 12, lineHeight: 1 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Add a vehicle</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.8fr 1.4fr auto", gap: 8, alignItems: "end" }}>
+              {field("Brand", <select style={inputStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
                 <option value="">Select…</option>
                 {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Model</label>
-              <select style={inputStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
+              </select>)}
+              {field("Model", <select style={inputStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
                 <option value="">Select…</option>
                 {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Generation</label>
-              <select style={inputStyle} value={selectedGenerationId} onChange={(e) => { setSelectedGenerationId(e.target.value); setSelectedYear(""); }} disabled={!selectedModelId}>
+              </select>)}
+              {field("Year", <select style={inputStyle} value={selectedYear ? `${selectedGenerationId}:${selectedYear}` : ""} onChange={(e) => handleYearChange(e.target.value)} disabled={!selectedModelId}>
                 <option value="">Select…</option>
-                {generations.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
+                {yearChoices.map(([y, gid]) => <option key={y} value={`${gid}:${y}`}>{y}</option>)}
+              </select>)}
+              {field("Version", <select style={inputStyle} value={selectedVersionId} onChange={(e) => setSelectedVersionId(e.target.value)} disabled={!selectedYear || yearVersions.length === 0}>
+                <option value="">{selectedYear && yearVersions.length === 0 ? "No versions (every car of this year)" : "All versions"}</option>
+                {yearVersions.map((v) => <option key={v.id} value={v.id}>{versionText(v)}</option>)}
+              </select>)}
+              <button onClick={handleAddFitment} disabled={!selectedYear} style={{ ...body, fontSize: 12.5, fontWeight: 800, color: selectedYear ? C.onSignal : "#fff", background: selectedYear ? C.signal : "#D1D5DB", border: "none", borderRadius: 8, padding: "9px 16px", cursor: selectedYear ? "pointer" : "default" }}>
+                Add
+              </button>
             </div>
-            <div>
-              <label style={labelStyle}>Year</label>
-              <select style={inputStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
+            {fitmentNote && <div role="status" style={{ ...body, fontSize: 12, color: C.amberInk, background: C.amberBg, borderRadius: 8, padding: "7px 12px", marginTop: 8 }}>{fitmentNote}</div>}
+            <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 8 }}>Same order as the website: brand, model, year, then the version. Leave the version on "All versions" when the part fits every version of that year.</div>
+          </div>
+        </div>
+
+        {/* ---------------- right: classification, stock, shipping ---------------- */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+          <div style={panel}>
+            {sectionTitle("Classification")}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {field("Category", <select style={inputStyle} value={category} onChange={(e) => handleCategoryChange(e.target.value)}>
                 <option value="">Select…</option>
-                {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+              </select>)}
+              {field("Part Class.", <select style={inputStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={!category}>
+                <option value="">Select…</option>
+                {part && !parts.some((p) => p.nameEn === part) && (
+                  <option value={part}>{part} (no longer in this category)</option>
+                )}
+                {parts.map((p) => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
+              </select>)}
+              {field("OEM number", <input style={{ ...inputStyle, ...mono }} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />)}
             </div>
-            <button onClick={handleAddFitment} disabled={!selectedYear} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: selectedYear ? C.signal : "#D1D5DB", border: "none", borderRadius: 8, padding: "8px 14px", cursor: selectedYear ? "pointer" : "default" }}>
-              Add
+          </div>
+
+          <div style={panel}>
+            {sectionTitle("Stock", stockState && pill(stockState === "out" ? "Out of stock" : stockState === "low" ? "Low stock" : "In stock", stockState === "ok" ? C.gauge : C.red, stockState === "ok" ? C.gaugeBg : C.redBg))}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {field("Stock quantity", <input type="number" style={{ ...inputStyle, ...mono, fontSize: 15, fontWeight: 700 }} value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} />)}
+              {field("Low-stock threshold", <input type="number" style={{ ...inputStyle, ...mono, fontSize: 15, fontWeight: 700 }} value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} />)}
+            </div>
+            <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 8 }}>The supplier is warned when the stock goes down to the threshold.</div>
+          </div>
+
+          <div style={panel} data-testid="weight-card">
+            {/* patch-admin-product-weight: the four numbers are edited here, and the card shows the weight the shipping fee is charged on:
+                the actual weight or the size weight (L x W x H / divisor), whichever is greater. */}
+            {sectionTitle("Weight & dimensions", pill(
+              feeSource === "product" ? "This product's size" : feeSource === "part" ? "Using the part's size" : "Size missing",
+              feeSource === "product" ? C.gauge : feeSource === "part" ? C.amber : C.red,
+              feeSource === "product" ? C.gaugeBg : feeSource === "part" ? C.amberBg : C.redBg))}
+            {field("Actual weight", (
+              <div style={{ position: "relative" }}>
+                <input type="number" min="0" step="0.01" aria-label="Weight (kg)" style={{ ...inputStyle, ...mono, fontSize: 15, fontWeight: 700, paddingRight: 40 }} value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder={eff.source === "part" ? String(eff.weightKg ?? "") : ""} />
+                <span style={{ ...body, position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 12, fontWeight: 700, color: C.muted, pointerEvents: "none" }}>kg</span>
+              </div>
+            ))}
+            <div style={{ marginTop: 12 }}>
+              <label style={labelStyle}>Package size (length × width × height)</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: 6, alignItems: "center" }}>
+                {[["Length (cm)", "L", lengthCm, setLengthCm, eff.lengthCm], ["Width (cm)", "W", widthCm, setWidthCm, eff.widthCm], ["Height (cm)", "H", heightCm, setHeightCm, eff.heightCm]].map(([aria, short, value, set, partValue], i) => (
+                  <React.Fragment key={short}>
+                    {i > 0 && <span style={{ ...body, fontSize: 14, fontWeight: 800, color: C.muted }}>×</span>}
+                    <div style={{ position: "relative" }}>
+                      <span style={{ ...body, position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, fontWeight: 800, color: C.muted, pointerEvents: "none" }}>{short}</span>
+                      <input type="number" min="0" step="0.1" aria-label={aria} style={{ ...inputStyle, ...mono, fontSize: 14, fontWeight: 700, paddingLeft: 26, paddingRight: 30 }} value={value} onChange={(e) => set(e.target.value)} placeholder={eff.source === "part" ? String(partValue ?? "") : ""} />
+                      <span style={{ ...body, position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 11, fontWeight: 700, color: C.muted, pointerEvents: "none" }}>cm</span>
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+            {ownPartial && (
+              <div role="alert" style={{ ...body, fontSize: 12, color: C.redInk, background: C.redBg, borderRadius: 8, padding: "7px 12px", marginTop: 10 }}>
+                Fill in all four (weight, length, width and height), or empty all four to use the part's size.
+              </div>
+            )}
+
+            {/* the weight the fee is charged on */}
+            <div style={{ marginTop: 14, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.line}` }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                {[["actual", "Actual weight", feeActual, feeActual === null ? "—" : "on the scale"],
+                  ["size", "Size weight", feeSize, feeL === null ? "—" : `${fmtNum(feeL)}×${fmtNum(feeW)}×${fmtNum(feeH)} ÷ ${divisor}`]].map(([key, title, value, sub], i) => {
+                  const used = feeUsed === key;
+                  return (
+                    <div key={key} style={{ padding: "10px 12px", background: used ? C.goldTint : C.surfaceHigh, borderLeft: i ? `1px solid ${C.line}` : "none", boxShadow: used ? `inset 0 -3px 0 ${C.signal}` : "none" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>{title}</span>
+                        {used && <span style={{ ...body, fontSize: 9.5, fontWeight: 800, color: C.onSignal, background: C.signal, borderRadius: 999, padding: "1px 6px" }}>USED</span>}
+                      </div>
+                      <div style={{ ...mono, fontSize: 16, fontWeight: 800, color: C.ink, marginTop: 2 }}>{value === null ? "—" : `${fmtKg(value)} kg`}</div>
+                      <div style={{ ...mono, fontSize: 10.5, color: C.muted, marginTop: 1 }}>{sub}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 14px", background: `linear-gradient(120deg, ${C.navyDeep}, ${C.navy} 60%, ${C.navySoft} 140%)` }}>
+                <div>
+                  <div style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.onNavyMuted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Fee weight</div>
+                  <div style={{ ...body, fontSize: 11, color: C.onNavyMuted, marginTop: 2 }}>
+                    {feeUsed === "size" ? "The size weight is greater, so the fee uses it." : feeUsed === "actual" ? "The actual weight is greater, so the fee uses it." : "Enter the weight and size to see it."}
+                  </div>
+                </div>
+                <div style={{ ...mono, fontSize: 22, fontWeight: 800, color: C.signal, whiteSpace: "nowrap" }}>{feeKg === null ? "—" : `${fmtKg(feeKg)} kg`}</div>
+              </div>
+            </div>
+            <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
+              {feeSource === "part"
+                ? <>These are the part's numbers ({part || "its part"}): leave the boxes empty to keep using them, or fill in all four for this product's own.</>
+                : feeSource === "product"
+                  ? <>Volume {volumeL === null ? "—" : `${volumeL.toFixed(2)} L`}. Size weight = L × W × H ÷ {divisor} (set in Delivery Rules).</>
+                  : ownPartial ? <>The fee weight shows once all four are filled in.</> : <>This product and its part have no size yet, so the shipping fee can't be worked out.</>}
+              {feeSource === "product" && hasOwnAny && (
+                <button type="button" onClick={() => { setWeightKg(""); setLengthCm(""); setWidthCm(""); setHeightCm(""); }} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.torque, background: "none", border: "none", padding: 0, marginLeft: 6, cursor: "pointer", textDecoration: "underline" }}>Empty all four</button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ---------------- the save bar ---------------- */}
+      {(isDirty || isSaving) && (
+        <div style={{ position: "sticky", bottom: 0, zIndex: 20, padding: "0 28px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, background: C.navy, borderRadius: 14, padding: "12px 14px 12px 20px", boxShadow: "0 10px 30px rgba(7,32,47,0.35)" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.signal, flexShrink: 0 }} />
+            <span style={{ ...body, fontSize: 13.5, fontWeight: 700, color: "#fff", flex: 1 }}>{errorMessage ? errorMessage : "You have unsaved changes."}</span>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              style={{ ...body, fontSize: 14, fontWeight: 800, color: C.onSignal, background: isSaving ? "#D1D5DB" : C.signal, border: `1px solid ${C.signalDark}`, borderRadius: 10, padding: "10px 26px", cursor: isSaving ? "default" : "pointer", boxShadow: SHADOW.goldRaised }}
+            >
+              {isSaving ? "Saving…" : "Save changes"}
             </button>
           </div>
         </div>
-      </Card>
-
-      <button
-        onClick={handleSave}
-        disabled={isSaving}
-        style={{ ...body, fontSize: 14, fontWeight: 700, color: "#fff", background: isSaving ? "#D1D5DB" : C.signal, border: "none", borderRadius: 8, padding: "12px 24px", cursor: isSaving ? "default" : "pointer", width: "100%" }}
-      >
-        {isSaving ? "Saving…" : "Save changes"}
-      </button>
+      )}
     </div>
   );
 }
@@ -3564,6 +5121,20 @@ function VehicleDataPage({ onSessionExpired }) {
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(null);
   const [years, setYears] = useState([]);
+  // patch-vehicle-data-redesign
+  const [selectedYearEntry, setSelectedYearEntry] = useState(null);      // the year whose versions are open (step 4)
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [yearsLoaded, setYearsLoaded] = useState(false);
+  const [vdQuery, setVdQuery] = useState("");
+  const [vdAddOpen, setVdAddOpen] = useState(false);
+  const [vdMenuKey, setVdMenuKey] = useState(null);
+  useEffect(() => {
+    if (vdMenuKey === null) return undefined;
+    const onDown = (e) => { if (!(e.target.closest && e.target.closest("[data-vd-menu]"))) setVdMenuKey(null); };
+    const onKey = (e) => { if (e.key === "Escape") setVdMenuKey(null); };
+    document.addEventListener("mousedown", onDown); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [vdMenuKey]);
 
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
@@ -3597,17 +5168,21 @@ function VehicleDataPage({ onSessionExpired }) {
   useEffect(loadBrands, []);
 
   const openBrand = (brand) => {
-    setSelectedBrand(brand); setSelectedModel(null);
+    setSelectedBrand(brand); setSelectedModel(null); setSelectedYearEntry(null); setVdAddOpen(false); setVdQuery("");
     setNewModelName(""); setNewModelNameAr(""); setNewModelNameZh(""); setErrorMessage(null);
-    fetchModelsForBrand(brand.id).then(setModels).catch((e) => setErrorMessage(e.message));
+    setModelsLoaded(false);
+    fetchModelsForBrand(brand.id).then((m) => { setModels(m); setModelsLoaded(true); }).catch((e) => setErrorMessage(e.message));
   };
-  const openModel = (model) => {
+  // stay = true: only reload the years (a version was added or removed on the Versions page)
+  const openModel = (model, stay = false) => {
     setSelectedModel(model);
-    setNewYear(""); setErrorMessage(null);
-    fetchGenerationsForModel(model.id).then(setYears).catch((e) => setErrorMessage(e.message));
+    if (!stay) { setSelectedYearEntry(null); setVdAddOpen(false); setVdQuery(""); setNewYear(""); setErrorMessage(null); setYearsLoaded(false); }
+    fetchGenerationsForModel(model.id).then((y) => { setYears(y); setYearsLoaded(true); }).catch((e) => setErrorMessage(e.message));
   };
-  const backToBrands = () => { setSelectedBrand(null); setSelectedModel(null); setErrorMessage(null); };
-  const backToModels = () => { setSelectedModel(null); setErrorMessage(null); };
+  const openYear = (g) => { setSelectedYearEntry(g); setVdAddOpen(false); setErrorMessage(null); };
+  const backToBrands = () => { setSelectedBrand(null); setSelectedModel(null); setSelectedYearEntry(null); setVdAddOpen(false); setVdQuery(""); setErrorMessage(null); loadBrands(); };
+  const backToModels = () => { if (selectedBrand) openBrand(selectedBrand); };
+  const backToYears = () => { if (selectedModel) openModel(selectedModel); };
 
   const handleBrandPhotoSelect = (e) => {
     const file = e.target.files?.[0];
@@ -3637,7 +5212,7 @@ function VehicleDataPage({ onSessionExpired }) {
       const upload = await uploadCatalogImage(token, newBrandPhotoFile);
       setIsUploadingBrandPhoto(false);
       await createBrand(token, newBrandName.trim(), newBrandNameAr.trim(), upload.url, newBrandNameZh.trim());
-      loadBrands();
+      loadBrands(); setVdAddOpen(false);
       setNewBrandName(""); setNewBrandNameAr(""); setNewBrandNameZh(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -3695,8 +5270,9 @@ function VehicleDataPage({ onSessionExpired }) {
   const handleMove = async (kind, id, direction) => {
     try {
       const token = getStoredToken();
-      if (kind === "brand") setBrands(await moveBrand(token, id, direction));
-      else if (kind === "model") setModels(await moveModel(token, id, direction));
+      const keep = (fresh, prev) => fresh.map((f) => ({ ...(prev.find((p) => p.id === f.id) || {}), ...f }));      // the move answer has no counts (nor the Chinese name)
+      if (kind === "brand") { const fresh = await moveBrand(token, id, direction); setBrands((prev) => keep(fresh, prev)); }
+      else if (kind === "model") { const fresh = await moveModel(token, id, direction); setModels((prev) => keep(fresh, prev)); }
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
@@ -3799,6 +5375,74 @@ function VehicleDataPage({ onSessionExpired }) {
   // Years are listed newest first.
   const sortedYears = [...years].sort((a, b) => b.yearStart - a.yearStart);
 
+  // patch-vehicle-data-redesign: which step is open (0 Brand, 1 Model, 2 Year, 3 Version), the step bar, the search, the "..." menus, the card parts.
+  const vdLevel = selectedYearEntry ? 3 : selectedModel ? 2 : selectedBrand ? 1 : 0;
+  const yearText = (g) => (g ? (isSingleYearEntry(g) ? String(g.yearStart) : g.name) : "");
+  const vdSteps = [
+    { key: "brand", label: "Brand", value: selectedBrand ? selectedBrand.name : "Choose a brand", go: backToBrands },
+    { key: "model", label: "Model", value: selectedModel ? selectedModel.name : selectedBrand ? "Choose a model" : "—", go: backToModels },
+    { key: "year", label: "Year", value: selectedYearEntry ? yearText(selectedYearEntry) : selectedModel ? "Choose a year" : "—", go: backToYears },
+    { key: "version", label: "Version", value: selectedYearEntry ? "Its versions" : "—", go: undefined },
+  ];
+  const vdQ = vdQuery.trim().toLowerCase();
+  const vdMatch = (x) => !vdQ || [x.name, x.nameAr, x.nameZh].some((n) => n && String(n).toLowerCase().includes(vdQ));
+  const vdShownBrands = brands.filter(vdMatch);
+  const vdShownModels = models.filter(vdMatch);
+  const vdListEmpty = vdLevel === 0 ? brands.length === 0 : vdLevel === 1 ? modelsLoaded && models.length === 0 : vdLevel === 2 ? yearsLoaded && sortedYears.length === 0 : false;
+  const vdCard = { position: "relative", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", display: "flex", flexDirection: "column", justifyContent: "space-between" };
+  const vdEmpty = { ...body, gridColumn: "1 / -1", fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12 };
+  const vdMenuItem = { ...body, display: "flex", alignItems: "center", gap: 9, width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 7, border: "none", background: "none", fontSize: 13, fontWeight: 700, color: C.ink, cursor: "pointer", textAlign: "left" };
+  const vdLangInput = (tag, label, value, set, placeholder, rtl = false, width = null) => (
+    <label style={{ display: "block", flex: width ? `0 0 ${width}px` : "1 1 180px", minWidth: 0 }}>
+      <span style={{ ...body, display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 4 }}>
+        <span style={{ ...mono, fontSize: 9.5, fontWeight: 800, color: "#fff", background: C.navy, borderRadius: 4, padding: "1px 5px" }}>{tag}</span>{label}
+      </span>
+      <input aria-label={label} value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} dir={rtl ? "rtl" : "ltr"} inputMode={tag === "YEAR" ? "numeric" : undefined}
+        style={{ ...body, width: "100%", boxSizing: "border-box", height: 40, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", fontSize: 13, color: C.ink, background: "#fff", outline: "none" }} />
+    </label>
+  );
+  const vdMenu = (key, items, onPhoto = false) => (
+    <>
+      <button type="button" data-vd-menu="" onClick={(e) => { e.stopPropagation(); setVdMenuKey(vdMenuKey === key ? null : key); }} aria-label="Options" aria-haspopup="menu" aria-expanded={vdMenuKey === key}
+        style={{ position: "absolute", right: 10, top: 10, width: 30, height: 30, borderRadius: 9, border: `1px solid ${C.line}`, background: vdMenuKey === key ? C.navy : onPhoto ? "rgba(255,255,255,0.95)" : "#fff", color: vdMenuKey === key ? "#fff" : C.ink, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, zIndex: 2 }}>
+        <MoreHorizontal size={16} />
+      </button>
+      {vdMenuKey === key && (
+        <div role="menu" data-vd-menu="" style={{ position: "absolute", right: 10, top: 46, zIndex: 30, minWidth: 190, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 10px 28px rgba(7,32,47,0.18)", padding: 5 }}>
+          {items.map((it, n) => (
+            <React.Fragment key={it.label}>
+              {it.danger && n > 0 && <div style={{ height: 1, background: C.line, margin: "4px 2px" }} />}
+              {it.onFile ? (
+                <label role="menuitem" style={vdMenuItem}>
+                  {it.icon} {it.label}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { setVdMenuKey(null); it.onFile(e.target.files?.[0]); }} style={{ display: "none" }} />
+                </label>
+              ) : (
+                <button type="button" role="menuitem" onClick={() => { setVdMenuKey(null); it.onClick(); }} style={{ ...vdMenuItem, color: it.danger ? C.red : C.ink }}>{it.icon} {it.label}</button>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </>
+  );
+  const vdFooter = (countText, warnText, move) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+      <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>{countText}</span>
+      {warnText && <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.amberInk, background: C.amberBg, borderRadius: 999, padding: "2px 8px" }}>{warnText}</span>}
+      {move && (
+        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
+          {[["up", ChevronLeft, "Move earlier", move[2]], ["down", ChevronRight, "Move later", move[3]]].map(([dir, Icon, title, off]) => (
+            <button key={dir} type="button" onClick={() => handleMove(move[0], move[1], dir)} disabled={off} title={title} aria-label={title}
+              style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", cursor: off ? "default" : "pointer", opacity: off ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+              <Icon size={14} color={C.ink} />
+            </button>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+
   if (loadState === "loading") {
     return <div><TopBar title="Vehicle Data" subtitle="Loading…" /><div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card></div></div>;
   }
@@ -3812,114 +5456,171 @@ function VehicleDataPage({ onSessionExpired }) {
       <div style={{ height: 24 }} />
       {activeTab === "brands" && (
         <div style={{ padding: "0 24px 24px" }}>
-          <Card>
-            <div style={{ padding: 18 }}>
-              {breadcrumb}
-              {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
-
-              {/* Step 1: Brand (English name, Arabic name, photo: all required) */}
-              {!selectedBrand && (
-                <>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                    <input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="English name (e.g. Nissan)" style={fieldStyle} />
-                    <input value={newBrandNameAr} onChange={(e) => setNewBrandNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={fieldStyle} />
-                    <input value={newBrandNameZh} onChange={(e) => setNewBrandNameZh(e.target.value)} placeholder="Chinese name (required)" style={fieldStyle} />
-                    {photoPicker(newBrandPhotoFile, newBrandPhotoPreview, handleBrandPhotoSelect)}
-                    {addButton(handleAddBrand, isUploadingBrandPhoto)}
-                  </div>
-                  {brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No brands yet.</div>}
-                  {brands.map((b, i) => (
-                    <div key={b.id} style={rowStyle}>
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                        {arrows("brand", b.id, i === 0, i === brands.length - 1)}
-                        <label onClick={(e) => e.stopPropagation()} title="Click to replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingBrandPhotoId === b.id ? "default" : "pointer", display: "block" }}>
-                          {b.photoUrl ? (
-                            <img src={mediaSrc(b.photoUrl)} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingBrandPhotoId === b.id ? 0.4 : 1 }} />
-                          ) : (
-                            <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={12} color={C.muted} /></div>
-                          )}
-                          <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingBrandPhotoId === b.id} onChange={(e) => handleReplaceBrandPhoto(b.id, e.target.files?.[0])} style={{ display: "none" }} />
-                        </label>
-                        <div onClick={() => openBrand(b)} style={{ cursor: "pointer" }}>
-                          <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
-                          {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
-                          {b.nameZh && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{b.nameZh}</span>}
-                          {!b.photoUrl && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: "#8A5A12", background: "#FDF3E1", borderRadius: 999, padding: "2px 8px", marginLeft: 8 }}>No logo yet</span>}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <ChevronRight size={14} color={C.muted} onClick={() => openBrand(b)} style={{ cursor: "pointer" }} />
-                        <button onClick={() => setPendingEdit({ kind: "brand", item: b })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
-                        <button onClick={() => setPendingDelete({ kind: "brand", id: b.id, label: b.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {/* Step 2: Model (English name, Arabic name: nothing else) */}
-              {selectedBrand && !selectedModel && (
-                <>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                    <input value={newModelName} onChange={(e) => setNewModelName(e.target.value)} placeholder={`New model under ${selectedBrand.name} (e.g. Focus)`} style={fieldStyle} />
-                    <input value={newModelNameAr} onChange={(e) => setNewModelNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={fieldStyle} />
-                    <input value={newModelNameZh} onChange={(e) => setNewModelNameZh(e.target.value)} placeholder="Chinese name (required)" style={fieldStyle} />
-                    {addButton(handleAddModel, false)}
-                  </div>
-                  {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
-                  {models.map((m, i) => (
-                    <div key={m.id} style={rowStyle}>
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                        {arrows("model", m.id, i === 0, i === models.length - 1)}
-                        <div onClick={() => openModel(m)} style={{ cursor: "pointer" }}>
-                          <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{m.name}</span>
-                          {m.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{m.nameAr}</span>}
-                          {m.nameZh && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{m.nameZh}</span>}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <ChevronRight size={14} color={C.muted} onClick={() => openModel(m)} style={{ cursor: "pointer" }} />
-                        <button onClick={() => setPendingEdit({ kind: "model", item: m })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
-                        <button onClick={() => setPendingDelete({ kind: "model", id: m.id, label: m.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {/* Step 3: Year (the year in English digits only; the photos are on its versions) */}
-              {selectedModel && (
-                <>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                    <input value={newYear} onChange={(e) => setNewYear(e.target.value)} placeholder="Year (English digits, e.g. 2021)" inputMode="numeric" style={fieldStyle} />
-                    {addButton(handleAddYear, false)}
-                  </div>
-                  {sortedYears.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No years yet.</div>}
-                  {sortedYears.map((g) => {
-                    const single = isSingleYearEntry(g);
-                    return (
-                      <div key={g.id}>
-                      <div style={rowStyle}>
-                        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                          <div>
-                            <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{g.name}</span>
-                            {!single && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{g.yearStart} to {g.yearEnd || "present"}</span>}
-                            {!single && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: "#4B5563", background: "#EEF0F3", borderRadius: 999, padding: "2px 8px", marginLeft: 8 }}>Older entry</span>}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {!single && <button onClick={() => setPendingEdit({ kind: "generation", item: g })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} title="Edit this older entry"><Pencil size={13} color={C.muted} /></button>}
-                          <button onClick={() => setPendingDelete({ kind: "generation", id: g.id, label: g.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} aria-label={`Delete ${g.name}`}><X size={14} color={C.red} /></button>
-                        </div>
-                      </div>
-                      <VersionsPanel generation={g} onSessionExpired={onSessionExpired} />
-                      </div>
-                    );
-                  })}
-                </>
-              )}
+          {/* patch-vehicle-data-redesign: a step bar (Brand > Model > Year > Version), then the chosen step's page: a grid of cards, each with a "..." menu,
+              a search on Brands and Models, and an "Add" form that opens from a button (and is open by itself when the list is empty). */}
+          <div data-testid="vehicle-browser">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: SHADOW.card, marginBottom: 16, overflow: "hidden" }}>
+              {vdSteps.map((s, i) => {
+                const state = i < vdLevel ? "done" : i === vdLevel ? "now" : "next";
+                return (
+                  <button key={s.key} type="button" onClick={state === "done" ? s.go : undefined} disabled={state !== "done"} aria-current={state === "now" ? "step" : undefined}
+                    style={{ ...body, display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: "none", borderLeft: i ? `1px solid ${C.line}` : "none", background: state === "now" ? C.goldTint : "#fff", boxShadow: state === "now" ? `inset 0 -3px 0 ${C.signal}` : "none", cursor: state === "done" ? "pointer" : "default", textAlign: "left", minWidth: 0 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800,
+                      background: state === "done" ? C.navy : state === "now" ? C.signal : C.canvas, color: state === "done" ? "#fff" : state === "now" ? C.onSignal : C.muted, border: state === "next" ? `1px solid ${C.lineStrong}` : "none" }}>
+                      {state === "done" ? <Check size={14} /> : i + 1}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>{s.label}</span>
+                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: state === "next" ? C.muted : C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.value}</span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          </Card>
+
+            {errorMessage && !pendingEdit && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>{errorMessage}</div>}
+
+            {vdLevel < 3 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                <div>
+                  <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>{vdLevel === 0 ? "Brands" : vdLevel === 1 ? `Models of ${selectedBrand.name}` : `Years of ${selectedBrand.name} ${selectedModel.name}`}</div>
+                  <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>
+                    {vdLevel === 0 ? `${brands.length} ${brands.length === 1 ? "brand" : "brands"} · the order here is the order buyers see` : vdLevel === 1 ? `${models.length} ${models.length === 1 ? "model" : "models"} · the order here is the order buyers see` : `${sortedYears.length} ${sortedYears.length === 1 ? "year" : "years"} · newest first · open a year for its versions`}
+                  </div>
+                </div>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+                  {vdLevel < 2 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, boxSizing: "border-box", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 230 }}>
+                      <Search size={14} color={C.muted} />
+                      <input value={vdQuery} onChange={(e) => setVdQuery(e.target.value)} placeholder={vdLevel === 0 ? "Search brands…" : "Search models…"} aria-label={vdLevel === 0 ? "Search brands" : "Search models"} data-leap-plain="" style={{ ...body, fontSize: 12.5, border: "none", outline: "none", background: "none", width: "100%", color: C.ink }} />
+                    </div>
+                  )}
+                  {!vdAddOpen && (
+                    <button onClick={() => { setVdAddOpen(true); setErrorMessage(null); }} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 38, padding: "0 16px", borderRadius: 10, border: `1px solid ${C.signalDark}`, background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                      <Plus size={15} /> {vdLevel === 0 ? "Add brand" : vdLevel === 1 ? "Add model" : "Add year"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {vdLevel < 3 && (vdAddOpen || vdListEmpty) && (
+              <div style={{ border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{vdLevel === 0 ? "Add a brand" : vdLevel === 1 ? `Add a model to ${selectedBrand.name}` : `Add a year to ${selectedBrand.name} ${selectedModel.name}`}</span>
+                  <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{vdLevel === 0 ? "the name in English, Arabic and Chinese, and a logo (at least 400 px)" : vdLevel === 1 ? "the name in English, Arabic and Chinese" : "four English digits; the photos go on its versions"}</span>
+                  {!vdListEmpty && <button onClick={() => { setVdAddOpen(false); setErrorMessage(null); }} style={{ ...body, marginLeft: "auto", background: "none", border: "none", color: C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  {vdLevel === 0 && <>
+                    {vdLangInput("EN", "English name", newBrandName, setNewBrandName, "e.g. Nissan")}
+                    {vdLangInput("AR", "Arabic name", newBrandNameAr, setNewBrandNameAr, "مثال: نيسان", true)}
+                    {vdLangInput("中文", "Chinese name", newBrandNameZh, setNewBrandNameZh, "例如：日产")}
+                    <label style={{ ...body, display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", border: `1px dashed ${newBrandPhotoFile ? C.gauge : C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", color: C.ink, background: "#fff" }}>
+                      {newBrandPhotoPreview ? <img src={newBrandPhotoPreview} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} /> : <ImagePlus size={15} color={C.muted} />}
+                      {newBrandPhotoFile ? "Logo chosen" : "Choose logo"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleBrandPhotoSelect} style={{ display: "none" }} />
+                    </label>
+                    {addButton(handleAddBrand, isUploadingBrandPhoto)}
+                  </>}
+                  {vdLevel === 1 && <>
+                    {vdLangInput("EN", "English name", newModelName, setNewModelName, "e.g. Camry")}
+                    {vdLangInput("AR", "Arabic name", newModelNameAr, setNewModelNameAr, "مثال: كامري", true)}
+                    {vdLangInput("中文", "Chinese name", newModelNameZh, setNewModelNameZh, "例如：凯美瑞")}
+                    {addButton(handleAddModel, false)}
+                  </>}
+                  {vdLevel === 2 && <>
+                    {vdLangInput("YEAR", "Year", newYear, setNewYear, "e.g. 2021", false, 160)}
+                    {addButton(handleAddYear, false)}
+                  </>}
+                </div>
+              </div>
+            )}
+
+            {vdLevel === 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14 }}>
+                {vdShownBrands.map((b) => {
+                  const i = brands.findIndex((x) => x.id === b.id);
+                  return (
+                    <div key={b.id} data-testid="brand-card" style={vdCard}>
+                      <div onClick={() => openBrand(b)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") openBrand(b); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 44px 12px 14px", cursor: "pointer" }}>
+                        <div style={{ width: 54, height: 54, borderRadius: 12, flexShrink: 0, background: C.canvas, border: `1px solid ${C.line}`, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {b.photoUrl ? <img src={mediaSrc(b.photoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", opacity: replacingBrandPhotoId === b.id ? 0.4 : 1 }} /> : <ImagePlus size={18} color={C.muted} />}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ ...disp, fontSize: 15.5, fontWeight: 800, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.name}</div>
+                          <div style={{ ...body, fontSize: 12, color: C.muted, display: "flex", gap: 8, flexWrap: "wrap" }}>{b.nameAr && <span dir="rtl">{b.nameAr}</span>}{b.nameZh && <span>{b.nameZh}</span>}</div>
+                        </div>
+                      </div>
+                      {vdMenu(`brand:${b.id}`, [
+                        { label: "Edit names", icon: <Pencil size={14} color={C.torque} />, onClick: () => setPendingEdit({ kind: "brand", item: b }) },
+                        { label: b.photoUrl ? "Replace logo" : "Add logo", icon: <ImagePlus size={14} color={C.navy} />, onFile: (file) => handleReplaceBrandPhoto(b.id, file) },
+                        { label: "Delete", danger: true, icon: <X size={14} color={C.red} />, onClick: () => setPendingDelete({ kind: "brand", id: b.id, label: b.name }) },
+                      ])}
+                      {vdFooter(b.modelCount === undefined ? "" : `${b.modelCount} ${b.modelCount === 1 ? "model" : "models"}`, !b.photoUrl && "No logo yet", vdQuery ? null : ["brand", b.id, i === 0, i === brands.length - 1])}
+                    </div>
+                  );
+                })}
+                {vdQuery && vdShownBrands.length === 0 && <div style={vdEmpty}>No brand matches “{vdQuery}”.</div>}
+              </div>
+            )}
+
+            {vdLevel === 1 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
+                {vdShownModels.map((m) => {
+                  const i = models.findIndex((x) => x.id === m.id);
+                  return (
+                    <div key={m.id} data-testid="model-card" style={vdCard}>
+                      <div onClick={() => openModel(m)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") openModel(m); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 44px 12px 14px", cursor: "pointer" }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: `linear-gradient(135deg, ${C.navy}, ${C.navySoft})`, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...disp, fontSize: 18, fontWeight: 800 }}>{(m.name || "?").trim().charAt(0).toUpperCase()}</div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ ...disp, fontSize: 15.5, fontWeight: 800, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</div>
+                          <div style={{ ...body, fontSize: 12, color: C.muted, display: "flex", gap: 8, flexWrap: "wrap" }}>{m.nameAr && <span dir="rtl">{m.nameAr}</span>}{m.nameZh && <span>{m.nameZh}</span>}</div>
+                        </div>
+                      </div>
+                      {vdMenu(`model:${m.id}`, [
+                        { label: "Edit names", icon: <Pencil size={14} color={C.torque} />, onClick: () => setPendingEdit({ kind: "model", item: m }) },
+                        { label: "Delete", danger: true, icon: <X size={14} color={C.red} />, onClick: () => setPendingDelete({ kind: "model", id: m.id, label: m.name }) },
+                      ])}
+                      {vdFooter(m.yearCount === undefined ? "" : `${m.yearCount} ${m.yearCount === 1 ? "year" : "years"}`, null, vdQuery ? null : ["model", m.id, i === 0, i === models.length - 1])}
+                    </div>
+                  );
+                })}
+                {vdQuery && vdShownModels.length === 0 && <div style={vdEmpty}>No model matches “{vdQuery}”.</div>}
+              </div>
+            )}
+
+            {vdLevel === 2 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 14 }}>
+                {sortedYears.map((g) => {
+                  const single = isSingleYearEntry(g);
+                  return (
+                    <div key={g.id} data-testid="year-card" style={vdCard}>
+                      <div onClick={() => openYear(g)} role="button" tabIndex={0} aria-label={`Versions of ${g.name}`} onKeyDown={(e) => { if (e.key === "Enter") openYear(g); }} style={{ cursor: "pointer" }}>
+                        <div style={{ position: "relative", aspectRatio: "16 / 9", background: C.canvas, borderRadius: "14px 14px 0 0", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {g.photoUrl ? <img src={mediaSrc(g.photoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImagePlus size={22} color={C.muted} />}
+                          <span style={{ ...mono, position: "absolute", left: 10, bottom: 8, fontSize: 20, fontWeight: 800, color: "#fff", textShadow: "0 1px 6px rgba(0,0,0,0.55)" }}>{single ? g.yearStart : g.name}</span>
+                        </div>
+                        <div style={{ padding: "10px 12px 2px" }}>
+                          {!single && <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{g.yearStart} to {g.yearEnd || "present"} <span style={{ fontSize: 10.5, fontWeight: 700, color: "#4B5563", background: "#EEF0F3", borderRadius: 999, padding: "1px 7px", marginLeft: 4 }}>Older entry</span></div>}
+                        </div>
+                      </div>
+                      {vdMenu(`year:${g.id}`, [
+                        { label: "Open versions", icon: <ChevronRight size={14} color={C.navy} />, onClick: () => openYear(g) },
+                        ...(single ? [] : [{ label: "Edit this older entry", icon: <Pencil size={14} color={C.torque} />, onClick: () => setPendingEdit({ kind: "generation", item: g }) }]),
+                        { label: "Delete", danger: true, icon: <X size={14} color={C.red} />, onClick: () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }) },
+                      ], true)}
+                      {vdFooter(g.versionCount === undefined ? "" : `${g.versionCount} ${g.versionCount === 1 ? "version" : "versions"}`, g.versionCount === 0 ? "No versions yet" : g.versionsWithoutPhoto > 0 ? `${g.versionsWithoutPhoto} without photo` : null, null)}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {vdLevel === 3 && (
+              <VehicleVersionsPage generation={selectedYearEntry} carLabel={`${selectedBrand.name} ${selectedModel.name} ${isSingleYearEntry(selectedYearEntry) ? selectedYearEntry.yearStart : selectedYearEntry.name}`} onSessionExpired={onSessionExpired} onChanged={() => openModel(selectedModel, true)} />
+            )}
+          </div>
         </div>
       )}
       <ConfirmDialog
@@ -4021,56 +5722,88 @@ function HubWorkloadSection({ onSessionExpired }) {
     }
   };
 
+  // patch-hubs-redesign: totals on top, then one card per hub: how full it is today (a big number and a bar), the capacity with its edit,
+  // and how many shipments are at each stage as small tiles.
+  const loadColor = (p) => (p >= 100 ? C.red : p >= 75 ? C.amber : C.gauge);
+  const stageName = (stage) => stage.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+  const totalLoad = workload.reduce((n, h) => n + (Number(h.totalWorkload) || 0), 0);
+  const totalCap = workload.reduce((n, h) => n + (Number(h.dailyCapacity) || 0), 0);
+  const overall = totalCap ? Math.round((totalLoad / totalCap) * 100) : 0;
+  const tile = (value, label, color) => (
+    <div key={label} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 16px", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+      <div style={{ ...mono, fontSize: 22, fontWeight: 800, color: color || C.ink }}>{value}</div>
+      <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>{label}</div>
+    </div>
+  );
   return (
-    <Card title="Hub workload & capacity">
-      <div style={{ padding: 16 }}>
-        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
-        {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>{errorMessage}</div>}
-        {loadState === "ready" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {workload.map((h) => (
-              <div key={h.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <span style={{ ...disp, fontWeight: 700, fontSize: 14 }}>{h.name}</span>
-                    <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{h.region}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ ...body, fontSize: 12, fontWeight: 700, color: h.utilizationPercent >= 100 ? C.red : h.utilizationPercent >= 75 ? C.amber : C.gauge }}>
-                      {h.totalWorkload} / {h.dailyCapacity} ({h.utilizationPercent}%)
-                    </span>
-                    {editingId === h.id ? (
-                      <>
-                        <input
-                          type="number"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          style={{ ...body, width: 70, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 8px", fontSize: 12 }}
-                        />
-                        <button onClick={() => handleSaveCapacity(h.id)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.onSignal, background: C.signal, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Save</button>
-                        <button onClick={() => setEditingId(null)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Cancel</button>
-                      </>
-                    ) : (
-                      <button onClick={() => { setEditingId(h.id); setEditValue(String(h.dailyCapacity)); }} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Edit capacity</button>
-                    )}
-                  </div>
-                </div>
-                <div style={{ height: 6, borderRadius: 3, background: C.line, overflow: "hidden", marginTop: 10 }}>
-                  <div style={{ height: "100%", width: `${Math.min(h.utilizationPercent, 100)}%`, background: h.utilizationPercent >= 100 ? C.red : h.utilizationPercent >= 75 ? C.amber : C.gauge, borderRadius: 3 }} />
-                </div>
-                <div style={{ display: "flex", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
-                  {Object.entries(h.stageCounts).map(([stage, count]) => (
-                    <span key={stage} style={{ ...body, fontSize: 11, color: C.muted }}>
-                      {stage.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())}: <strong style={{ color: C.ink }}>{count}</strong>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
+    <div data-testid="hub-workload" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+      {loadState === "error" && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px" }}>{errorMessage}</div>}
+      {loadState === "ready" && (
+        <>
+          {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px" }}>{errorMessage}</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+            {tile(workload.length, workload.length === 1 ? "hub" : "hubs")}
+            {tile(totalLoad.toLocaleString(), "shipments in the hubs now")}
+            {tile(totalCap.toLocaleString(), "daily capacity, all hubs")}
+            {tile(`${overall}%`, "used overall", loadColor(overall))}
           </div>
-        )}
-      </div>
-    </Card>
+          {workload.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff" }}>No hubs yet. Add one in the “Add hub” tab.</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+            {workload.map((h) => {
+              const color = loadColor(h.utilizationPercent);
+              return (
+                <div key={h.id} data-testid="hub-workload-card" style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: `linear-gradient(120deg, ${C.navyDeep}, ${C.navy} 60%, ${C.navySoft} 140%)` }}>
+                    <span style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Warehouse size={19} color={C.signal} /></span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ ...disp, fontWeight: 800, fontSize: 15, color: "#fff" }}>{h.name}</div>
+                      <div style={{ ...body, fontSize: 12, color: C.onNavyMuted }}>{h.region}</div>
+                    </div>
+                    <span style={{ ...mono, fontSize: 22, fontWeight: 800, color: h.utilizationPercent >= 100 ? "#FFB4AC" : h.utilizationPercent >= 75 ? C.signal : "#8FE0BE" }}>{h.utilizationPercent}%</span>
+                  </div>
+                  <div style={{ padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ ...body, fontSize: 12.5, color: C.muted }}>
+                        <b style={{ ...mono, fontSize: 14, color: color }}>{h.totalWorkload}</b> of <b style={{ ...mono, fontSize: 14, color: C.ink }}>{h.dailyCapacity}</b> a day
+                      </span>
+                      <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {editingId === h.id ? (
+                          <>
+                            <input
+                              type="number"
+                              aria-label={`Daily capacity of ${h.name}`}
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              style={{ ...body, width: 80, border: `1px solid ${C.line}`, borderRadius: 8, padding: "4px 8px", fontSize: 12.5, minHeight: 0, height: 32 }}
+                            />
+                            <button onClick={() => handleSaveCapacity(h.id)} style={{ ...body, fontSize: 12, fontWeight: 800, color: C.onSignal, background: C.signal, border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer" }}>Save</button>
+                            <button onClick={() => setEditingId(null)} style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: "0 10px", height: 32, cursor: "pointer" }}>Cancel</button>
+                          </>
+                        ) : (
+                          <button onClick={() => { setEditingId(h.id); setEditValue(String(h.dailyCapacity)); }} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: C.ink, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: "0 10px", height: 32, cursor: "pointer" }}><Pencil size={12} color={C.torque} /> Edit capacity</button>
+                        )}
+                      </span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 4, background: "#E8EBEF", overflow: "hidden", marginTop: 10 }}>
+                      <div style={{ height: "100%", width: `${Math.min(h.utilizationPercent, 100)}%`, background: color, borderRadius: 4 }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(92px, 1fr))", gap: 8, marginTop: 14 }}>
+                      {Object.entries(h.stageCounts).map(([stage, count]) => (
+                        <div key={stage} style={{ background: count > 0 ? C.surfaceHigh : "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "7px 9px" }}>
+                          <div style={{ ...mono, fontSize: 16, fontWeight: 800, color: count > 0 ? (stage === "flagged" ? C.red : C.ink) : C.muted }}>{count}</div>
+                          <div style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.muted }}>{stageName(stage)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -4115,35 +5848,44 @@ function HubPerformanceSection({ onSessionExpired }) {
     { key: "toShippedToBuyer", label: "Packed → Shipped" },
   ];
 
+  // patch-hubs-redesign: one card per hub with its four stages in a row (the average time and how many shipments it is based on),
+  // the slowest stage marked, and the whole time from received to shipped.
   return (
-    <Card title="Hub performance — average time per stage">
-      <div style={{ padding: 16 }}>
-        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
-        {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>{errorMessage}</div>}
-        {loadState === "ready" && (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <Th>Hub</Th>
-                {stages.map((s) => <Th key={s.key} align="right">{s.label}</Th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {performance.map((h) => (
-                <tr key={h.id}>
-                  <Td style={{ fontWeight: 700 }}>{h.name}</Td>
-                  {stages.map((s) => (
-                    <Td key={s.key} align="right" style={{ color: h.stageTimes[s.key] ? C.ink : C.muted }}>
-                      {h.stageTimes[s.key] ? `${formatDuration(h.stageTimes[s.key].avgSeconds)} (n=${h.stageTimes[s.key].sampleCount})` : "—"}
-                    </Td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </Card>
+    <div data-testid="hub-performance" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ ...body, fontSize: 12.5, color: C.muted }}>The average time a shipment spends between two steps in each hub. The slowest step is marked; “n” is how many shipments the average is based on.</div>
+      {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+      {loadState === "error" && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px" }}>{errorMessage}</div>}
+      {loadState === "ready" && performance.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff" }}>No hubs yet.</div>}
+      {loadState === "ready" && performance.map((h) => {
+        const times = stages.map((s) => (h.stageTimes[s.key] ? h.stageTimes[s.key].avgSeconds : null));
+        const known = times.filter((t) => t !== null);
+        const slowest = known.length > 1 ? Math.max(...known) : null;
+        const total = known.length === stages.length ? known.reduce((a, b) => a + b, 0) : null;
+        return (
+          <div key={h.id} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              <Warehouse size={17} color={C.navy} />
+              <span style={{ ...disp, fontSize: 15, fontWeight: 800, color: C.ink }}>{h.name}</span>
+              <span style={{ ...body, marginLeft: "auto", fontSize: 12.5, color: C.muted }}>Received → shipped: <b style={{ ...mono, color: C.ink, fontSize: 13.5 }}>{total === null ? "—" : formatDuration(total)}</b></span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))`, gap: 8 }}>
+              {stages.map((s, i) => {
+                const st = h.stageTimes[s.key];
+                const isSlow = st && slowest !== null && st.avgSeconds === slowest;
+                return (
+                  <div key={s.key} style={{ position: "relative", borderRadius: 12, padding: "10px 12px", background: isSlow ? C.amberBg : st ? C.surfaceHigh : "#fff", border: `1px solid ${isSlow ? "#F1D9A8" : C.line}` }}>
+                    <div style={{ ...body, fontSize: 11, fontWeight: 800, color: C.muted }}>{s.label}</div>
+                    <div style={{ ...mono, fontSize: 18, fontWeight: 800, color: st ? (isSlow ? C.amberInk : C.ink) : C.muted, marginTop: 3 }}>{st ? formatDuration(st.avgSeconds) : "—"}</div>
+                    <div style={{ ...body, fontSize: 10.5, color: C.muted }}>{st ? `n=${st.sampleCount}` : "no shipments yet"}{isSlow ? " · slowest" : ""}</div>
+                    {i < stages.length - 1 && <span aria-hidden="true" style={{ position: "absolute", right: -8, top: "50%", transform: "translateY(-50%)", zIndex: 1, width: 16, height: 16, borderRadius: "50%", background: "#fff", border: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronRight size={10} color={C.muted} /></span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -4271,9 +6013,19 @@ function HubStaffSection({ hubs, onSessionExpired }) {
       }
     >
       <div style={{ padding: 16 }}>
-        <p style={{ ...body, fontSize: 12, color: C.muted, margin: "0 0 12px" }}>
-          People who can log in to the hub portal and hub app. Each belongs to one hub and sees only that hub&apos;s shipments.
-        </p>
+        {/* patch-hubs-redesign: the counts, then the people with their initials and their hub */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "0 0 14px" }}>
+          <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: 0, flex: "1 1 300px" }}>
+            People who can log in to the hub portal and hub app. Each belongs to one hub and sees only that hub&apos;s shipments.
+          </p>
+          {loadState === "ready" && staff.length > 0 && (
+            <span style={{ display: "inline-flex", gap: 8 }}>
+              <span style={{ ...body, fontSize: 12, fontWeight: 800, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 999, padding: "4px 11px" }}>{staff.filter((m) => !m.isDisabled).length} active</span>
+              <span style={{ ...body, fontSize: 12, fontWeight: 800, color: C.muted, background: "#EEEFF1", borderRadius: 999, padding: "4px 11px" }}>{staff.filter((m) => m.isDisabled).length} disabled</span>
+              <span style={{ ...body, fontSize: 12, fontWeight: 800, color: C.torqueInk, background: C.torqueBg, borderRadius: 999, padding: "4px 11px" }}>{new Set(staff.map((m) => m.hubId).filter(Boolean)).size} hubs</span>
+            </span>
+          )}
+        </div>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
         {loadState === "ready" && staff.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No hub staff yet. Use “Add staff” to create the first login.</div>}
@@ -4286,10 +6038,15 @@ function HubStaffSection({ hubs, onSessionExpired }) {
               {staff.map((m) => (
                 <tr key={m.id} style={{ opacity: m.isDisabled ? 0.6 : 1 }}>
                   <Td>
-                    <div style={{ fontWeight: 700 }}>{m.name}</div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>{m.email}</div>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span aria-hidden="true" style={{ width: 34, height: 34, borderRadius: 10, background: m.isDisabled ? "#EEEFF1" : C.navy, color: m.isDisabled ? C.muted : C.signal, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{String(m.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")}</span>
+                      <span>
+                        <div style={{ fontWeight: 700 }}>{m.name}</div>
+                        <div style={{ fontSize: 11.5, color: C.muted }}>{m.email}</div>
+                      </span>
+                    </span>
                   </Td>
-                  <Td>{m.hubName || "—"}</Td>
+                  <Td>{m.hubName ? <span style={{ ...body, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 999, padding: "3px 10px" }}><Warehouse size={12} color={C.navy} />{m.hubName}</span> : "—"}</Td>
                   <Td>
                     <span style={{ ...body, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: m.isDisabled ? C.redBg : C.gaugeBg, color: m.isDisabled ? C.red : C.gauge }}>
                       {m.isDisabled ? "Disabled" : "Active"}
@@ -4335,7 +6092,7 @@ function HubStaffSection({ hubs, onSessionExpired }) {
       />
 
       {reveal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div role="dialog" aria-label="Temporary password" style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 380, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
             <p style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 6px" }}>
               {reveal.reason === "created" ? "Account created" : "Password reset"} — {reveal.member.name}
@@ -4354,7 +6111,7 @@ function HubStaffSection({ hubs, onSessionExpired }) {
             {copyState === "failed" && <p style={{ ...body, fontSize: 11.5, color: C.red, margin: "0 0 10px" }}>Couldn&apos;t copy automatically — select the password above and copy it by hand.</p>}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={copyPassword} style={smallBtn}>{copyState === "copied" ? "Copied ✓" : "Copy password"}</button>
-              <button onClick={() => setReveal(null)} style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "7px 14px", borderRadius: 8, border: "none", background: C.ink, color: "#fff", cursor: "pointer" }}>Done</button>
+              <button onClick={() => setReveal(null)} style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "7px 14px", borderRadius: 8, border: "none", background: C.navy, color: "#fff", cursor: "pointer" }}>Done</button>
             </div>
           </div>
         </div>
@@ -4375,6 +6132,7 @@ function HubsPage({ onSessionExpired }) {
   const [newRegion, setNewRegion] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingHubDelete, setPendingHubDelete] = useState(null);      // patch-hubs-redesign: the hub whose Delete asks "Delete X?"
 
   const load = () => {
     setLoadState("loading");
@@ -4418,32 +6176,59 @@ function HubsPage({ onSessionExpired }) {
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
         {tab === "workload" && <HubWorkloadSection onSessionExpired={onSessionExpired} />}
         {tab === "performance" && <HubPerformanceSection onSessionExpired={onSessionExpired} />}
-        {tab === "hubs" && <Card>
-          <div style={{ padding: 18 }}>
-            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
-
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Hub name (e.g. Rotterdam Hub)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newRegion} onChange={(e) => setNewRegion(e.target.value)} placeholder="Region (e.g. Europe)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Address (optional)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-                <Check size={13} /> Add hub
+        {tab === "hubs" && <div data-testid="hubs-list">
+          {/* patch-hubs-redesign: the add form in a gold card, the hubs as cards */}
+          {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>{errorMessage}</div>}
+          <div style={{ border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 14, padding: 14, marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <span style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink }}>Add a hub</span>
+              <span style={{ ...body, fontSize: 11.5, color: C.muted }}>a name and a region; the address is optional</span>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+              {[["Hub name", newName, setNewName, "Hub name (e.g. Rotterdam Hub)", "1 1 200px"], ["Region", newRegion, setNewRegion, "Region (e.g. Europe)", "1 1 160px"], ["Address", newAddress, setNewAddress, "Address (optional)", "2 1 240px"]].map(([label, value, set, ph, flex]) => (
+                <label key={label} style={{ display: "block", flex, minWidth: 0 }}>
+                  <span style={{ ...body, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 4 }}>{label}</span>
+                  <input value={value} onChange={(e) => set(e.target.value)} placeholder={ph} style={{ ...body, width: "100%", boxSizing: "border-box", height: 40, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", fontSize: 13, background: "#fff" }} />
+                </label>
+              ))}
+              <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${isSubmitting ? "#D1D5DB" : C.signalDark}`, background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: isSubmitting ? "default" : "pointer" }}>
+                <Plus size={15} /> Add hub
               </button>
             </div>
-
-            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
-            {loadState === "ready" && hubs.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No hubs yet.</div>}
-            {loadState === "ready" && hubs.map((h, i) => (
-              <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < hubs.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                <div>
-                  <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{h.name}</div>
-                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{h.region}{h.address ? ` · ${h.address}` : ""}</div>
-                </div>
-                <button onClick={() => handleDelete(h.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
-              </div>
-            ))}
           </div>
-        </Card>}
+
+          <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>All hubs</div>
+          <div style={{ ...body, fontSize: 12.5, color: C.muted, margin: "2px 0 14px" }}>{hubs.length} {hubs.length === 1 ? "hub" : "hubs"} · a hub that has staff or shipments can't be deleted</div>
+          {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+          {loadState === "ready" && hubs.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff" }}>No hubs yet.</div>}
+          {loadState === "ready" && hubs.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+              {hubs.map((h) => (
+                <div key={h.id} data-testid="hub-card" style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 14px 12px", flex: 1 }}>
+                    <span style={{ width: 42, height: 42, borderRadius: 12, background: C.navy, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Warehouse size={19} color={C.signal} /></span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{h.name}</div>
+                      <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.torque, marginTop: 2 }}>{h.region}</div>
+                      <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.45 }}>{h.address || "No address yet"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+                    {pendingHubDelete === h.id ? (
+                      <>
+                        <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.redInk }}>Delete {h.name}?</span>
+                        <button onClick={() => { setPendingHubDelete(null); handleDelete(h.id); }} style={{ ...body, marginLeft: "auto", fontSize: 12, fontWeight: 800, color: "#fff", background: C.red, border: "none", borderRadius: 7, padding: "5px 10px", cursor: "pointer" }}>Delete</button>
+                        <button onClick={() => setPendingHubDelete(null)} style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>Keep</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setPendingHubDelete(h.id)} aria-label={`Delete ${h.name}`} style={{ ...body, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: C.red, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 7, padding: "4px 10px", cursor: "pointer" }}><X size={13} color={C.red} /> Delete</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>}
         {tab === "staff" && <HubStaffSection hubs={hubs} onSessionExpired={onSessionExpired} />}
       </div>
     </div>
@@ -4484,6 +6269,8 @@ function PricingPage({ onSessionExpired }) {
   const [previewLength, setPreviewLength] = useState("");
   const [previewWidth, setPreviewWidth] = useState("");
   const [previewHeight, setPreviewHeight] = useState("");
+  const [previewCountry, setPreviewCountry] = useState("");      // the buyer's country for Shipping from Delivery Rules (patch-delivery-prices)
+  const [previewFrom, setPreviewFrom] = useState("China");
   const [previewResult, setPreviewResult] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -4501,14 +6288,14 @@ function PricingPage({ onSessionExpired }) {
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddFee = async () => {
-    if (!newName.trim() || !newValue) {
+    if (!newName.trim() || (!newValue && newType !== "shipping_rules")) {
       setErrorMessage("Name and value are required.");
       return;
     }
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
-      await createFeeComponent(getStoredToken(), newName.trim(), newType, parseFloat(newValue), newSortOrder ? parseInt(newSortOrder, 10) : 0);
+      await createFeeComponent(getStoredToken(), newName.trim(), newType, newType === "shipping_rules" ? 0 : parseFloat(newValue), newSortOrder ? parseInt(newSortOrder, 10) : 0);
       setNewName(""); setNewValue(""); setNewSortOrder("");
       load();
     } catch (err) {
@@ -4610,6 +6397,8 @@ function PricingPage({ onSessionExpired }) {
         lengthCm: previewLength ? parseFloat(previewLength) : undefined,
         widthCm: previewWidth ? parseFloat(previewWidth) : undefined,
         heightCm: previewHeight ? parseFloat(previewHeight) : undefined,
+        destinationIsoCode: previewCountry.trim() ? previewCountry.trim().toUpperCase() : undefined,
+        warehouseCountry: previewFrom.trim() || undefined,
       });
       setPreviewResult(result);
     } catch (err) {
@@ -4620,12 +6409,29 @@ function PricingPage({ onSessionExpired }) {
     }
   };
 
-  const typeLabel = { percentage: "%", flat: "flat RMB", shipping_volumetric: "RMB/chargeable kg" };
+  const typeLabel = { percentage: "%", flat: "flat RMB", shipping_volumetric: "RMB/chargeable kg", shipping_rules: "from Delivery Rules" };
 
   return (
     <div>
       <TopBar title="Pricing" subtitle="Real equation: supplier RMB cost → buyer USD price. Changes here apply live to every listing." />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* patch-financial-redesign: how a price is made, in one line; each part opens its section */}
+        {loadState === "ready" && fxRate && (
+          <div data-testid="pricing-equation" style={{ display: "flex", alignItems: "stretch", gap: 0, flexWrap: "wrap", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+            {[
+              ["Supplier's price", "¥ in RMB", null, null],
+              ["+ Fees", `${fees.filter((f) => f.isActive).length} active, in order`, "fees", null],
+              ["× Exchange rate", `1 CNY = ${fxRate.rate} USD · ${fxRateMode === "automatic" ? "automatic" : "set by hand"}`, "fx", null],
+              ["− Discounts", "rules, loyalty tiers", "discounts", null],
+              ["= Buyer pays", "in US dollars", "preview", "gold"],
+            ].map(([title, sub, target, tone], i, all) => (
+              <button key={title} type="button" onClick={() => target && setSection(target)} style={{ ...body, flex: "1 1 160px", textAlign: "left", border: "none", borderLeft: i ? `1px solid ${C.line}` : "none", background: tone === "gold" ? C.goldTint : section === target ? "#F3F6FA" : "#fff", padding: "12px 16px", cursor: target ? "pointer" : "default", boxShadow: section === target ? `inset 0 -3px 0 ${C.signal}` : "none" }}>
+                <div style={{ ...disp, fontSize: 14, fontWeight: 800, color: C.ink }}>{title}</div>
+                <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{sub}</div>
+              </button>
+            ))}
+          </div>
+        )}
         <div><FilterButtons label="Pricing sections" items={PRICING_SECTIONS} activeId={section} onSelect={setSection} /></div>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
 
@@ -4633,6 +6439,17 @@ function PricingPage({ onSessionExpired }) {
           <div style={{ padding: 18 }}>
             {loadState === "ready" && (
               <>
+                {/* patch-financial-redesign: the rate, large */}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                  <div style={{ flex: "1 1 220px", borderRadius: 12, padding: "14px 16px", background: `linear-gradient(120deg, ${C.navyDeep}, ${C.navy} 60%, ${C.navySoft} 140%)` }}>
+                    <div style={{ ...body, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.onNavyMuted }}>1 Chinese yuan</div>
+                    <div style={{ ...mono, fontSize: 26, fontWeight: 800, color: C.signal }}>= ${Number(fxRate.rate).toFixed(4)}</div>
+                  </div>
+                  <div style={{ flex: "1 1 220px", borderRadius: 12, padding: "14px 16px", background: C.surfaceHigh, border: `1px solid ${C.line}` }}>
+                    <div style={{ ...body, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted }}>1 US dollar</div>
+                    <div style={{ ...mono, fontSize: 26, fontWeight: 800, color: C.ink }}>= ¥{fxRate.rate ? (1 / Number(fxRate.rate)).toFixed(4) : "—"}</div>
+                  </div>
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <Badge label={fxRate.source === "live" ? "Live" : "Manual"} color={fxRate.source === "live" ? C.gauge : C.amber} bg={fxRate.source === "live" ? C.gaugeBg : C.amberBg} />
                   <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Last updated {new Date(fxRate.updatedAt).toLocaleString()}</span>
@@ -4668,12 +6485,13 @@ function PricingPage({ onSessionExpired }) {
 
         {section === "fees" && (<Card title="Fee components (applied in order, top to bottom)">
           <div style={{ padding: 18 }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center", border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 12, padding: 12 }}>
+              <span style={{ ...disp, width: "100%", fontSize: 13.5, fontWeight: 800, color: C.ink }}>Add a fee <span style={{ ...body, fontSize: 11.5, fontWeight: 500, color: C.muted }}>· fees are added in their order, top to bottom</span></span>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fee name (e.g. Insurance)" style={{ ...body, flex: 2, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...body, flex: 1, minWidth: 130, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}>
                 <option value="percentage">Percentage</option>
                 <option value="flat">Flat (RMB)</option>
-                <option value="shipping_volumetric">Shipping (RMB/kg)</option>
+                <option value="shipping_rules">Shipping from Delivery Rules</option>
               </select>
               <input type="number" step="0.01" value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="Value" style={{ ...body, flex: 1, minWidth: 90, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input type="number" value={newSortOrder} onChange={(e) => setNewSortOrder(e.target.value)} placeholder="Order" style={{ ...body, flex: 1, minWidth: 80, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
@@ -4685,7 +6503,7 @@ function PricingPage({ onSessionExpired }) {
             {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
             {loadState === "ready" && fees.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No fee components yet.</div>}
             {loadState === "ready" && fees.map((f, i) => (
-              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: i < fees.length - 1 ? `1px solid ${C.line}` : "none", opacity: f.isActive ? 1 : 0.45 }}>
+              <div key={f.id} data-testid="fee-row" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", marginBottom: 8, border: `1px solid ${f.isActive ? C.line : C.lineStrong}`, borderLeft: `4px solid ${f.isActive ? C.signal : C.lineStrong}`, borderRadius: 12, background: f.isActive ? "#fff" : C.surfaceHigh, opacity: f.isActive ? 1 : 0.6 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   <button
                     onClick={() => handleMoveFee(f.id, "up")}
@@ -4704,16 +6522,20 @@ function PricingPage({ onSessionExpired }) {
                     <ChevronDown size={14} color={C.ink} />
                   </button>
                 </div>
-                <div style={{ width: 30, ...body, fontSize: 11.5, color: C.muted, textAlign: "center" }}>{f.sortOrder}</div>
+                <div title={`Order ${f.sortOrder}`} style={{ width: 28, height: 28, borderRadius: "50%", background: C.navy, color: C.signal, ...body, fontSize: 12, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{f.name}</div>
                   <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 2 }}>{f.type.replace(/_/g, " ")}</div>
                 </div>
+                {f.type === "shipping_rules" ? (
+                  <span style={{ ...body, width: 170, fontSize: 11.5, color: C.muted }}>per product and buyer's country (Delivery Rules)</span>
+                ) : (
                 <input
                   type="number" step="0.01" defaultValue={f.value}
                   onBlur={(e) => { if (parseFloat(e.target.value) !== f.value) handleValueChange(f, e.target.value); }}
                   style={{ ...body, width: 90, border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 9px", fontSize: 12.5 }}
                 />
+                )}
                 <span style={{ ...body, fontSize: 11.5, color: C.muted, width: 110 }}>{typeLabel[f.type]}</span>
                 <button onClick={() => handleToggleActive(f)} style={{ ...body, padding: "6px 12px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer", color: f.isActive ? C.gauge : C.muted }}>
                   {f.isActive ? "Active" : "Inactive"}
@@ -4735,16 +6557,18 @@ function PricingPage({ onSessionExpired }) {
               <input type="number" step="0.1" value={previewLength} onChange={(e) => setPreviewLength(e.target.value)} placeholder="Length (cm)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input type="number" step="0.1" value={previewWidth} onChange={(e) => setPreviewWidth(e.target.value)} placeholder="Width (cm)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input type="number" step="0.1" value={previewHeight} onChange={(e) => setPreviewHeight(e.target.value)} placeholder="Height (cm)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={previewCountry} maxLength={2} onChange={(e) => setPreviewCountry(e.target.value)} placeholder="Buyer country (JO, SA…)" title="Two-letter country code; empty = the fallback country" style={{ ...body, flex: 1, minWidth: 120, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={previewFrom} onChange={(e) => setPreviewFrom(e.target.value)} placeholder="Ships from" title="The supplier's warehouse country, as in the delivery rules" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <button disabled={isPreviewing} onClick={handlePreview} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isPreviewing ? "#D1D5DB" : C.torque, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isPreviewing ? "default" : "pointer" }}>
                 {isPreviewing ? "Calculating…" : "Calculate"}
               </button>
             </div>
             {previewError && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{previewError}</div>}
             {previewResult && (
-              <div style={{ background: C.canvas, borderRadius: 10, padding: 14 }}>
+              <div data-testid="pricing-receipt" style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", maxWidth: 640 }}>
                 {previewResult.breakdown.map((step, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < previewResult.breakdown.length - 1 ? `1px solid ${C.line}` : "none", ...body, fontSize: 12.5 }}>
-                    <span style={{ color: i === 0 ? C.ink : C.muted, fontWeight: i === 0 ? 700 : 400 }}>{step.step}</span>
+                    <span style={{ color: i === 0 ? C.ink : C.muted, fontWeight: i === 0 ? 700 : 400 }}>{step.step}{step.shipping ? ` — ¥${step.shipping.rateCnyPerKg}/kg × ${step.shipping.chargeableKg} kg to ${step.shipping.destinationIsoCode}${step.shipping.countryPrice ? " (country price)" : step.shipping.matched ? ` (rule #${step.shipping.ruleIndex + 1})` : " (general price)"}${step.shipping.minimumApplied ? ", minimum" : ""}` : ""}</span>
                     <span style={{ color: C.ink }}>¥{step.runningTotalCny.toFixed(2)}</span>
                   </div>
                 ))}
@@ -4760,7 +6584,7 @@ function PricingPage({ onSessionExpired }) {
           </div>
         </Card>)}
       </div>
-      {section === "discounts" && <div style={{ padding: "0 24px 24px", marginTop: -24 }}><DiscountRulesSection onSessionExpired={onSessionExpired} /></div>}
+      {section === "discounts" && <div style={{ padding: "0 24px 24px", marginTop: -24 }}><DiscountsWithRules onSessionExpired={onSessionExpired} /></div>}
       {section === "loyalty" && <div style={{ padding: "0 24px 24px", marginTop: -24 }}><LoyaltyTiersSection onSessionExpired={onSessionExpired} /></div>}
     </div>
   );
@@ -4952,6 +6776,170 @@ function LoyaltyTiersSection({ onSessionExpired }) {
   );
 }
 
+// Pricing > Discount rules > ⚙ Rules: "How a discount price is held" (confirmed with the person via mockup, migration 143).
+// The same step flow as Orders > Rules: settings inside each numbered step, a Yes / No for telling the buyer at every step,
+// "In plain words" on the right, and the automatic steps of late underneath.
+function DiscountsWithRules({ onSessionExpired }) {
+  const [tab, setTab] = useState("rules-list");
+  const pill = (id, label) => (
+    <button type="button" aria-pressed={tab === id} onClick={() => setTab(id)} style={{ ...body, fontSize: 12.5, fontWeight: 700, borderRadius: 999, padding: "7px 13px", cursor: "pointer", color: tab === id ? "#fff" : C.ink, background: tab === id ? C.navy : "#fff", border: `1px solid ${tab === id ? C.navy : C.line}` }}>{label}</button>
+  );
+  return (
+    <div>
+      <div data-leap-segments="" style={{ display: "flex", gap: 6, marginTop: 20, marginBottom: 4 }} data-testid="discount-tabs">{pill("rules-list", "Discount rules")}{pill("hold", "⚙ Rules")}</div>
+      {tab === "rules-list" ? <DiscountRulesSection onSessionExpired={onSessionExpired} /> : <DiscountHoldRulesCard onSessionExpired={onSessionExpired} />}
+    </div>
+  );
+}
+
+const HOLD_EVENT_LABEL = {
+  hold_started: "Price hold started", hold_limit: "No new hold (daily limit)", new_line: "Added at a new price (new line)", joined_hold: "Joined the held line",
+  lowered: "Price dropped during a hold", hold_ended: "Hold ended without an order", discount_ended: "Discount ended in a basket", reminded: "Buyer reminded",
+  order_saved: "Order kept the held prices", order_mismatch: "Price check failed",
+};
+
+function DiscountHoldRulesCard({ onSessionExpired }) {
+  const [rules, setRules] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [state, setState] = useState(null);
+  const [events, setEvents] = useState([]);
+  const loadEvents = () => fetchDiscountHoldEvents(getStoredToken(), 30).then(setEvents).catch(() => setEvents([]));
+  useEffect(() => {
+    fetchDiscountHoldRules(getStoredToken()).then((r) => { setRules(r); setDraft(r); }).catch((err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setState(err.message); });
+    loadEvents();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!draft) return state ? <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, margin: "12px 0" }}>{state}</div> : <Card style={{ marginTop: 14 }}><div style={{ padding: 24, ...body, fontSize: 13, color: C.muted }}>Loading the rules…</div></Card>;
+  const keys = ["tellDiscountEnd", "remindBefore", "remindHours", "holdMinutes", "tellHoldStart", "addWhileOn", "tellNewLine", "onDrop", "tellDrop", "tellHoldEnd", "maxHoldsPerDay", "tellOrderSaving", "notifyMode", "summaryHour"];
+  const numeric = ["remindHours", "holdMinutes", "maxHoldsPerDay", "summaryHour"];
+  const changed = keys.some((k) => String(draft[k]) !== String(rules[k]));
+  const set = (k, v) => { setDraft((d) => ({ ...d, [k]: v })); setState(null); };
+  const chip = (k, v, label, red) => (
+    <button key={String(v)} type="button" onClick={() => set(k, v)} style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 11px", cursor: "pointer", color: draft[k] === v ? "#fff" : C.ink, background: draft[k] === v ? (red ? C.red : C.navy) : "#fff", border: `1px solid ${draft[k] === v ? (red ? C.red : C.navy) : C.line}` }}>{label}</button>
+  );
+  const num = (k, min, max) => <input type="number" min={min} max={max} value={draft[k]} onChange={(e) => set(k, e.target.value === "" ? "" : Number(e.target.value))} style={{ ...body, width: 60, fontSize: 12.5, fontWeight: 800, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", textAlign: "center" }} />;
+  const hint = (t) => <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{t}</span>;
+  const ctl = (label, content) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 0", borderTop: `1px dashed ${C.line}`, ...body, fontSize: 12.5 }}>
+      <b style={{ minWidth: 240 }}>{label}</b>{content}
+    </div>
+  );
+  const fixed = (t) => <span style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 11px", color: "#fff", background: C.gauge }}>{t}</span>;
+  // the buyer's Yes / No at each step (English and Arabic, in the app and on the website)
+  const tell = (k, what) => ctl(`Tell the buyer${what ? ` ${what}` : ""}`, <>{chip(k, true, "Yes")}{chip(k, false, "No")} {hint("English and Arabic, in the app and the website's notifications")}</>);
+  const branch = (tone, title, content) => {
+    const t = { g: ["#9ed9b7", "#f3fbf6"], r: ["#f2b8b2", "#fff6f5"], y: ["#f6d58c", "#fffaf0"] }[tone];
+    return <div style={{ border: `1.5px solid ${t[0]}`, background: t[1], borderRadius: 10, padding: "8px 10px", ...body, fontSize: 12 }}><b style={{ display: "block", fontSize: 12.5, marginBottom: 4 }}>{title}</b>{content}</div>;
+  };
+  const tagGo = (t) => <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 800, color: C.ink, background: C.signal, borderRadius: 6, padding: "1px 7px" }}>{t}</span>;
+  const tagEnd = (t) => <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 800, color: "#fff", background: C.gauge, borderRadius: 6, padding: "1px 7px" }}>{t}</span>;
+  const step = (n, title, desc, children, last) => (
+    <div style={{ display: "grid", gridTemplateColumns: "44px 1fr", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.navy, color: C.signal, fontWeight: 900, display: "grid", placeItems: "center", ...body }}>{n}</div>
+        {!last && <div style={{ width: 3, flex: 1, background: C.line, margin: "4px 0" }} />}
+      </div>
+      <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12 }}>
+        <div style={{ ...body, fontSize: 14.5, fontWeight: 800 }}>{title}</div>
+        <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 8 }}>{desc}</div>
+        {children}
+      </div>
+    </div>
+  );
+  const hm = Math.min(180, Math.max(15, Number(draft.holdMinutes) || 60));
+  const rh = Math.min(24, Math.max(1, Number(draft.remindHours) || 3));
+  const yes = (k) => (draft[k] ? " (buyer told)" : "");
+  const plain = [
+    <>In the basket the price is <b>live</b>; when a discount ends it goes back to normal{yes("tellDiscountEnd")}.</>,
+    ...(draft.remindBefore ? [<>The buyer is reminded <b>{rh} h before</b> a discount in the basket ends.</>] : []),
+    <>Opening checkout <b>holds every price for {hm} min</b>, discount included, even if the discount ends meanwhile{yes("tellHoldStart")}.</>,
+    <>The same part added after the discount ended: <b>new line at the live price</b>{yes("tellNewLine")}. While it is still on: {draft.addWhileOn === "join" ? "joins the held line" : "a new line at the live price"}.</>,
+    <>If the price drops, <b>every line of that part</b> takes the lower price{draft.onDrop === "keep" ? " (a held part alone keeps its held price)" : ""}{yes("tellDrop")}.</>,
+    <>Hold ends without an order: back to the live price{yes("tellHoldEnd")}; {Number(draft.maxHoldsPerDay) < 0 ? "a new hold each time checkout is opened" : Number(draft.maxHoldsPerDay) === 0 ? <b>no new hold that day</b> : <>up to <b>{draft.maxHoldsPerDay}</b> new hold(s) a day</>}.</>,
+    <>The order is saved at exactly the checkout prices{draft.tellOrderSaving ? "; the buyer is told what the hold saved" : ""}.</>,
+    draft.notifyMode === "each" ? <>You are told at every step.</> : draft.notifyMode === "daily" ? <>You get one summary a day at <b>{String(draft.summaryHour).padStart(2, "0")}:00</b>; failures at once.</> : <>You are told only when something fails.</>,
+  ];
+  const save = async () => {
+    setState("Saving…");
+    try {
+      const payload = Object.fromEntries(keys.map((k) => [k, numeric.includes(k) ? Number(draft[k]) : draft[k]]));
+      payload.summaryTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Riyadh";
+      const r = await saveDiscountHoldRules(getStoredToken(), payload); setRules(r); setDraft(r); setState("Saved.");
+    } catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setState(err.message); }
+  };
+  return (
+    <div data-testid="discount-hold-rules" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 18, alignItems: "start", marginTop: 14 }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ ...disp, fontSize: 17, fontWeight: 800 }}>How a discount price is held</span>
+          <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.gauge, background: "#e3f6ea", borderRadius: 999, padding: "3px 10px" }}>● Fully automatic</span>
+        </div>
+        {step(1, "In the basket (checkout not opened)", "Nothing is held. The basket shows the live price; when the discount ends, the price goes back to normal.", <>
+          {ctl("Price in the basket", fixed("Live price (no hold)"))}
+          {tell("tellDiscountEnd", "when the discount ends")}
+          {ctl("Also remind the buyer before it ends", <>{chip("remindBefore", false, "No")}{chip("remindBefore", true, "Yes,")}{draft.remindBefore && <>{num("remindHours", 1, 24)} hours before {hint("(1 to 24)")}</>}</>)}
+        </>)}
+        {step(2, "The buyer opens checkout: the price is held", "Every line is held at the price it has now, discount included, even if the discount ends during the hold.", <>
+          {ctl("Hold the price for", <>{num("holdMinutes", 15, 180)} minutes {hint("(15 to 180)")}</>)}
+          {tell("tellHoldStart", "the prices are held")}
+          <div style={{ display: "flex", margin: "8px 0 2px", ...body, fontSize: 10.5, color: C.muted }}>
+            <div style={{ flex: 1, textAlign: "center", borderTop: `3px solid ${C.signal}`, paddingTop: 4 }}>0 min<br />checkout opened</div>
+            <div style={{ flex: 1, textAlign: "center", borderTop: `3px solid ${C.signal}`, paddingTop: 4 }}>{Math.round(hm / 2)} min<br />still held</div>
+            <div style={{ flex: 1, textAlign: "center", borderTop: `3px solid ${C.red}`, paddingTop: 4, color: C.red, fontWeight: 800 }}>{hm} min<br />hold ends</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
+            {branch("g", "✓ Orders during the hold", <>Pays the held price, or less (step 4).<br />{tagEnd("Normal order ✓")}</>)}
+            {branch("r", "⏱ The discount ends during the hold", <>The held lines keep the discount price until the hold ends.</>)}
+            {branch("y", "… Hold ends without an order", tagGo("Go to step 5 ↓"))}
+          </div>
+        </>)}
+        {step(3, "The same part is added again", "The held line never changes. The new units get their own line, held until the same hold ends (the timer does not restart).", <>
+          {ctl("After the discount has ended", <>{fixed("New line at the live price")} {hint("never gets the old discount")}</>)}
+          {ctl("While the discount is still on", [chip("addWhileOn", "join", "Join the held line (same price)"), chip("addWhileOn", "new", "New line at the live price")])}
+          {tell("tellNewLine", "the part was added at today's price")}
+        </>)}
+        {step(4, "The price drops below the held price", "The buyer never pays more than the lowest price shown for that part.", <>
+          {ctl("Same part on more than one line", fixed("All lines take the new lower price"))}
+          {ctl("A held part whose live price drops", [chip("onDrop", "lower", "Lower it to the new price"), chip("onDrop", "keep", "Keep the held price")])}
+          {tell("tellDrop", "the price dropped")}
+        </>)}
+        {step(5, "The hold ends without an order", "Every line goes back to the live price; two lines of the same part join back into one.", <>
+          {tell("tellHoldEnd", "the hold ended (only when a price went up)")}
+          {ctl("A new hold when checkout is opened again", <>{[[0, "Never"], [1, "1"], [2, "2"], [3, "3"], [-1, "No limit"]].map(([v, l]) => chip("maxHoldsPerDay", v, l))} {hint("time(s) a day, always at the live price")}</>)}
+        </>)}
+        {step(6, "The order is placed", "The order is saved at exactly the prices on the checkout page.", <>
+          {ctl("Price saved on the order", fixed("The checkout price of each line"))}
+          {ctl("Promo code or loyalty discount", hint("On top of these prices; they do not stack with each other, same as before."))}
+          {tell("tellOrderSaving", "what the hold saved (\"You saved $10 on order …\")")}
+        </>)}
+        {step(7, "What you are told", "Buyers are told as set in each step. A failure always comes to you at once.", <>
+          {ctl("Tell me", [chip("notifyMode", "each", "Every time"), chip("notifyMode", "daily", "Once a day (summary)"), chip("notifyMode", "failures", "Only when something fails")])}
+          {draft.notifyMode === "daily" && ctl("Daily summary at", <>{num("summaryHour", 0, 23)}:00 {hint("(your time)")}</>)}
+        </>, true)}
+        <Card title="What happened lately" style={{ marginTop: 4 }}>
+          <div data-testid="discount-hold-events" style={{ padding: "4px 14px 12px" }}>
+            {events.length === 0 ? <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: "10px 0" }}>Nothing yet. Each automatic step is listed here.</div> : events.map((e) => (
+              <div key={e.id} style={{ display: "flex", gap: 10, padding: "7px 0", borderTop: `1px solid ${C.line}`, ...body, fontSize: 12.5 }}>
+                <span style={{ color: C.muted, minWidth: 118 }}>{new Date(e.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                <b style={{ minWidth: 200 }}>{HOLD_EVENT_LABEL[e.kind] || e.kind}</b>
+                <span style={{ flex: 1, color: C.muted }}>{[e.productName, e.orderId, e.detail].filter(Boolean).join(" · ")}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+      <div style={{ position: "sticky", top: 12, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 14 }}>
+        <div style={{ ...body, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>In plain words</div>
+        <ol style={{ paddingLeft: 18, margin: 0, ...body, fontSize: 12.5, lineHeight: 1.6 }}>{plain.map((p, i) => <li key={i}>{p}</li>)}</ol>
+        <div style={{ marginTop: 10, ...body, fontSize: 12.5, background: "#f4f6f9", borderRadius: 8, padding: "8px 10px" }}>
+          <b>Longest a buyer keeps a discount after it ends:</b> {hm} min {hint("(only when checkout was opened before it ended)")}
+        </div>
+        <button type="button" data-testid="discount-hold-save" disabled={!changed} onClick={save} style={{ display: "block", width: "100%", marginTop: 12, ...body, fontSize: 13, fontWeight: 800, color: "#fff", background: changed ? C.signal : "#D1D5DB", border: "none", borderRadius: 8, padding: 10, cursor: changed ? "pointer" : "default" }}>Save rules</button>
+        <div style={{ marginTop: 6 }}>{hint(state || (rules.updatedAt ? `Last saved ${new Date(rules.updatedAt).toLocaleString()}` : ""))}</div>
+      </div>
+    </div>
+  );
+}
+
 function DiscountRulesSection({ onSessionExpired }) {
   const [rules, setRules] = useState([]);
   const [brands, setBrands] = useState([]);
@@ -4964,6 +6952,13 @@ function DiscountRulesSection({ onSessionExpired }) {
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
   const [discountPercentage, setDiscountPercentage] = useState("");
+  // The rule's time window and countdown choice (migration 133, confirmed with the person via mockup, option C): From / To in this
+  // computer's local time ("" = straight away / no end), and when buyers see the countdown on the product page.
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+  const [countdown, setCountdown] = useState("last3");
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => { const id = setInterval(() => setNowTick(Date.now()), 60000); return () => clearInterval(id); }, []);
   const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -4997,12 +6992,14 @@ function DiscountRulesSection({ onSessionExpired }) {
 
   const resetForm = () => {
     setSelectedBrandId(""); setSelectedModelId(""); setYearFrom(""); setYearTo(""); setDiscountPercentage("");
+    setStartsAt(""); setEndsAt(""); setCountdown("last3");
     setEditingId(null); setFormError(null);
   };
 
   const handleSubmit = async () => {
     if (!selectedBrandId) { setFormError("Select a brand -- every rule needs at least one."); return; }
     if (!discountPercentage) { setFormError("Enter a discount percentage."); return; }
+    if (startsAt && endsAt && new Date(startsAt) >= new Date(endsAt)) { setFormError("The end must be after the start."); return; }
     setIsSubmitting(true);
     setFormError(null);
     const payload = {
@@ -5011,6 +7008,9 @@ function DiscountRulesSection({ onSessionExpired }) {
       yearFrom: yearFrom ? parseInt(yearFrom, 10) : null,
       yearTo: yearTo ? parseInt(yearTo, 10) : null,
       discountPercentage: parseFloat(discountPercentage),
+      startsAt: startsAt ? new Date(startsAt).toISOString() : null,
+      endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+      countdown,
     };
     try {
       if (editingId) {
@@ -5034,6 +7034,7 @@ function DiscountRulesSection({ onSessionExpired }) {
     setYearFrom(rule.yearFrom ? String(rule.yearFrom) : "");
     setYearTo(rule.yearTo ? String(rule.yearTo) : "");
     setDiscountPercentage(String(rule.discountPercentage));
+    setStartsAt(toLocalInput(rule.startsAt)); setEndsAt(toLocalInput(rule.endsAt)); setCountdown(rule.countdown || "last3");
     setFormError(null);
   };
 
@@ -5083,6 +7084,24 @@ function DiscountRulesSection({ onSessionExpired }) {
                 <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Discount %</div>
                 <input type="number" style={{ ...inputStyle, width: 80 }} value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value)} placeholder="e.g. 20" />
               </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>From (empty = now)</div>
+                <input type="datetime-local" style={inputStyle} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>To (empty = no end)</div>
+                <input type="datetime-local" style={inputStyle} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Show countdown</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[["last3", "Last 3 days"], ["always", "Always"], ["never", "Never"]].map(([v, label]) => (
+                    <button key={v} type="button" onClick={() => setCountdown(v)} disabled={!endsAt} title={endsAt ? "" : "Set an end date first"}
+                      style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "6px 12px", cursor: endsAt ? "pointer" : "default", opacity: endsAt ? 1 : 0.5,
+                        color: countdown === v ? "#fff" : C.ink, background: countdown === v ? C.navy : "#fff", border: `1px solid ${countdown === v ? C.navy : C.line}` }}>{label}</button>
+                  ))}
+                </div>
+              </div>
               <button onClick={handleSubmit} disabled={isSubmitting} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: isSubmitting ? "#D1D5DB" : C.signal, border: "none", borderRadius: 8, padding: "8px 16px", cursor: isSubmitting ? "default" : "pointer" }}>
                 {isSubmitting ? "Saving…" : editingId ? "Update rule" : "Add rule"}
               </button>
@@ -5101,12 +7120,16 @@ function DiscountRulesSection({ onSessionExpired }) {
                   <Th>Model</Th>
                   <Th>Years</Th>
                   <Th>Discount</Th>
+                  <Th>From</Th>
+                  <Th>To</Th>
+                  <Th>Countdown</Th>
+                  <Th>Status</Th>
                   <Th></Th>
                 </tr>
               </thead>
               <tbody>
                 {rules.length === 0 && (
-                  <tr><td colSpan={5} style={{ ...body, fontSize: 13, color: C.muted, padding: "13px 16px" }}>No discount rules yet.</td></tr>
+                  <tr><td colSpan={9} style={{ ...body, fontSize: 13, color: C.muted, padding: "13px 16px" }}>No discount rules yet.</td></tr>
                 )}
                 {rules.map((rule) => (
                   <tr key={rule.id}>
@@ -5114,6 +7137,10 @@ function DiscountRulesSection({ onSessionExpired }) {
                     <Td>{rule.modelName || "Any"}</Td>
                     <Td>{rule.yearFrom || rule.yearTo ? `${rule.yearFrom || "…"}–${rule.yearTo || "…"}` : "Any"}</Td>
                     <Td>{rule.discountPercentage}%</Td>
+                    <Td>{rule.startsAt ? formatRuleDate(rule.startsAt) : "Now"}</Td>
+                    <Td>{rule.endsAt ? formatRuleDate(rule.endsAt) : "No end"}</Td>
+                    <Td>{!rule.endsAt ? "—" : rule.countdown === "always" ? "Always" : rule.countdown === "never" ? "Never" : "Last 3 days"}</Td>
+                    <Td><RuleStatus rule={rule} now={nowTick} /></Td>
                     <Td>
                       <button onClick={() => handleEdit(rule)} style={{ background: "none", border: "none", cursor: "pointer", color: C.torque, fontSize: 12.5, marginRight: 8 }}>Edit</button>
                       <button onClick={() => handleDelete(rule.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red, fontSize: 12.5 }}>Delete</button>
@@ -5127,6 +7154,31 @@ function DiscountRulesSection({ onSessionExpired }) {
       </div>
     </Card>
   );
+}
+
+// Discount rule dates (migration 133). The admin types local time in a datetime-local box; the server keeps the exact moment.
+function toLocalInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso); if (Number.isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function formatRuleDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function timeLeft(ms) {
+  const m = Math.max(0, Math.floor(ms / 60000)); const d = Math.floor(m / 1440); const h = Math.floor((m % 1440) / 60);
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m % 60}m` : `${m % 60}m`;
+}
+// Active (with the time left when it has an end), Starts … (not begun yet) or Ended. Worked out from the dates, so it moves on by itself.
+function RuleStatus({ rule, now }) {
+  const start = rule.startsAt ? new Date(rule.startsAt).getTime() : null;
+  const end = rule.endsAt ? new Date(rule.endsAt).getTime() : null;
+  const pill = (text, color, bg) => <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color, background: bg, borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap" }}>{text}</span>;
+  if (start && start > now) return pill(`Starts ${formatRuleDate(rule.startsAt)}`, "#2a5fd9", "#e8eefb");
+  if (end && end <= now) return pill("Ended", "#6b7785", "#eef0f3");
+  return pill(end ? `Active · ${timeLeft(end - now)} left` : "Active", "#17663a", "#e3f6ea");
 }
 
 // Real payment method management (new) -- confirmed with the person
@@ -5166,6 +7218,7 @@ function PaymentMethodsBody({ onSessionExpired }) {
   const [togglingCountry, setTogglingCountry] = useState(null); // countryCode currently in flight
   const [togglingActiveId, setTogglingActiveId] = useState(null); // method id currently in flight for the master switch
   const [bulkActionInFlight, setBulkActionInFlight] = useState(false);
+  const [countryQuery, setCountryQuery] = useState("");      // patch-financial-redesign
 
   const load = () => {
     setLoadState("loading");
@@ -5320,117 +7373,150 @@ function PaymentMethodsBody({ onSessionExpired }) {
   // Real, dedicated country-toggle sub-view -- shown instead of the
   // main list when a specific method's countries are being edited.
   if (openCountriesFor) {
+    // patch-financial-redesign: a navy band for the method, a search, Activate / Deactivate all, the countries as switch tiles
     const activeSet = new Set(openCountriesFor.activeCountries);
+    const q = countryQuery.trim().toLowerCase();
+    const shown = countries.filter((c) => !q || c.countryName.toLowerCase().includes(q) || c.countryCode.toLowerCase().includes(q));
+    const pct = countries.length ? Math.round((activeSet.size / countries.length) * 100) : 0;
     return (
-      <div style={{ padding: 24 }}>
-        <button onClick={() => setOpenCountriesFor(null)} style={{ ...body, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, marginBottom: 16, padding: 0 }}>
-          <ChevronLeft size={16} /> Back to Payment Methods
-        </button>
-        <p style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{openCountriesFor.nameEn}</p>
-        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 12px" }}>{activeSet.size} of {countries.length} countries active</p>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button disabled={bulkActionInFlight} onClick={() => handleBulkCountries("activate")} style={{ ...body, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: bulkActionInFlight ? "default" : "pointer", opacity: bulkActionInFlight ? 0.6 : 1 }}>
-            Activate all
-          </button>
-          <button disabled={bulkActionInFlight} onClick={() => handleBulkCountries("deactivate")} style={{ ...body, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: bulkActionInFlight ? "default" : "pointer", opacity: bulkActionInFlight ? 0.6 : 1 }}>
-            Deactivate all
-          </button>
+      <div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "18px 24px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={() => { setOpenCountriesFor(null); setCountryQuery(""); }} aria-label="Back to Payment Methods" title="Back to Payment Methods" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <img src={openCountriesFor.photoUrl.startsWith("http") ? openCountriesFor.photoUrl : `${API_BASE_URL}${openCountriesFor.photoUrl}`} alt="" style={{ width: 48, height: 48, borderRadius: 12, objectFit: "cover", background: "#fff" }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal }}>Payment methods · countries</div>
+            <div style={{ ...disp, fontSize: 22, fontWeight: 800, color: "#fff" }}>{openCountriesFor.nameEn}</div>
+            <div style={{ ...body, fontSize: 12.5, color: C.onNavyMuted }}>{activeSet.size} of {countries.length} countries active</div>
+          </div>
+          <div style={{ marginLeft: "auto", minWidth: 200 }}>
+            <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,0.15)", overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: C.signal }} /></div>
+            <div style={{ ...mono, fontSize: 12, fontWeight: 800, color: "#fff", marginTop: 4, textAlign: "right" }}>{pct}%</div>
+          </div>
         </div>
-        {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
-        <Card>
-          {countries.map((c) => {
-            const isActive = activeSet.has(c.countryCode);
-            const isToggling = togglingCountry === c.countryCode;
-            return (
-              <div key={c.countryCode} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
-                <span style={{ ...body, fontSize: 13, color: C.ink }}>{c.countryName} <span style={{ color: C.muted, fontSize: 11.5 }}>({c.countryCode})</span></span>
-                <button
-                  disabled={isToggling}
-                  onClick={() => handleToggleCountry(openCountriesFor, c.countryCode, isActive)}
-                  style={{ width: 40, height: 22, borderRadius: 20, border: "none", cursor: isToggling ? "default" : "pointer", background: isActive ? C.signal : "#D1D5DB", position: "relative", transition: "background 0.15s", opacity: isToggling ? 0.6 : 1 }}
-                >
-                  <span style={{ position: "absolute", top: 2, left: isActive ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+        <div style={{ padding: 24 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, boxSizing: "border-box", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 260 }}>
+              <Search size={14} color={C.muted} />
+              <input value={countryQuery} onChange={(e) => setCountryQuery(e.target.value)} placeholder="Search countries…" aria-label="Search countries" data-leap-plain="" style={{ ...body, fontSize: 12.5, border: "none", outline: "none", background: "none", width: "100%", color: C.ink }} />
+            </div>
+            <button disabled={bulkActionInFlight} onClick={() => handleBulkCountries("activate")} style={{ ...body, marginLeft: "auto", fontSize: 12.5, fontWeight: 800, height: 38, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.gauge}`, background: C.gaugeBg, color: C.gaugeInk, cursor: bulkActionInFlight ? "default" : "pointer" }}>Activate all</button>
+            <button disabled={bulkActionInFlight} onClick={() => handleBulkCountries("deactivate")} style={{ ...body, fontSize: 12.5, fontWeight: 700, height: 38, padding: "0 14px", borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: bulkActionInFlight ? "default" : "pointer" }}>Deactivate all</button>
+          </div>
+          {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{errorMessage}</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
+            {shown.map((c) => {
+              const isActive = activeSet.has(c.countryCode);
+              const isToggling = togglingCountry === c.countryCode;
+              return (
+                <button key={c.countryCode} type="button" disabled={isToggling} aria-pressed={isActive} onClick={() => handleToggleCountry(openCountriesFor, c.countryCode, isActive)}
+                  style={{ ...body, display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, border: `1.5px solid ${isActive ? C.gauge : C.line}`, background: isActive ? "#F3FAF6" : "#fff", cursor: isToggling ? "default" : "pointer", textAlign: "left", opacity: isToggling ? 0.6 : 1 }}>
+                  <span style={{ ...mono, fontSize: 11, fontWeight: 800, color: isActive ? C.gaugeInk : C.muted, background: isActive ? C.gaugeBg : C.surfaceHigh, borderRadius: 6, padding: "2px 6px" }}>{c.countryCode}</span>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: C.ink }}>{c.countryName}</span>
+                  <span style={{ width: 36, height: 20, borderRadius: 20, background: isActive ? C.gauge : "#D1D5DB", position: "relative", flexShrink: 0 }}>
+                    <span style={{ position: "absolute", top: 2, left: isActive ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+                  </span>
                 </button>
-              </div>
-            );
-          })}
-        </Card>
+              );
+            })}
+          </div>
+        </div>
       </div>
     );
   }
 
+  // patch-financial-redesign: number tiles, the add form in a gold card, the methods as cards
+  const methodSrc = (url) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
+  const noProvider = methods.filter((m) => !m.providerId).length;
+  const activeCount = methods.filter((m) => m.isActive).length;
+  const tile = (value, label, tone) => (
+    <div key={label} style={{ background: tone === "red" ? C.redBg : "#fff", border: `1px solid ${tone === "red" ? "#EBC2BD" : C.line}`, borderRadius: 14, padding: "12px 16px", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+      <div style={{ ...mono, fontSize: 22, fontWeight: 800, color: tone === "red" ? C.redInk : tone === "green" ? C.gaugeInk : C.ink }}>{value}</div>
+      <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>{label}</div>
+    </div>
+  );
   return (
     <div style={{ padding: 24 }}>
-      {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
+      {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>{errorMessage}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
+        {tile(methods.length, methods.length === 1 ? "payment method" : "payment methods")}
+        {tile(activeCount, "turned on", "green")}
+        {tile(noProvider, "without a gateway", noProvider > 0 ? "red" : null)}
+        {tile(countries.length, "countries")}
+      </div>
 
-      <Card style={{ padding: 16, marginBottom: 20 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English name (e.g. Visa / Mastercard)" style={{ ...body, flex: 1, minWidth: 180, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-          <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name" dir="rtl" style={{ ...body, flex: 1, minWidth: 180, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-          <select value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, background: "#fff" }}>
+      <div style={{ border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 14, padding: 14, marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <span style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink }}>Add a payment method</span>
+          <span style={{ ...body, fontSize: 11.5, color: C.muted }}>the name buyers see in English and Arabic, its logo, and the gateway that charges it</span>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English name (e.g. Visa / Mastercard)" style={{ ...body, flex: "1 1 200px", height: 40, boxSizing: "border-box", border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 13, background: "#fff" }} />
+          <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name" dir="rtl" style={{ ...body, flex: "1 1 180px", height: 40, boxSizing: "border-box", border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 13, background: "#fff" }} />
+          <select value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} style={{ ...body, height: 40, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 12.5, background: "#fff" }}>
             <option value="">Provider (optional, can set later)</option>
             {providers.map((p) => (
               <option key={p.providerId} value={p.providerId}>{p.label}</option>
             ))}
           </select>
-          <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newPhotoFile ? C.gauge : C.muted }}>
-            <ImagePlus size={14} />
+          <label style={{ ...body, display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", border: `1px dashed ${newPhotoFile ? C.gauge : C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", color: newPhotoFile ? C.gaugeInk : C.ink, background: "#fff" }}>
+            {newPhotoPreview ? <img src={newPhotoPreview} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} /> : <ImagePlus size={15} color={C.muted} />}
             {newPhotoFile ? "Photo selected" : "Choose photo"}
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoSelect} style={{ display: "none" }} />
           </label>
-          {newPhotoPreview && <img src={newPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-          <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-            <Check size={13} /> {isUploadingPhoto ? "Uploading…" : "Add"}
+          <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${isSubmitting ? "#D1D5DB" : C.signalDark}`, background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: isSubmitting ? "default" : "pointer" }}>
+            <Plus size={15} /> {isUploadingPhoto ? "Uploading…" : "Add"}
           </button>
         </div>
-      </Card>
+      </div>
 
-      <Card>
-        {methods.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 16 }}>No payment methods yet.</div>}
-        {methods.map((m, i) => (
-          <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: `1px solid ${C.line}` }}>
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                <button onClick={() => handleMove(m.id, "up")} disabled={i === 0} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }} title="Move up">
-                  <ChevronUp size={13} color={C.ink} />
-                </button>
-                <button onClick={() => handleMove(m.id, "down")} disabled={i === methods.length - 1} style={{ background: "none", border: "none", padding: 0, cursor: i === methods.length - 1 ? "default" : "pointer", opacity: i === methods.length - 1 ? 0.25 : 1 }} title="Move down">
-                  <ChevronDown size={13} color={C.ink} />
-                </button>
-              </div>
-              <label title="Click to replace this photo" style={{ position: "relative", width: 36, height: 36, borderRadius: 8, flexShrink: 0, cursor: replacingPhotoId === m.id ? "default" : "pointer", display: "block" }}>
-                <img src={m.photoUrl.startsWith("http") ? m.photoUrl : `${API_BASE_URL}${m.photoUrl}`} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", display: "block", opacity: replacingPhotoId === m.id ? 0.5 : 1 }} />
-                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingPhotoId === m.id} onChange={(e) => handleReplacePhoto(m.id, e.target.files?.[0])} style={{ display: "none" }} />
-              </label>
-              <div>
-                <p style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{m.nameEn} <span style={{ color: C.muted, fontWeight: 400 }} dir="rtl">{m.nameAr}</span></p>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                  <button onClick={() => setOpenCountriesFor(m)} style={{ ...body, fontSize: 11.5, color: C.signal, background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-                    {m.activeCountries.length} of {countries.length} countries active
-                  </button>
-                  {m.providerId ? (
-                    <span style={{ ...body, fontSize: 11, color: C.muted }}>· {providers.find((p) => p.providerId === m.providerId)?.label || m.providerId}</span>
-                  ) : (
-                    <span style={{ ...body, fontSize: 11, fontWeight: 600, color: C.red }}>· No provider set — can't be checked out with</span>
-                  )}
+      {methods.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12, background: "#fff" }}>No payment methods yet.</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+        {methods.map((m, i) => {
+          const pct = countries.length ? Math.round((m.activeCountries.length / countries.length) * 100) : 0;
+          const providerLabel = m.providerId ? (providers.find((p) => p.providerId === m.providerId)?.label || m.providerId) : null;
+          return (
+            <div key={m.id} data-testid="payment-method-card" style={{ background: "#fff", border: `1px solid ${m.isActive ? C.line : C.lineStrong}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", display: "flex", flexDirection: "column", opacity: m.isActive ? 1 : 0.8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 10px" }}>
+                <label title="Click to replace this photo" style={{ position: "relative", width: 52, height: 52, borderRadius: 12, flexShrink: 0, cursor: replacingPhotoId === m.id ? "default" : "pointer", display: "block", border: `1px solid ${C.line}`, overflow: "hidden", background: C.surfaceHigh }}>
+                  <img src={methodSrc(m.photoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: replacingPhotoId === m.id ? 0.5 : 1 }} />
+                  <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingPhotoId === m.id} onChange={(e) => handleReplacePhoto(m.id, e.target.files?.[0])} style={{ display: "none" }} />
+                </label>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{m.nameEn}</div>
+                  <div dir="rtl" style={{ ...body, fontSize: 12, color: C.muted, textAlign: "left" }}>{m.nameAr}</div>
                 </div>
+                <button
+                  disabled={togglingActiveId === m.id}
+                  onClick={() => handleToggleActive(m)}
+                  aria-label={m.isActive ? `Turn off ${m.nameEn}` : `Turn on ${m.nameEn}`}
+                  title={m.isActive ? "Active everywhere it's turned on per-country" : "Disabled everywhere, regardless of country settings"}
+                  style={{ width: 42, height: 24, borderRadius: 20, border: "none", cursor: togglingActiveId === m.id ? "default" : "pointer", background: m.isActive ? C.gauge : "#D1D5DB", position: "relative", transition: "background 0.15s", opacity: togglingActiveId === m.id ? 0.6 : 1, flexShrink: 0 }}
+                >
+                  <span style={{ position: "absolute", top: 3, left: m.isActive ? 21 : 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+                </button>
+              </div>
+              <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {providerLabel
+                  ? <span style={{ ...body, alignSelf: "flex-start", fontSize: 11.5, fontWeight: 800, color: C.torqueInk, background: C.torqueBg, borderRadius: 999, padding: "3px 10px" }}>Gateway: {providerLabel}</span>
+                  : <span style={{ ...body, alignSelf: "flex-start", fontSize: 11.5, fontWeight: 800, color: C.redInk, background: C.redBg, borderRadius: 999, padding: "3px 10px" }}>No provider set — can't be checked out with</span>}
+                <button onClick={() => setOpenCountriesFor(m)} style={{ ...body, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+                  <span style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: C.ink }}><span>{m.activeCountries.length} of {countries.length} countries active</span><span style={{ color: C.torque }}>Countries →</span></span>
+                  <span style={{ display: "block", height: 6, borderRadius: 3, background: "#E8EBEF", overflow: "hidden", marginTop: 5 }}><span style={{ display: "block", height: "100%", width: `${pct}%`, background: m.isActive ? C.gauge : C.muted }} /></span>
+                </button>
+              </div>
+              <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 6, padding: "9px 12px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+                <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: m.isActive ? C.gaugeInk : C.muted }}>{m.isActive ? "● On" : "○ Off"}</span>
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
+                  <button onClick={() => handleMove(m.id, "up")} disabled={i === 0} title="Move up" aria-label={`Move ${m.nameEn} up`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><ChevronUp size={14} color={C.ink} /></button>
+                  <button onClick={() => handleMove(m.id, "down")} disabled={i === methods.length - 1} title="Move down" aria-label={`Move ${m.nameEn} down`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: i === methods.length - 1 ? "default" : "pointer", opacity: i === methods.length - 1 ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><ChevronDown size={14} color={C.ink} /></button>
+                  <button onClick={() => setPendingEdit(m)} title="Edit" aria-label={`Edit ${m.nameEn}`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><Pencil size={13} color={C.torque} /></button>
+                  <button onClick={() => setPendingDelete({ id: m.id, nameEn: m.nameEn })} title="Delete" aria-label={`Delete ${m.nameEn}`} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><X size={14} color={C.red} /></button>
+                </span>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button
-                disabled={togglingActiveId === m.id}
-                onClick={() => handleToggleActive(m)}
-                title={m.isActive ? "Active everywhere it's turned on per-country" : "Disabled everywhere, regardless of country settings"}
-                style={{ width: 36, height: 20, borderRadius: 20, border: "none", cursor: togglingActiveId === m.id ? "default" : "pointer", background: m.isActive ? C.signal : "#D1D5DB", position: "relative", transition: "background 0.15s", opacity: togglingActiveId === m.id ? 0.6 : 1 }}
-              >
-                <span style={{ position: "absolute", top: 2, left: m.isActive ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
-              </button>
-              <button onClick={() => setPendingEdit(m)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
-              <button onClick={() => setPendingDelete({ id: m.id, nameEn: m.nameEn })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
-            </div>
-          </div>
-        ))}
-      </Card>
+          );
+        })}
+      </div>
 
       <ConfirmDialog
         isOpen={!!pendingDelete}
@@ -5531,40 +7617,51 @@ function PaymentProvidersBody({ onSessionExpired }) {
   if (loadState === "loading") return <div style={{ ...body, fontSize: 12.5, color: C.muted, textAlign: "center", padding: 32 }}>Loading…</div>;
 
   if (openProvider) {
+    // patch-financial-redesign: a navy band for the provider, the fields in a card (secret ones with a lock and "currently set"), Save / Clear
     return (
-      <div style={{ padding: 24 }}>
-        <button onClick={() => setOpenProvider(null)} style={{ ...body, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, marginBottom: 16, padding: 0 }}>
-          <ChevronLeft size={16} /> Back to Payment Providers
-        </button>
-        <p style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{openProvider.label}</p>
-        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 20px" }}>
-          {openProvider.isConfigured ? "Already configured" : "Not yet configured"} — credentials are encrypted before storage and never shown in full once saved.
-        </p>
-        {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
-        <Card style={{ padding: 16 }}>
-          {openProvider.fields.map((f) => (
-            <div key={f.key} style={{ marginBottom: 14 }}>
-              <label style={{ ...body, fontSize: 12, fontWeight: 600, color: C.ink, display: "block", marginBottom: 4 }}>{f.label}</label>
-              <input
-                type={f.secret ? "password" : "text"}
-                value={formValues[f.key] ?? ""}
-                onChange={(e) => setFormValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                placeholder={f.secret && f.value ? `Currently set (${f.value}) — leave blank to keep it` : ""}
-                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}
-              />
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            <button disabled={isSaving} onClick={handleSave} style={{ ...body, flex: 1, padding: "9px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>
-              {isSaving ? "Saving…" : "Save"}
-            </button>
-            {openProvider.isConfigured && (
-              <button onClick={() => setPendingClear({ providerId: openProvider.providerId, label: openProvider.label })} style={{ ...body, padding: "9px 16px", borderRadius: 8, border: `1px solid ${C.red}`, background: "none", color: C.red, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                Clear credentials
-              </button>
-            )}
+      <div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "18px 24px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={() => setOpenProvider(null)} aria-label="Back to Payment Providers" title="Back to Payment Providers" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <span style={{ width: 48, height: 48, borderRadius: 12, background: C.signal, color: C.onSignal, display: "flex", alignItems: "center", justifyContent: "center", ...disp, fontSize: 18, fontWeight: 800 }}>{String(openProvider.label || "?").charAt(0).toUpperCase()}</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal }}>Payment providers</div>
+            <div style={{ ...disp, fontSize: 22, fontWeight: 800, color: "#fff" }}>{openProvider.label}</div>
           </div>
-        </Card>
+          <span style={{ ...body, marginLeft: "auto", fontSize: 12, fontWeight: 800, color: openProvider.isConfigured ? C.gaugeInk : C.muted, background: openProvider.isConfigured ? C.gaugeBg : "#EEEFF1", borderRadius: 999, padding: "5px 12px" }}>{openProvider.isConfigured ? "● Already configured" : "○ Not yet configured"}</span>
+        </div>
+        <div style={{ padding: 24, maxWidth: 760 }}>
+          <div style={{ ...body, display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.muted, marginBottom: 14 }}><Key size={14} color={C.navy} /> Credentials are encrypted before storage and never shown in full once saved.</div>
+          {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{errorMessage}</div>}
+          <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+            <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+              {openProvider.fields.map((f) => (
+                <label key={f.key} style={{ display: "block" }}>
+                  <span style={{ ...body, display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: C.ink, marginBottom: 5 }}>
+                    {f.secret && <Key size={12} color={C.amber} />}{f.label}
+                    {f.secret && f.value && <span style={{ ...mono, fontSize: 10.5, fontWeight: 700, color: C.gaugeInk, background: C.gaugeBg, borderRadius: 999, padding: "1px 8px" }}>set: {f.value}</span>}
+                  </span>
+                  <input
+                    type={f.secret ? "password" : "text"}
+                    value={formValues[f.key] ?? ""}
+                    onChange={(e) => setFormValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                    placeholder={f.secret && f.value ? `Currently set (${f.value}) — leave blank to keep it` : ""}
+                    style={{ ...body, ...(f.secret ? mono : {}), width: "100%", boxSizing: "border-box", height: 40, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 13 }}
+                  />
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "12px 18px", background: C.surfaceHigh, borderTop: `1px solid ${C.line}` }}>
+              {openProvider.isConfigured && (
+                <button onClick={() => setPendingClear({ providerId: openProvider.providerId, label: openProvider.label })} style={{ ...body, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${C.red}`, background: "#fff", color: C.red, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  Clear credentials
+                </button>
+              )}
+              <button disabled={isSaving} onClick={handleSave} style={{ ...body, marginLeft: "auto", height: 40, padding: "0 26px", borderRadius: 10, border: `1px solid ${isSaving ? "#D1D5DB" : C.signalDark}`, background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13.5, fontWeight: 800, cursor: isSaving ? "default" : "pointer" }}>
+                {isSaving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
         <ConfirmDialog
           isOpen={!!pendingClear}
           title={`Clear ${pendingClear?.label} credentials?`}
@@ -5576,22 +7673,38 @@ function PaymentProvidersBody({ onSessionExpired }) {
     );
   }
 
+  // patch-financial-redesign: how many are set up, then one card per provider
+  const configured = providers.filter((p) => p.isConfigured).length;
   return (
     <div style={{ padding: 24 }}>
-      {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
-      <Card>
+      {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>{errorMessage}</div>}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>{configured} of {providers.length} providers set up</div>
+          <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>Each payment method charges through one of these. Open one to enter or change its keys.</div>
+        </div>
+        <div style={{ marginLeft: "auto", width: 220, height: 8, borderRadius: 4, background: "#E8EBEF", overflow: "hidden" }}><div style={{ height: "100%", width: `${providers.length ? (configured / providers.length) * 100 : 0}%`, background: C.gauge }} /></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
         {providers.map((p) => (
-          <div key={p.providerId} onClick={() => handleOpenProvider(p)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${C.line}`, cursor: "pointer" }}>
-            <span style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{p.label}</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ ...body, fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: p.isConfigured ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.12)", color: p.isConfigured ? "#16A34A" : C.muted }}>
+          <div key={p.providerId} data-testid="provider-card" onClick={() => handleOpenProvider(p)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") handleOpenProvider(p); }}
+            style={{ background: "#fff", border: `1px solid ${p.isConfigured ? "#BFE3CF" : C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 12px" }}>
+              <span style={{ width: 44, height: 44, borderRadius: 12, background: p.isConfigured ? C.navy : C.surfaceHigh, color: p.isConfigured ? C.signal : C.muted, border: p.isConfigured ? "none" : `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", ...disp, fontSize: 17, fontWeight: 800, flexShrink: 0 }}>{String(p.label || "?").charAt(0).toUpperCase()}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{p.label}</div>
+                <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{(p.fields || []).length} {(p.fields || []).length === 1 ? "field" : "fields"} · {(p.fields || []).filter((f) => f.secret).length} secret</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+              <span style={{ ...body, fontSize: 11.5, fontWeight: 800, padding: "3px 10px", borderRadius: 999, background: p.isConfigured ? C.gaugeBg : "#EEEFF1", color: p.isConfigured ? C.gaugeInk : C.muted }}>
                 {p.isConfigured ? "Configured" : "Not configured"}
               </span>
-              <ChevronRight size={14} color={C.muted} />
+              <span style={{ ...body, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 800, color: C.torque }}>{p.isConfigured ? "Edit keys" : "Set up"} <ChevronRight size={14} color={C.torque} /></span>
             </div>
           </div>
         ))}
-      </Card>
+      </div>
     </div>
   );
 }
@@ -5621,10 +7734,13 @@ const cny2s = (n) => `¥${Number(n).toFixed(2)}`;     // what the SUPPLIER is pa
 function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage }) {
   const [costBearer, setCostBearer] = useState("supplier");
   const [notes, setNotes] = useState("");
+  const [overruleReason, setOverruleReason] = useState("");      // patch-fault-overrule-reason
+  const overruled = shipment.supplierAnswer === "decline";
+  const reasonMissing = overruled && overruleReason.trim().length < 3;
   const label = { ...body, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "14px 0 6px" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
       <div role="dialog" aria-label="Confirm a real fault" style={{ background: "#fff", borderRadius: 12, padding: 20, width: 460, maxWidth: "92%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
         <p style={{ ...disp, fontSize: 16, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>Real fault — {shipment.orderId}</p>
         <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: 0 }}>
@@ -5653,6 +7769,16 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
         </select>
         <p style={{ ...body, fontSize: 11.5, color: C.muted, margin: "6px 0 0" }}>Recorded for your accounts. Nothing is deducted from a payout automatically.</p>
 
+        {overruled && (
+          <>
+            <div style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 8, padding: 10, marginTop: 14 }}>
+              <strong>The supplier did not accept this return:</strong> “{shipment.supplierAnswerNote}”
+            </div>
+            <label style={label} htmlFor="fault-overrule">WHY YOU CONFIRM THE FAULT ANYWAY <span style={{ color: C.red }}>*</span> (sent to the supplier)</label>
+            <textarea id="fault-overrule" value={overruleReason} onChange={(e) => setOverruleReason(e.target.value)} maxLength={1000} placeholder="e.g. the photos show the crack starts at the factory weld" style={{ ...body, width: "100%", boxSizing: "border-box", height: 64, padding: 9, borderRadius: 8, border: `1px solid ${reasonMissing ? C.red : C.line}`, fontSize: 13 }} />
+          </>
+        )}
+
         <label style={label} htmlFor="fault-notes">INTERNAL NOTE (optional — the buyer does not see this)</label>
         <textarea id="fault-notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...body, width: "100%", boxSizing: "border-box", height: 56, padding: 9, borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }} />
 
@@ -5660,9 +7786,9 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer" }}>Cancel</button>
           <button
-            disabled={isSaving}
-            onClick={() => onSubmit({ items: shipment.items.map((i) => i.productId), costBearer, notes: notes.trim() })}
-            style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.red, color: "#fff", cursor: isSaving ? "default" : "pointer" }}
+            disabled={isSaving || reasonMissing}
+            onClick={() => onSubmit({ items: shipment.items.map((i) => i.productId), costBearer, notes: notes.trim(), ...(overruled ? { overruleReason: overruleReason.trim() } : {}) })}
+            style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: "none", background: isSaving || reasonMissing ? "#D1D5DB" : C.red, color: "#fff", cursor: isSaving || reasonMissing ? "default" : "pointer" }}
           >
             {isSaving ? "Saving…" : "Confirm real fault"}
           </button>
@@ -5816,8 +7942,8 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
       : `Recorded as no fault. Return case ${rc.id} was already ${rc.status}, so it was left as it is.`;
   });
 
-  const handleOpenFault = ({ items, costBearer, notes }) => run(async () => {
-    await openFaultCase(getStoredToken(), { shipmentId: action.shipment.id, items, costBearer, notes });
+  const handleOpenFault = ({ items, costBearer, notes, overruleReason }) => run(async () => {
+    await openFaultCase(getStoredToken(), { shipmentId: action.shipment.id, items, costBearer, notes, overruleReason });
     return "Real fault confirmed. The hub has been asked to send the unit back, the supplier has been asked whether they can replace it, and the buyer has been told.";
   });
 
@@ -6041,6 +8167,7 @@ function CategoriesPageMain({ onSessionExpired, withHeader = true }) {      // w
   const [inUseCat, setInUseCat] = useState(null);                 // {id, nameEn}: the window that shows what still uses a category
   const [pendingEditCat, setPendingEditCat] = useState(null); // the full category object
   const [isSavingCatEdit, setIsSavingCatEdit] = useState(false);
+  const [catQuery, setCatQuery] = useState("");      // patch-categories-redesign
 
   const loadCategories = () => {
     setLoadState("loading");
@@ -6153,87 +8280,84 @@ function CategoriesPageMain({ onSessionExpired, withHeader = true }) {      // w
     );
   }
 
+  // patch-categories-redesign: the add form in a gold card on top; the categories as photo cards (names, id, how many parts and products), a search,
+  // the order arrows, a pencil to edit, and a "..." menu (Replace photo, Delete). A card opens its parts.
+  const catQ = catQuery.trim().toLowerCase();
+  const shownCategories = categories.filter((c) => !catQ || [c.id, c.nameEn, c.nameAr].some((v) => v && String(v).toLowerCase().includes(catQ)));
+  const catSrc = (url) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
   return (
     <div>
       {withHeader && <TopBar title="Categories" subtitle="Major categories and the real parts a supplier picks from within each" />}
       <div style={{ padding: 24 }}>
-        <Card>
-          <div style={{ padding: 18 }}>
-            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+        {errorMessage && !pendingEditCat && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>{errorMessage}</div>}
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-              <input value={newCatId} onChange={(e) => setNewCatId(e.target.value)} placeholder="id (e.g. tires)" style={{ ...body, flex: 1, minWidth: 120, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newCatNameEn} onChange={(e) => setNewCatNameEn(e.target.value)} placeholder="English name" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newCatNameAr} onChange={(e) => setNewCatNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newCatPhotoFile ? C.gauge : C.muted }}>
-                <ImagePlus size={14} />
-                {newCatPhotoFile ? "Photo selected" : "Choose photo (required)"}
-                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleCatPhotoSelect} style={{ display: "none" }} />
-              </label>
-              {newCatPhotoPreview && <img src={newCatPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-              <button disabled={isSubmittingCat} onClick={handleAddCategory} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmittingCat ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmittingCat ? "default" : "pointer" }}>
-                <Check size={13} /> {isUploadingCatPhoto ? "Uploading…" : "Add category"}
-              </button>
-            </div>
-
-            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
-            {loadState === "ready" && categories.map((c, i) => (
-              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
-                onClick={() => setOpenCategory(c)}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }} onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => handleMoveCategory(c.id, "up")}
-                      disabled={i === 0}
-                      style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }}
-                      title="Move up"
-                    >
-                      <ChevronUp size={14} color={C.ink} />
-                    </button>
-                    <button
-                      onClick={() => handleMoveCategory(c.id, "down")}
-                      disabled={i === categories.length - 1}
-                      style={{ background: "none", border: "none", padding: 0, cursor: i === categories.length - 1 ? "default" : "pointer", opacity: i === categories.length - 1 ? 0.25 : 1 }}
-                      title="Move down"
-                    >
-                      <ChevronDown size={14} color={C.ink} />
-                    </button>
-                  </div>
-                  <label
-                    onClick={(e) => e.stopPropagation()}
-                    title="Click to replace this photo"
-                    style={{ position: "relative", width: 32, height: 32, borderRadius: 6, flexShrink: 0, cursor: replacingPhotoForCatId === c.id ? "default" : "pointer", display: "block" }}
-                  >
-                    {c.photoUrl ? (
-                      <img src={c.photoUrl.startsWith("http") ? c.photoUrl : `${API_BASE_URL}${c.photoUrl}`} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingPhotoForCatId === c.id ? 0.5 : 1 }} />
-                    ) : (
-                      <div style={{ width: 32, height: 32, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <ImagePlus size={14} color={C.muted} />
-                      </div>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      disabled={replacingPhotoForCatId === c.id}
-                      onChange={(e) => handleReplaceCategoryPhoto(c.id, e.target.files?.[0])}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                  <div>
-                    <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{c.nameEn}</div>
-                    {c.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{c.nameAr}</div>}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{c.id}</span>
-                  <button onClick={(e) => { e.stopPropagation(); setPendingEditCat(c); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); setPendingDeleteCat({ id: c.id, nameEn: c.nameEn }); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
-                  <ChevronRight size={16} color={C.muted} />
-                </div>
-              </div>
-            ))}
+        <div style={{ border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 14, padding: 14, marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <span style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink }}>Add a category</span>
+            <span style={{ ...body, fontSize: 11.5, color: C.muted }}>an id (small letters, e.g. tires), the name in English and Arabic, and a photo</span>
           </div>
-        </Card>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <TagInput tag="ID" label="Id" value={newCatId} onChange={setNewCatId} placeholder="id (e.g. tires)" width={150} />
+            <TagInput tag="EN" label="English name" value={newCatNameEn} onChange={setNewCatNameEn} placeholder="English name" />
+            <TagInput tag="AR" label="Arabic name" value={newCatNameAr} onChange={setNewCatNameAr} placeholder="Arabic name (required)" rtl />
+            <label style={{ ...body, display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", border: `1px dashed ${newCatPhotoFile ? C.gauge : C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", color: newCatPhotoFile ? C.gaugeInk : C.ink, background: "#fff" }}>
+              {newCatPhotoPreview ? <img src={newCatPhotoPreview} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} /> : <ImagePlus size={15} color={C.muted} />}
+              {newCatPhotoFile ? "Photo selected" : "Choose photo (required)"}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleCatPhotoSelect} style={{ display: "none" }} />
+            </label>
+            <button disabled={isSubmittingCat} onClick={handleAddCategory} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${isSubmittingCat ? "#D1D5DB" : C.signalDark}`, background: isSubmittingCat ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: isSubmittingCat ? "default" : "pointer" }}>
+              <Plus size={15} /> {isUploadingCatPhoto ? "Uploading…" : "Add category"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <div>
+            <div style={{ ...disp, fontSize: 18, fontWeight: 800, color: C.ink }}>All categories</div>
+            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{categories.length} {categories.length === 1 ? "category" : "categories"} · the order here is the order buyers see · open one for its parts</div>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, height: 38, boxSizing: "border-box", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 240 }}>
+            <Search size={14} color={C.muted} />
+            <input value={catQuery} onChange={(e) => setCatQuery(e.target.value)} placeholder="Search categories…" aria-label="Search categories" data-leap-plain="" style={{ ...body, fontSize: 12.5, border: "none", outline: "none", background: "none", width: "100%", color: C.ink }} />
+          </div>
+        </div>
+
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+        {loadState === "ready" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14 }}>
+            {shownCategories.map((c) => {
+              const i = categories.findIndex((x) => x.id === c.id);
+              return (
+                <div key={c.id} data-testid="category-card" style={cardStyle}>
+                  <div onClick={() => setOpenCategory(c)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") setOpenCategory(c); }} style={{ cursor: "pointer", flex: 1 }}>
+                    <div style={{ position: "relative", aspectRatio: "16 / 9", background: C.canvas, borderRadius: "14px 14px 0 0", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {c.photoUrl ? <img src={catSrc(c.photoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: replacingPhotoForCatId === c.id ? 0.4 : 1 }} /> : <ImagePlus size={22} color={C.muted} />}
+                      <span style={{ ...mono, position: "absolute", left: 10, bottom: 8, fontSize: 10.5, fontWeight: 800, color: "#fff", background: "rgba(7,32,47,0.72)", borderRadius: 6, padding: "2px 7px" }}>{c.id}</span>
+                    </div>
+                    <div style={{ padding: "11px 14px 10px" }}>
+                      <div style={{ ...disp, fontSize: 15.5, fontWeight: 800, color: C.ink }}>{c.nameEn}</div>
+                      {c.nameAr && <div dir="rtl" style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2, textAlign: "left" }}>{c.nameAr}</div>}
+                    </div>
+                  </div>
+                  <CardMenu label={`${c.nameEn} options`} items={[
+                    { label: c.photoUrl ? "Replace photo" : "Add photo", icon: <ImagePlus size={14} color={C.navy} />, onFile: (file) => handleReplaceCategoryPhoto(c.id, file) },
+                    { label: "Delete", danger: true, icon: <X size={14} color={C.red} />, onClick: () => setPendingDeleteCat({ id: c.id, nameEn: c.nameEn }) },
+                  ]} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+                    {c.partCount === 0
+                      ? <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.amberInk, background: C.amberBg, borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" }}>No parts yet</span>
+                      : <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>{c.partCount === undefined ? "" : `${c.partCount} ${c.partCount === 1 ? "part" : "parts"}`}{c.productCount === undefined ? "" : ` · ${c.productCount} ${c.productCount === 1 ? "product" : "products"}`}</span>}
+                    <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4, alignItems: "center" }}>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setPendingEditCat(c); }} title="Edit names" aria-label={`Edit ${c.nameEn}`} style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><Pencil size={13} color={C.torque} /></button>
+                      {!catQ && <OrderArrows onMove={(dir) => handleMoveCategory(c.id, dir)} isFirst={i === 0} isLast={i === categories.length - 1} />}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            {catQ && shownCategories.length === 0 && <div style={{ ...body, gridColumn: "1 / -1", fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12 }}>No category matches “{catQuery}”.</div>}
+          </div>
+        )}
       </div>
       <ConfirmDialog
         isOpen={!!pendingDeleteCat}
@@ -6402,108 +8526,100 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
     }
   };
 
+  // patch-categories-redesign: a navy band for the category (photo, names, how many parts); the add form in a gold card (names, the four shipping numbers
+  // with their units, an optional photo); the parts as photo cards with their weight and size, a pencil to edit, and a "..." menu (photo, Delete).
+  const partSrc = (url) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
+  const withoutSize = parts.filter((p) => !describeShipping(p)).length;
+  const UNITS = { weightKg: "kg", lengthCm: "cm", widthCm: "cm", heightCm: "cm" };
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 24px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-        <div>
-          <div style={{ ...body, fontSize: 11.5, color: C.muted }}>Categories</div>
-          <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{category.nameEn} — Parts</div>
+      <div data-leap-header="" style={{ background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)`, padding: "18px 24px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ width: 56, height: 56, borderRadius: 12, overflow: "hidden", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {category.photoUrl ? <img src={partSrc(category.photoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImagePlus size={20} color={C.onNavyMuted} />}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal }}>Categories</div>
+            <div style={{ ...disp, fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>{category.nameEn} — Parts</div>
+            <div style={{ ...body, fontSize: 12.5, color: C.onNavyMuted, marginTop: 2 }}>
+              {category.nameAr && <><span dir="rtl" style={{ unicodeBidi: "isolate" }}>{category.nameAr}</span>{" · "}</>}{parts.length} {parts.length === 1 ? "part" : "parts"}{withoutSize > 0 ? ` · ${withoutSize} without weight or size` : ""}
+            </div>
+          </div>
         </div>
       </div>
       <div style={{ padding: 24 }}>
-        <Card>
-          <div style={{ padding: 18 }}>
-            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+        {errorMessage && !pendingEditPart && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>{errorMessage}</div>}
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-              <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English part name" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-            </div>
-            {/* The weight and package size of the part: the shipping cost of every product with this part uses them automatically. */}
-            <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, background: "#FAFAFB", padding: 12, marginBottom: 12 }}>
-              <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Shipping <span style={{ fontWeight: 500, color: C.muted }}>(used automatically in the shipping cost of every product with this part)</span></div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {SHIPPING_FIELDS.map(({ key, label }) => (
-                  <input key={key} type="text" inputMode="decimal" value={newPartShipping[key]} onChange={(e) => setNewPartShipping((prev) => ({ ...prev, [key]: e.target.value }))} placeholder={label} aria-label={label} style={{ ...body, flex: 1, minWidth: 110, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, color: C.ink, background: C.card, outline: "none" }} />
-                ))}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-              <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newPartPhotoFile ? C.gauge : C.muted }}>
-                <ImagePlus size={14} />
-                {newPartPhotoFile ? "Photo selected" : "Choose photo (optional)"}
-                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePartPhotoSelect} style={{ display: "none" }} />
-              </label>
-              {newPartPhotoPreview && <img src={newPartPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-              <button disabled={isSubmitting} onClick={handleAddPart} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-                <Check size={13} /> {isUploadingPartPhoto ? "Uploading…" : "Add part"}
-              </button>
-            </div>
-
-            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
-            {loadState === "ready" && parts.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No parts yet — suppliers can't submit anything under this category until you add at least one.</div>}
-            {loadState === "ready" && parts.map((p, i) => (
-              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < parts.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    <button
-                      onClick={() => handleMovePart(p.id, "up")}
-                      disabled={i === 0}
-                      style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }}
-                      title="Move up"
-                    >
-                      <ChevronUp size={14} color={C.ink} />
-                    </button>
-                    <button
-                      onClick={() => handleMovePart(p.id, "down")}
-                      disabled={i === parts.length - 1}
-                      style={{ background: "none", border: "none", padding: 0, cursor: i === parts.length - 1 ? "default" : "pointer", opacity: i === parts.length - 1 ? 0.25 : 1 }}
-                      title="Move down"
-                    >
-                      <ChevronDown size={14} color={C.ink} />
-                    </button>
-                  </div>
-                  <label
-                    title="Click to add or replace this photo"
-                    style={{ position: "relative", width: 32, height: 32, borderRadius: 6, flexShrink: 0, cursor: replacingPhotoForPartId === p.id ? "default" : "pointer", display: "block" }}
-                  >
-                    {p.photoUrl ? (
-                      <img src={p.photoUrl.startsWith("http") ? p.photoUrl : `${API_BASE_URL}${p.photoUrl}`} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingPhotoForPartId === p.id ? 0.5 : 1 }} />
-                    ) : (
-                      <div style={{ width: 32, height: 32, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <ImagePlus size={14} color={C.muted} />
-                      </div>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      disabled={replacingPhotoForPartId === p.id}
-                      onChange={(e) => handleReplacePartPhoto(p.id, e.target.files?.[0])}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                  <div>
-                    <div style={{ ...body, fontSize: 13.5, fontWeight: 600, color: C.ink }}>{p.nameEn}</div>
-                    {p.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{p.nameAr}</div>}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {describeShipping(p) ? (
-                    <>
-                      <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.ink, background: "#EEF0F3", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>{describeShipping(p).weight}</span>
-                      <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.ink, background: "#EEF0F3", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>{describeShipping(p).size}</span>
-                    </>
-                  ) : (
-                    <span style={{ ...body, fontSize: 12, fontWeight: 700, color: "#8A5A12", background: "#FDF3E1", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>No weight or size yet</span>
-                  )}
-                <button onClick={() => setPendingEditPart(p)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
-                <button onClick={() => setPendingDeletePart({ id: p.id, nameEn: p.nameEn })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
-                </div>
-              </div>
-            ))}
+        <div style={{ border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 14, padding: 14, marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <span style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink }}>Add a part to {category.nameEn}</span>
+            <span style={{ ...body, fontSize: 11.5, color: C.muted }}>the name in English and Arabic, its weight and package size, and a photo if you have one</span>
           </div>
-        </Card>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <TagInput tag="EN" label="English name" value={newNameEn} onChange={setNewNameEn} placeholder="English part name" />
+            <TagInput tag="AR" label="Arabic name" value={newNameAr} onChange={setNewNameAr} placeholder="Arabic name (required)" rtl />
+          </div>
+          {/* The weight and package size of the part: the shipping cost of every product with this part uses them automatically. */}
+          <div style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", margin: "12px 0 6px" }}>Weight and package size <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>· used automatically in the shipping cost of every product with this part</span></div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {SHIPPING_FIELDS.map(({ key, label }) => (
+              <TagInput key={key} ariaLabel={label} label={label.replace(/ \(.*\)$/, "")} value={newPartShipping[key]} onChange={(v) => setNewPartShipping((prev) => ({ ...prev, [key]: v }))} placeholder="0" inputMode="decimal" width={130} suffix={UNITS[key]} />
+            ))}
+            <label style={{ ...body, display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", border: `1px dashed ${newPartPhotoFile ? C.gauge : C.lineStrong}`, borderRadius: 10, padding: "0 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", color: newPartPhotoFile ? C.gaugeInk : C.ink, background: "#fff" }}>
+              {newPartPhotoPreview ? <img src={newPartPhotoPreview} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} /> : <ImagePlus size={15} color={C.muted} />}
+              {newPartPhotoFile ? "Photo selected" : "Choose photo (optional)"}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePartPhotoSelect} style={{ display: "none" }} />
+            </label>
+            <button disabled={isSubmitting} onClick={handleAddPart} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 16px", borderRadius: 10, border: `1px solid ${isSubmitting ? "#D1D5DB" : C.signalDark}`, background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: isSubmitting ? "default" : "pointer", marginLeft: "auto" }}>
+              <Plus size={15} /> {isUploadingPartPhoto ? "Uploading…" : "Add part"}
+            </button>
+          </div>
+        </div>
+
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+        {loadState === "ready" && parts.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28, border: `1px dashed ${C.lineStrong}`, borderRadius: 12 }}>No parts yet — suppliers can't submit anything under this category until you add at least one.</div>}
+        {loadState === "ready" && parts.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+            {parts.map((p, i) => {
+              const size = describeShipping(p);
+              return (
+                <div key={p.id} data-testid="part-card" style={cardStyle}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 46px 12px 14px", flex: 1 }}>
+                    <div style={{ width: 54, height: 54, borderRadius: 12, flexShrink: 0, background: C.canvas, border: `1px solid ${C.line}`, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {p.photoUrl ? <img src={partSrc(p.photoUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: replacingPhotoForPartId === p.id ? 0.4 : 1 }} /> : <ImagePlus size={18} color={C.muted} />}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink }}>{p.nameEn}</div>
+                      {p.nameAr && <div dir="rtl" style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2, textAlign: "left" }}>{p.nameAr}</div>}
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 7 }}>
+                        {size ? (
+                          <>
+                            <span style={{ ...mono, fontSize: 11.5, fontWeight: 700, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{size.weight}</span>
+                            <span style={{ ...mono, fontSize: 11.5, fontWeight: 700, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{size.size}</span>
+                          </>
+                        ) : (
+                          <span style={{ ...body, fontSize: 11, fontWeight: 800, color: "#8A5A12", background: "#FDF3E1", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>No weight or size yet</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <CardMenu label={`${p.nameEn} options`} items={[
+                    { label: p.photoUrl ? "Replace photo" : "Add photo", icon: <ImagePlus size={14} color={C.navy} />, onFile: (file) => handleReplacePartPhoto(p.id, file) },
+                    { label: "Delete", danger: true, icon: <X size={14} color={C.red} />, onClick: () => setPendingDeletePart({ id: p.id, nameEn: p.nameEn }) },
+                  ]} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "9px 12px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+                    <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>{p.productCount === undefined ? "" : `${p.productCount} ${p.productCount === 1 ? "product" : "products"}`}</span>
+                    <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4, alignItems: "center" }}>
+                      <button type="button" onClick={() => setPendingEditPart(p)} title="Edit names, weight and size" aria-label={`Edit ${p.nameEn}`} style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><Pencil size={13} color={C.torque} /></button>
+                      <OrderArrows onMove={(dir) => handleMovePart(p.id, dir)} isFirst={i === 0} isLast={i === parts.length - 1} />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <ConfirmDialog
         isOpen={!!pendingDeletePart}
@@ -6537,6 +8653,7 @@ function SupplierMessagesPage({ onSessionExpired, initialSupplier }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [openSupplier, setOpenSupplier] = useState(initialSupplier || null); // {supplierId, supplierName}
+  const [inboxQuery, setInboxQuery] = useState(""); const [inboxFilter, setInboxFilter] = useState("all");      // patch-suppliers-redesign
 
   const load = () => {
     setLoadState("loading");
@@ -6561,36 +8678,74 @@ function SupplierMessagesPage({ onSessionExpired, initialSupplier }) {
     );
   }
 
+  // patch-suppliers-redesign: the inbox as cards (initials, name, country, unread count, who wrote last, when), with a search and All / Unread.
+  const inQ = inboxQuery.trim().toLowerCase();
+  const unreadTotal = inbox.filter((e) => e.unreadCount > 0).length;
+  const shownInbox = inbox.filter((e) => (!inQ || [e.supplierName, e.country, e.lastMessagePreview].some((v) => v && String(v).toLowerCase().includes(inQ))) && (inboxFilter === "all" || e.unreadCount > 0));
+  const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const whenText = (at) => {
+    const d = new Date(at); const now = new Date();
+    if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const days = Math.floor((now - d) / 86400000);
+    if (days < 7) return d.toLocaleDateString("en-GB", { weekday: "short" });
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  };
   return (
     <div>
       <TopBar title="Supplier Messages" subtitle="Real bidirectional messaging with suppliers — Chinese and English, auto-translated both ways" />
       <div style={{ padding: 24 }}>
-        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+        {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 16 }}>{errorMessage}</div>}
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
         {loadState === "ready" && inbox.length === 0 && (
-          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>No supplier messages yet.</div></Card>
+          <div style={{ background: "#fff", border: `1px dashed ${C.lineStrong}`, borderRadius: 14, padding: 40, textAlign: "center" }}>
+            <MessageSquare size={26} color={C.muted} />
+            <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.muted, marginTop: 8 }}>No supplier messages yet.</div>
+          </div>
         )}
         {loadState === "ready" && inbox.length > 0 && (
-          <Card>
-            <div style={{ padding: 6 }}>
-              {inbox.map((entry, i) => (
-                <div
-                  key={entry.supplierId}
-                  onClick={() => setOpenSupplier({ supplierId: entry.supplierId, supplierName: entry.supplierName })}
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 12px", borderBottom: i < inbox.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{entry.supplierName}</div>
-                    <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.lastMessagePreview}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ ...body, fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{new Date(entry.lastMessageAt).toLocaleString()}</span>
-                    <ChevronRight size={16} color={C.muted} />
-                  </div>
-                </div>
-              ))}
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+              <div data-leap-segments="" role="group" aria-label="Which conversations" style={{ display: "flex", gap: 2 }}>
+                {[["all", `All (${inbox.length})`], ["unread", `Unread (${unreadTotal})`]].map(([id, label]) => (
+                  <button key={id} type="button" aria-pressed={inboxFilter === id} onClick={() => setInboxFilter(id)} style={{ ...body }}>{label}</button>
+                ))}
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, height: 38, boxSizing: "border-box", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 260 }}>
+                <Search size={14} color={C.muted} />
+                <input value={inboxQuery} onChange={(e) => setInboxQuery(e.target.value)} placeholder="Search suppliers or messages…" aria-label="Search conversations" data-leap-plain="" style={{ ...body, fontSize: 12.5, border: "none", outline: "none", background: "none", width: "100%", color: C.ink }} />
+              </div>
             </div>
-          </Card>
+            <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+              {shownInbox.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 28 }}>No conversation matches.</div>}
+              {shownInbox.map((entry, i) => {
+                const unread = entry.unreadCount > 0;
+                return (
+                  <div
+                    key={entry.supplierId}
+                    data-testid="inbox-row"
+                    onClick={() => setOpenSupplier({ supplierId: entry.supplierId, supplierName: entry.supplierName })}
+                    role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") setOpenSupplier({ supplierId: entry.supplierId, supplierName: entry.supplierName }); }}
+                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderTop: i ? `1px solid ${C.line}` : "none", cursor: "pointer", background: unread ? "#FFFBF0" : "#fff", boxShadow: unread ? `inset 3px 0 0 ${C.signal}` : "none" }}
+                  >
+                    <span aria-hidden="true" style={{ width: 42, height: 42, borderRadius: 12, background: C.navy, color: C.signal, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 800, fontSize: 13.5, flexShrink: 0 }}>{initialsOf(entry.supplierName)}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ ...body, fontSize: 14, fontWeight: unread ? 800 : 700, color: C.ink }}>{entry.supplierName}</span>
+                        {entry.country && <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{entry.country}</span>}
+                      </div>
+                      <div style={{ ...body, fontSize: 12.5, color: unread ? C.ink : C.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {entry.lastSenderRole === "admin" && <span style={{ fontWeight: 700, color: C.amberInk }}>You: </span>}{entry.lastMessagePreview}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
+                      <span style={{ ...body, fontSize: 11.5, fontWeight: unread ? 800 : 600, color: unread ? C.amberInk : C.muted, whiteSpace: "nowrap" }} title={new Date(entry.lastMessageAt).toLocaleString()}>{whenText(entry.lastMessageAt)}</span>
+                      {unread ? <span style={{ ...mono, minWidth: 20, height: 20, borderRadius: 999, background: C.signal, color: C.onSignal, fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }} aria-label={`${entry.unreadCount} unread`}>{entry.unreadCount}</span> : <ChevronRight size={15} color={C.muted} />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -6645,62 +8800,94 @@ function SupplierMessageThreadPage({ supplierId, supplierName, onBack, onSession
     }
   };
 
+  // patch-suppliers-redesign: a navy band (initials, name, "translated both ways"), the messages grouped by day with who wrote each and when,
+  // the supplier's in the translation with "Show original (Chinese)", and the reply bar fixed at the bottom.
+  const initials = String(supplierName || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const dayText = (d) => {
+    const now = new Date(); const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === now.toDateString()) return "Today";
+    if (d.toDateString() === y.toDateString()) return "Yesterday";
+    return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+  };
+  let lastDay = null;
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 24px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-        <div>
-          <div style={{ ...body, fontSize: 11.5, color: C.muted }}>Supplier Messages</div>
-          <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{supplierName}</div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "100vh" }}>
+      <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+        <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+        <span aria-hidden="true" style={{ width: 44, height: 44, borderRadius: 12, background: C.signal, color: C.onSignal, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{initials}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal }}>Supplier Messages</div>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>{supplierName}</div>
         </div>
+        <span style={{ ...body, marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: C.onNavyMuted, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 999, padding: "5px 12px" }}>
+          <Globe size={13} color={C.onNavyMuted} /> English ⇄ 中文, translated automatically
+        </span>
       </div>
-      <div style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
-        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
+      <div style={{ flex: 1, padding: "18px 24px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", background: C.canvas }}>
+        {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px" }}>{errorMessage}</div>}
         {messages === null && !errorMessage && <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>}
-        {messages !== null && messages.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted }}>No messages yet.</div>}
+        {messages !== null && messages.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted, textAlign: "center", padding: 30 }}>No messages yet. Write the first one below.</div>}
         {messages !== null && messages.map((m) => {
           const isMe = m.senderRole === "admin";
-          // Admin's OWN messages show their own real English original
-          // by default. A supplier's messages show the real Chinese ->
-          // English TRANSLATION by default, since that's what admin
-          // actually needs to read -- with a toggle to see the real
-          // Chinese original, since auto-translation isn't perfect and
-          // admin should be able to check it, not just trust it blindly.
+          // Admin's OWN messages show their own English original by default. A supplier's messages show the Chinese -> English TRANSLATION by
+          // default, with a toggle to see the Chinese original (auto-translation isn't perfect, so admin can check it).
           const defaultText = isMe ? m.originalText : (m.translatedText || m.originalText);
           const showingOriginal = showOriginalFor[m.id] || false;
           const displayText = (!isMe && showingOriginal) ? m.originalText : defaultText;
           const canToggle = !isMe && m.translationStatus === "success";
+          const at = new Date(m.createdAt);
+          const day = Number.isNaN(at.getTime()) ? null : at.toDateString();
+          const showDay = day && day !== lastDay;
+          if (day) lastDay = day;
+          const colors = msgColor(isMe ? "admin" : "supplier");
           return (
-            <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "65%" }}>
-              <div style={{ ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? C.onSignal : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
-                {displayText}
+            <React.Fragment key={m.id}>
+              {showDay && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0 2px" }}>
+                  <span style={{ flex: 1, height: 1, background: C.line }} />
+                  <span style={{ ...body, fontSize: 11, fontWeight: 800, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 999, padding: "2px 10px" }}>{dayText(at)}</span>
+                  <span style={{ flex: 1, height: 1, background: C.line }} />
+                </div>
+              )}
+              <div style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "68%", display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.muted, marginBottom: 3, letterSpacing: "0.04em" }}>
+                  {isMe ? "LEAP" : supplierName.toUpperCase()}{day ? ` · ${at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                </span>
+                <div style={{ ...body, fontSize: 13.5, padding: "10px 14px", borderRadius: isMe ? "14px 14px 4px 14px" : "14px 14px 14px 4px", lineHeight: 1.5, background: colors.bg, color: colors.fg, boxShadow: "0 1px 2px rgba(11,49,70,0.08)", whiteSpace: "pre-wrap" }}>
+                  {displayText}
+                </div>
+                {!isMe && m.translationStatus === "unavailable" && (
+                  <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 3 }}>(auto-translation unavailable — showing original Chinese)</div>
+                )}
+                {canToggle && (
+                  <button
+                    onClick={() => setShowOriginalFor((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                    style={{ ...body, fontSize: 11, fontWeight: 700, color: C.torque, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 4 }}
+                  >
+                    {showingOriginal ? "Show translation" : "Show original (Chinese)"}
+                  </button>
+                )}
               </div>
-              {!isMe && m.translationStatus === "unavailable" && (
-                <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 3 }}>(auto-translation unavailable — showing original Chinese)</div>
-              )}
-              {canToggle && (
-                <button
-                  onClick={() => setShowOriginalFor((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
-                  style={{ ...body, fontSize: 10.5, color: C.torque, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 3 }}
-                >
-                  {showingOriginal ? "Show translation" : "Show original (Chinese)"}
-                </button>
-              )}
-            </div>
+            </React.Fragment>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 8, padding: 16, borderTop: `1px solid ${C.line}`, background: C.card }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Type a message (English)…"
-          style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 20, padding: "10px 16px", fontSize: 13, outline: "none" }}
-        />
-        <button onClick={send} disabled={isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: isSending ? "#D1D5DB" : C.signal, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: isSending ? "default" : "pointer" }}>
-          <Send size={15} color="#fff" />
-        </button>
+      <div style={{ position: "sticky", bottom: 0, zIndex: 5, padding: "12px 24px 16px", borderTop: `1px solid ${C.line}`, background: "#fff" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 14, padding: "6px 6px 6px 16px" }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder="Type a message (English)…"
+            aria-label="Message"
+            data-leap-plain=""
+            style={{ ...body, flex: 1, border: "none", background: "transparent", padding: "8px 0", fontSize: 13.5, outline: "none", color: C.ink }}
+          />
+          <button onClick={send} disabled={isSending || !input.trim()} aria-label="Send" style={{ ...body, height: 40, padding: "0 18px", borderRadius: 10, background: isSending || !input.trim() ? "#D1D5DB" : C.signal, border: "none", display: "inline-flex", alignItems: "center", gap: 7, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: isSending || !input.trim() ? "default" : "pointer" }}>
+            <Send size={15} color={C.onSignal} /> {isSending ? "Sending…" : "Send"}
+          </button>
+        </div>
+        <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 6 }}>Press Enter to send. The supplier reads your message in Chinese; the English original is kept.</div>
       </div>
     </div>
   );
@@ -6839,10 +9026,28 @@ function PromoCodesPage({ onSessionExpired }) {
       </div>
       <div style={{ padding: 24 }}>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+        {/* patch-support-redesign: the numbers on top */}
+        {loadState === "ready" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
+            {[
+              [codes.filter((c) => c.isActive && !(c.startsAt && new Date(c.startsAt) > new Date())).length, "active now", C.gaugeInk],
+              [codes.filter((c) => c.startsAt && new Date(c.startsAt) > new Date()).length, "scheduled", C.torqueInk],
+              [codes.filter((c) => !c.isActive).length, "turned off", C.muted],
+              [codes.reduce((n, c) => n + (Number(c.usedCount) || 0), 0), "times used, all codes", C.ink],
+              [codes.filter((c) => c.source === "referral").length, "from referrals", C.ink],
+            ].map(([n, label, fg]) => (
+              <div key={label} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 16px", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+                <div style={{ ...mono, fontSize: 22, fontWeight: 800, color: fg }}>{n.toLocaleString()}</div>
+                <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <Card>
           <div style={{ padding: 18 }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ ...disp, fontSize: 14.5, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Create a code</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center", border: `1px solid ${C.signal}`, background: C.goldTint, borderRadius: 12, padding: 12 }}>
               <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Code (e.g. SUMMER10)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}>
                 <option value="percentage">% off</option>
@@ -6867,7 +9072,7 @@ function PromoCodesPage({ onSessionExpired }) {
               </button>
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center", padding: "10px 12px", background: C.canvas, borderRadius: 8 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center", padding: "10px 12px", background: C.torqueBg, border: `1px solid #D3E0F7`, borderRadius: 12 }}>
               <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>Audience targeting (optional, combinable):</span>
               <label style={{ ...body, display: "flex", alignItems: "center", gap: 5, fontSize: 12.5 }}>
                 <input type="checkbox" checked={newRequireNewUser} onChange={(e) => setNewRequireNewUser(e.target.checked)} />
@@ -6880,37 +9085,44 @@ function PromoCodesPage({ onSessionExpired }) {
 
             {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
             {loadState === "ready" && codes.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 20, textAlign: "center" }}>No promo codes yet.</div>}
-            {loadState === "ready" && codes.map((c, i) => (
-              <div key={c.code} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < codes.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink }}>{c.code}</span>
+            {/* patch-support-redesign: each code as a coupon card: the code, where it came from, what it gives, how much it has been used, its dates and audience */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 }}>
+            {loadState === "ready" && codes.map((c) => {
+              const scheduled = c.startsAt && new Date(c.startsAt) > new Date();
+              const full = c.maxTotalUses && c.usedCount >= c.maxTotalUses;
+              const near = c.maxTotalUses && c.usedCount / c.maxTotalUses >= 0.8;
+              const pct = c.maxTotalUses ? Math.min(100, (c.usedCount / c.maxTotalUses) * 100) : null;
+              return (
+              <div key={c.code} data-testid="promo-card" style={{ display: "flex", background: "#fff", border: `1px solid ${c.isActive ? C.line : C.lineStrong}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden", opacity: c.isActive ? 1 : 0.72 }}>
+                <div style={{ width: 112, flexShrink: 0, background: c.isActive ? `linear-gradient(160deg, ${C.navyDeep}, ${C.navy} 70%, ${C.navySoft})` : "#8A93A0", color: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 8px", borderRight: "2px dashed rgba(255,255,255,0.0)", position: "relative" }}>
+                  <div style={{ ...mono, fontSize: 22, fontWeight: 800, color: c.isActive ? C.signal : "#fff", lineHeight: 1 }}>{c.type === "percentage" ? `${c.value}%` : c.type === "flat" ? `$${c.value}` : "🚚"}</div>
+                  <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: c.isActive ? C.onNavyMuted : "#fff", marginTop: 4 }}>{c.type === "free_shipping" ? "shipping" : "off"}</div>
+                  <span aria-hidden="true" style={{ position: "absolute", right: -8, top: -8, width: 16, height: 16, borderRadius: "50%", background: C.canvas }} />
+                  <span aria-hidden="true" style={{ position: "absolute", right: -8, bottom: -8, width: 16, height: 16, borderRadius: "50%", background: C.canvas }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0, padding: "12px 14px", borderLeft: `2px dashed ${C.line}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ ...mono, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: "0.04em" }}>{c.code}</span>
                     <PlateChip small>{c.source === "referral" ? "Referral" : "Admin"}</PlateChip>
                     {!c.isActive && <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 6, padding: "2px 7px" }}>Inactive</span>}
-                    {c.startsAt && new Date(c.startsAt) > new Date() && (
+                    {scheduled && (
                       <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.torque, border: `1px solid ${C.torque}`, borderRadius: 6, padding: "2px 7px" }}>Scheduled</span>
                     )}
                   </div>
-                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 3 }}>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 4 }}>
                     {c.type === "percentage" && `${c.value}% off`}
                     {c.type === "flat" && `$${c.value} off`}
                     {c.type === "free_shipping" && "Free shipping"}
                     {" · "}
-                    {/* Real usage count (new) -- closes a real gap: the
-                        real promo_code_redemptions table already
-                        recorded every real redemption the whole time,
-                        this page just never showed it. Real color
-                        warning when a code is genuinely close to (or
-                        at) its own real max-uses limit. */}
-                    <span style={{ fontWeight: c.maxTotalUses && c.usedCount >= c.maxTotalUses ? 700 : 400, color: c.maxTotalUses && c.usedCount >= c.maxTotalUses ? C.red : (c.maxTotalUses && c.usedCount / c.maxTotalUses >= 0.8 ? C.amber : C.muted) }}>
+                    <span style={{ fontWeight: full ? 700 : 400, color: full ? C.red : (near ? C.amber : C.muted) }}>
                       {c.usedCount} used
                     </span>
                     {" · "}Max {c.maxTotalUses ?? "∞"} uses total, {c.maxUsesPerBuyer} per buyer
-                    {c.startsAt && ` · Starts ${new Date(c.startsAt).toLocaleDateString()}`}
-                    {c.expiresAt && ` · Expires ${new Date(c.expiresAt).toLocaleDateString()}`}
                   </div>
+                  {pct !== null && <div style={{ height: 5, borderRadius: 3, background: "#E8EBEF", overflow: "hidden", marginTop: 6 }}><div style={{ height: "100%", width: `${pct}%`, background: full ? C.red : near ? C.amber : C.gauge }} /></div>}
+                  {(c.startsAt || c.expiresAt) && <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 6 }}>{c.startsAt && `Starts ${new Date(c.startsAt).toLocaleDateString()}`}{c.startsAt && c.expiresAt ? " · " : ""}{c.expiresAt && `Expires ${new Date(c.expiresAt).toLocaleDateString()}`}</div>}
                   {(c.requireNewUser || c.minTotalSpend != null || c.minOrderCount != null || c.minInactiveDays != null) && (
-                    <div style={{ ...body, fontSize: 11, color: C.torque, marginTop: 2 }}>
+                    <div style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.torqueInk, background: C.torqueBg, borderRadius: 8, padding: "4px 8px", marginTop: 6 }}>
                       Targets: {[
                         c.requireNewUser && "new users only",
                         c.minTotalSpend != null && `$${c.minTotalSpend}+ lifetime spend`,
@@ -6919,15 +9131,17 @@ function PromoCodesPage({ onSessionExpired }) {
                       ].filter(Boolean).join(" · ")}
                     </div>
                   )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <button onClick={() => handleToggleActive(c.code, c.isActive)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.torque, background: "none", border: "none", cursor: "pointer" }}>
-                    {c.isActive ? "Deactivate" : "Activate"}
-                  </button>
-                  <button onClick={() => handleDelete(c.code)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                    <button onClick={() => handleToggleActive(c.code, c.isActive)} style={{ ...body, fontSize: 12, fontWeight: 800, height: 30, padding: "0 12px", borderRadius: 8, border: `1px solid ${c.isActive ? C.line : C.gauge}`, background: c.isActive ? "#fff" : C.gaugeBg, color: c.isActive ? C.ink : C.gaugeInk, cursor: "pointer" }}>
+                      {c.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                    <button onClick={() => handleDelete(c.code)} title="Delete" aria-label={`Delete ${c.code}`} style={{ marginLeft: "auto", width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><X size={14} color={C.red} /></button>
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
+            </div>
           </div>
         </Card>
       </div>
@@ -7035,102 +9249,107 @@ function ReviewsPage({ onSessionExpired }) {
     }
   };
 
+  // patch-support-redesign: the "verified purchase" setting as a switch card, Pending / Flagged, then the reviews as cards (stars, the words in a
+  // quote, the photos that open large, who and when, the reports in red), with the decisions at the bottom of each card.
   return (
     <div>
       <TopBar title="Reviews" subtitle={loadState === "ready" ? `${reviews.length} ${activeTab} review${reviews.length === 1 ? "" : "s"}` : "Loading…"} />
       <div style={{ padding: 24 }}>
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>Require verified purchase to review</div>
-              <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 2 }}>When on, only buyers who actually received the product can submit a review.</div>
-            </div>
-            <button
-              onClick={handleToggleRequireVerified}
-              disabled={isSavingSetting}
-              style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: requireVerified ? C.gauge : C.line, color: requireVerified ? "#fff" : C.muted, fontSize: 12, fontWeight: 700, cursor: isSavingSetting ? "default" : "pointer" }}
-            >{requireVerified ? "On" : "Off"}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", padding: "14px 16px", marginBottom: 16 }}>
+          <span style={{ width: 40, height: 40, borderRadius: 11, background: C.navy, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Check size={18} color={C.signal} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ ...body, fontSize: 13.5, fontWeight: 800, color: C.ink }}>Require verified purchase to review</div>
+            <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>When on, only buyers who actually received the product can submit a review.</div>
           </div>
-        </Card>
+          <button
+            onClick={handleToggleRequireVerified}
+            disabled={isSavingSetting}
+            aria-pressed={requireVerified}
+            style={{ ...body, display: "inline-flex", alignItems: "center", gap: 8, height: 34, padding: "0 6px 0 12px", borderRadius: 999, border: `1px solid ${requireVerified ? C.gauge : C.lineStrong}`, background: requireVerified ? C.gaugeBg : "#fff", color: requireVerified ? C.gaugeInk : C.muted, fontSize: 12.5, fontWeight: 800, cursor: isSavingSetting ? "default" : "pointer" }}
+          >{requireVerified ? "On" : "Off"}<span aria-hidden="true" style={{ width: 36, height: 22, borderRadius: 20, background: requireVerified ? C.gauge : "#D1D5DB", position: "relative", display: "inline-block" }}><span style={{ position: "absolute", top: 2, left: requireVerified ? 16 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} /></span></button>
+        </div>
 
         <div style={{ marginBottom: 16 }}>
           <FilterButtons label="Which reviews" activeId={activeTab} onSelect={setActiveTab}
             items={[{ id: "pending", label: "Pending" }, { id: "flagged", label: "Flagged" }]} />
         </div>
 
-        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+        {errorMessage && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "9px 12px", marginBottom: 16 }}>{errorMessage}</div>}
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load reviews: {errorMessage}</div></Card>}
         {loadState === "ready" && reviews.length === 0 && (
-          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>
+          <div style={{ padding: 36, textAlign: "center", ...body, fontSize: 13, color: C.muted, background: "#fff", border: `1px dashed ${C.lineStrong}`, borderRadius: 14 }}>
             {activeTab === "pending" ? "Nothing awaiting review right now." : "No reviews have been reported."}
-          </div></Card>
+          </div>
         )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 14 }}>
         {loadState === "ready" && reviews.map((r) => (
-          <Card key={r.id} style={{ marginBottom: 12 }}>
-            <div style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{r.productName}</div>
-                <div style={{ marginBottom: 6 }}><StarRatingDisplay rating={r.rating} /></div>
-                {r.comment && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginBottom: 4 }}>{r.comment}</div>}
-                {r.photos && r.photos.length > 0 && (
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                    {r.photos.map((url, i) => (
-                      <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}` }} />
-                    ))}
-                  </div>
-                )}
-                <div style={{ ...body, fontSize: 11, color: C.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                  {r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}
-                  {r.isVerifiedPurchase && (
-                    <span style={{ ...body, fontSize: 10, fontWeight: 700, color: C.gauge, background: "#E8F7F0", padding: "2px 6px", borderRadius: 4 }}>
-                      ✓ Verified Purchase
-                    </span>
-                  )}
+          <div key={r.id} data-testid="review-card" style={{ background: "#fff", border: `1px solid ${activeTab === "flagged" ? "#EBC2BD" : C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "14px 16px", flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ ...body, flex: 1, fontSize: 14, fontWeight: 800, color: C.ink }}>{r.productName}</div>
+                <span style={{ ...mono, fontSize: 13, fontWeight: 800, color: r.rating >= 4 ? C.gaugeInk : r.rating <= 2 ? C.redInk : C.amberInk, background: r.rating >= 4 ? C.gaugeBg : r.rating <= 2 ? C.redBg : C.amberBg, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{r.rating}.0 ★</span>
+              </div>
+              <div style={{ margin: "6px 0 8px" }}><StarRatingDisplay rating={r.rating} /></div>
+              {r.comment && <div style={{ ...body, fontSize: 13, color: C.ink, lineHeight: 1.5, background: C.surfaceHigh, borderLeft: `3px solid ${C.signal}`, borderRadius: "0 8px 8px 0", padding: "8px 12px", marginBottom: 8 }}>{r.comment}</div>}
+              {r.photos && r.photos.length > 0 && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  {r.photos.map((url, i) => (
+                    <EnlargeablePhoto key={i} src={`${API_BASE_URL}${url}`} style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", border: `1px solid ${C.line}`, display: "block" }} />
+                  ))}
                 </div>
-                {activeTab === "flagged" && (
-                  <div style={{ marginTop: 8, padding: 10, background: C.redBg, borderRadius: 8 }}>
-                    <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 4 }}>
-                      Reported {r.flagCount} time{r.flagCount === 1 ? "" : "s"}
-                    </div>
-                    {(r.flagReasons || []).map((reason, i) => (
-                      <div key={i} style={{ ...body, fontSize: 11.5, color: C.ink }}>“{reason}”</div>
-                    ))}
+              )}
+              <div style={{ ...body, fontSize: 11.5, color: C.muted, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}
+                {r.isVerifiedPurchase && (
+                  <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.gaugeInk, background: C.gaugeBg, padding: "2px 8px", borderRadius: 999 }}>
+                    ✓ Verified Purchase
+                  </span>
+                )}
+              </div>
+              {activeTab === "flagged" && (
+                <div style={{ marginTop: 10, padding: 10, background: C.redBg, borderRadius: 10 }}>
+                  <div style={{ ...body, fontSize: 12, fontWeight: 800, color: C.red, marginBottom: 4 }}>
+                    Reported {r.flagCount} time{r.flagCount === 1 ? "" : "s"}
                   </div>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {activeTab === "pending" ? (
-                  <>
-                    <button
-                      disabled={actioningId === r.id}
-                      onClick={() => handleModerate(r.id, "approve")}
-                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >Approve</button>
-                    <button
-                      disabled={actioningId === r.id}
-                      onClick={() => handleModerate(r.id, "reject")}
-                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >Reject</button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      disabled={actioningId === r.id}
-                      onClick={() => handleDismissFlags(r.id)}
-                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.line, color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >Dismiss</button>
-                    <button
-                      disabled={actioningId === r.id}
-                      onClick={() => handleModerate(r.id, "reject")}
-                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >Hide review</button>
-                  </>
-                )}
-              </div>
+                  {(r.flagReasons || []).map((reason, i) => (
+                    <div key={i} style={{ ...body, fontSize: 12, color: C.ink }}>“{reason}”</div>
+                  ))}
+                </div>
+              )}
             </div>
-          </Card>
+            <div style={{ display: "flex", gap: 8, padding: "10px 16px", borderTop: `1px solid ${C.line}`, background: C.surfaceHigh, borderRadius: "0 0 14px 14px" }}>
+              {activeTab === "pending" ? (
+                <>
+                  <button
+                    disabled={actioningId === r.id}
+                    onClick={() => handleModerate(r.id, "approve")}
+                    style={{ ...body, flex: 1, height: 36, borderRadius: 10, border: "none", background: C.gauge, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", opacity: actioningId === r.id ? 0.6 : 1 }}
+                  >Approve</button>
+                  <button
+                    disabled={actioningId === r.id}
+                    onClick={() => handleModerate(r.id, "reject")}
+                    style={{ ...body, height: 36, padding: "0 16px", borderRadius: 10, border: `1px solid #EBC2BD`, background: "#fff", color: C.red, fontSize: 13, fontWeight: 800, cursor: "pointer", opacity: actioningId === r.id ? 0.6 : 1 }}
+                  >Reject</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    disabled={actioningId === r.id}
+                    onClick={() => handleDismissFlags(r.id)}
+                    style={{ ...body, flex: 1, height: 36, borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 13, fontWeight: 800, cursor: "pointer", opacity: actioningId === r.id ? 0.6 : 1 }}
+                  >Dismiss</button>
+                  <button
+                    disabled={actioningId === r.id}
+                    onClick={() => handleModerate(r.id, "reject")}
+                    style={{ ...body, height: 36, padding: "0 16px", borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", opacity: actioningId === r.id ? 0.6 : 1 }}
+                  >Hide review</button>
+                </>
+              )}
+            </div>
+          </div>
         ))}
+        </div>
       </div>
     </div>
   );
@@ -7194,10 +9413,27 @@ function PayoutsPage({ onSessionExpired }) {
     <div>
       <TopBar title="Commission & payouts" subtitle="Recorded manually per supplier, based on each supplier's own payment agreement — no fixed platform-wide schedule" />
       <div style={{ padding: 24 }}>
-        <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-          <KpiCard label="Currently owed" value={`¥${totalOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Wallet} />
-          <KpiCard label="Suppliers with a balance" value={owed.length} icon={TrendingUp} />
-        </div>
+        {/* patch-financial-redesign: the numbers on top */}
+        {(() => {
+          const since = Date.now() - 30 * 86400000;
+          const paid30 = history.filter((p) => new Date(p.createdAt).getTime() >= since && p.currencyCode === "CNY").reduce((n, p) => n + Number(p.amount || 0), 0);
+          const noBank = loadState === "ready" ? owed.filter((o) => !payoutMethods[o.supplierId]).length : 0;
+          const tile = (label, value, sub, tone) => (
+            <div key={label} style={{ background: tone === "navy" ? `linear-gradient(120deg, ${C.navyDeep}, ${C.navy} 60%, ${C.navySoft} 140%)` : tone === "red" ? C.redBg : "#fff", border: `1px solid ${tone === "navy" ? C.navy : tone === "red" ? "#EBC2BD" : C.line}`, borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+              <div style={{ ...body, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: tone === "navy" ? C.onNavyMuted : C.muted }}>{label}</div>
+              <div style={{ ...mono, fontSize: 24, fontWeight: 800, color: tone === "navy" ? C.signal : tone === "red" ? C.redInk : C.ink, marginTop: 2 }}>{value}</div>
+              {sub && <div style={{ ...body, fontSize: 11.5, color: tone === "navy" ? C.onNavyMuted : C.muted }}>{sub}</div>}
+            </div>
+          );
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1.3fr repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
+              {tile("Currently owed", `¥${totalOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, "to all suppliers, in RMB", "navy")}
+              {tile("Suppliers with a balance", owed.length, owed.length ? "see the list below" : "nothing to pay now")}
+              {tile("Without a bank account", noBank, noBank ? "they cannot be paid yet" : "every supplier owed has one", noBank ? "red" : null)}
+              {tile("Paid in the last 30 days", `¥${paid30.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, `${history.filter((p) => new Date(p.createdAt).getTime() >= since).length} payouts`)}
+            </div>
+          );
+        })()}
 
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load payouts: {errorMessage}</div></Card>}
@@ -7285,8 +9521,8 @@ function PayoutsPage({ onSessionExpired }) {
                   <tbody>
                     {history.map((p) => (
                       <tr key={p.id}>
-                        <Td style={{ fontWeight: 600 }}>{p.supplierName}</Td>
-                        <Td align="right">{p.currencyCode === "CNY" ? "¥" : "$"}{p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}{p.currencyCode === "CNY" ? "" : " USD"}</Td>
+                        <Td style={{ fontWeight: 600 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.navy, color: C.signal, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 800 }}>{String(p.supplierName || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")}</span>{p.supplierName}</span></Td>
+                        <Td align="right" style={{ ...mono, fontWeight: 800 }}>{p.currencyCode === "CNY" ? "¥" : "$"}{p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}{p.currencyCode === "CNY" ? "" : " USD"}</Td>
                         <Td align="right" style={{ color: C.muted }}>{p.subOrderCount}</Td>
                         <Td style={{ color: C.muted }}>{new Date(p.createdAt).toLocaleDateString()}</Td>
                         <Td style={{ color: C.muted }}>{p.notes || "—"}</Td>
@@ -7336,6 +9572,22 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Support tickets" subtitle={loadState === "ready" ? `${openCount} open · buyer ↔ platform only` : "Loading…"} />
+      {/* patch-support-redesign: the numbers on top; each opens its filter */}
+      {loadState === "ready" && (
+        <div style={{ padding: "18px 24px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+          {[
+            ["open", tickets.filter((t) => t.status === "open").length, "open, waiting for you", C.redInk, C.redBg],
+            ["in_progress", tickets.filter((t) => t.status === "in_progress").length, "in progress", C.torqueInk, C.torqueBg],
+            ["resolved", tickets.filter((t) => t.status === "resolved").length, "resolved", C.gaugeInk, "#fff"],
+            ["all", tickets.filter((t) => t.status !== "resolved" && t.priority === "high").length, "high priority, not resolved", C.amberInk, C.amberBg],
+          ].map(([id, n, label, fg, bg]) => (
+            <button key={label} type="button" onClick={() => setFilter(id)} style={{ ...body, textAlign: "left", background: n > 0 ? bg : "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: "12px 16px", cursor: "pointer", boxShadow: "0 1px 2px rgba(11,49,70,0.05)" }}>
+              <div style={{ ...mono, fontSize: 22, fontWeight: 800, color: n > 0 ? fg : C.ink }}>{n}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>{label}</div>
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <FilterButtons label="Filter tickets by status" activeId={filter} onSelect={setFilter}
           items={TICKET_FILTERS.map((f) => ({ id: f.id, label: f.label, count: loadState === "ready" ? countOf(f.id) : "…", tone: f.tone, countTestId: `ticket-count-${f.id}` }))} />
@@ -7384,7 +9636,7 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
                     <Td style={{ fontWeight: 600 }}>{t.subject}</Td>
                     <Td>{t.buyerId || t.guestEmail || "—"}</Td>
                     <Td style={{ color: C.muted }}>{t.orderId || "—"}</Td>
-                    <Td><span style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: priorityColor[t.priority] }} />{t.priority}</span></Td>
+                    <Td><span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, textTransform: "capitalize", color: priorityColor[t.priority] || C.muted, background: t.priority === "high" ? C.redBg : t.priority === "medium" ? C.amberBg : "#EEEFF1", borderRadius: 999, padding: "3px 10px" }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: priorityColor[t.priority] }} />{t.priority}</span></Td>
                     <Td>
                       {t.status === "open" && <Badge label="Open" color={C.red} bg={C.redBg} />}
                       {t.status === "in_progress" && <Badge label="In progress" color={C.torque} bg={C.torqueBg} />}
@@ -7454,9 +9706,9 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
   if (loadState === "loading") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Ticket</div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Ticket</div>
         </div>
         <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading ticket…</div>
       </div>
@@ -7465,71 +9717,114 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
   if (loadState === "error") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Ticket</div>
+        <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Ticket</div>
         </div>
         <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this ticket: {errorMessage}</div>
       </div>
     );
   }
 
+  // patch-support-redesign: a navy band (subject, ticket number, status, buyer, order); the conversation grouped by day with who wrote and when,
+  // the reply bar under it; beside it the buyer and order card and the status as a step bar.
+  const statusMeta = { open: ["Open", C.red, C.redBg], in_progress: ["In progress", C.torque, C.torqueBg], resolved: ["Resolved", C.gauge, C.gaugeBg] }[ticket.status] || [ticket.status, C.muted, "#EEEFF1"];
+  const who = ticket.buyerId || ticket.guestEmail || "Buyer";
+  const dayText = (d) => { const now = new Date(); const y = new Date(now); y.setDate(now.getDate() - 1); return d.toDateString() === now.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); };
+  let lastDay = null;
+  const first = ticket.messages[0]; const lastMsg = ticket.messages[ticket.messages.length - 1];
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-        <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>{ticket.subject}</div>
-        <PlateChip>{ticket.id}</PlateChip>
-      </div>
-      <div style={{ padding: 24, display: "flex", gap: 16 }}>
-        <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Conversation">
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              {ticket.messages.map((m, i) => (
-                <div key={i} style={{ alignSelf: m.senderRole === "admin" ? "flex-end" : "flex-start", maxWidth: "75%" }}>
-                  <div style={{
-                    ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12,
-                    background: m.senderRole === "admin" ? C.signal : C.canvas,
-                    color: m.senderRole === "admin" ? C.onSignal : C.ink,
-                  }}>{m.message}</div>
-                  <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 3, textAlign: m.senderRole === "admin" ? "right" : "left" }}>
-                    {m.senderRole === "admin" ? "Platform" : "Buyer"} · {new Date(m.createdAt).toLocaleString()}
-                  </div>
-                </div>
-              ))}
+      <div data-leap-header="" style={{ padding: "22px 32px 24px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+          <span style={{ width: 46, height: 46, borderRadius: 12, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><LifeBuoy size={22} color={C.onSignal} /></span>
+          <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ ...disp, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{ticket.subject}</div>
+              <PlateChip>{ticket.id}</PlateChip>
+              <Badge label={statusMeta[0]} color={statusMeta[1]} bg={statusMeta[2]} />
             </div>
-            <div style={{ padding: 16, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
+            <div style={{ ...body, fontSize: 12.5, color: C.onNavyMuted, marginTop: 6 }}>
+              {ticket.messages.length} {ticket.messages.length === 1 ? "message" : "messages"}{first ? ` · opened ${new Date(first.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}{lastMsg ? ` · last ${new Date(lastMsg.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: 24, display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)", gap: 18, alignItems: "start" }}>
+        <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: `1px solid ${C.line}` }}>
+            <span style={{ width: 4, height: 18, borderRadius: 2, background: C.signal }} />
+            <span style={{ ...disp, fontSize: 15, fontWeight: 800, color: C.ink }}>Conversation</span>
+            <span style={{ ...body, marginLeft: "auto", fontSize: 11.5, color: C.muted }}>Leap in gold · the buyer in green</span>
+          </div>
+          <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10, background: C.canvas, minHeight: 220 }}>
+            {ticket.messages.map((m, i) => {
+              const at = new Date(m.createdAt); const day = at.toDateString(); const showDay = day !== lastDay; lastDay = day;
+              const mine = m.senderRole === "admin";
+              return (
+                <React.Fragment key={i}>
+                  {showDay && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0" }}>
+                      <span style={{ flex: 1, height: 1, background: C.line }} />
+                      <span style={{ ...body, fontSize: 11, fontWeight: 800, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 999, padding: "2px 10px" }}>{dayText(at)}</span>
+                      <span style={{ flex: 1, height: 1, background: C.line }} />
+                    </div>
+                  )}
+                  <div style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "75%", display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+                    <div style={{
+                      ...body, fontSize: 13.5, lineHeight: 1.5, padding: "10px 14px", borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px", whiteSpace: "pre-wrap",
+                      background: msgColor(m.senderRole).bg,
+                      color: msgColor(m.senderRole).fg, boxShadow: "0 1px 2px rgba(11,49,70,0.08)",
+                    }}>{m.message}</div>
+                    <div style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.muted, marginTop: 3, textAlign: mine ? "right" : "left" }}>
+                      {mine ? "Platform" : "Buyer"} · {at.toLocaleString()}
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.line}`, background: "#fff" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 12, padding: "5px 5px 5px 14px" }}>
               <input
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleReply()}
                 placeholder="Reply to the buyer…"
-                style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 12px", fontSize: 13 }}
+                data-leap-plain=""
+                style={{ ...body, flex: 1, border: "none", background: "transparent", outline: "none", padding: "8px 0", fontSize: 13.5, color: C.ink }}
               />
               <button
                 disabled={isSending}
                 onClick={handleReply}
-                style={{ ...body, padding: "9px 16px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.6 : 1 }}
+                style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, height: 38, padding: "0 18px", borderRadius: 9, border: "none", background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 800, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.6 : 1 }}
               >Send</button>
             </div>
-          </Card>
+            {errorMessage && <div role="alert" style={{ ...body, fontSize: 12, color: C.redInk, marginTop: 6 }}>{errorMessage}</div>}
+          </div>
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Details">
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ ...body, fontSize: 12, color: C.muted }}>Buyer</div>
-              <div style={{ ...body, fontSize: 13, fontWeight: 600 }}>{ticket.buyerId || ticket.guestEmail}</div>
-              {ticket.orderId && (
-                <>
-                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Related order</div>
-                  <PlateChip small>{ticket.orderId}</PlateChip>
-                </>
-              )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span aria-hidden="true" style={{ width: 42, height: 42, borderRadius: 12, background: msgColor("buyer").bg, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{String(who).charAt(0).toUpperCase()}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ ...body, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted }}>Buyer</div>
+                <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink, wordBreak: "break-all" }}>{ticket.buyerId || ticket.guestEmail}</div>
+                {!ticket.buyerId && ticket.guestEmail && <div style={{ ...body, fontSize: 11.5, color: C.muted }}>guest (not logged in)</div>}
+              </div>
             </div>
-          </Card>
-          <Card title="Status">
+            {ticket.orderId && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+                <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>Related order</span>
+                <PlateChip small>{ticket.orderId}</PlateChip>
+              </div>
+            )}
+          </div>
+          <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", overflow: "hidden" }}>
+            <div style={{ ...disp, fontSize: 15, fontWeight: 800, color: C.ink, padding: "12px 16px", borderBottom: `1px solid ${C.line}` }}>Status</div>
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              {TICKET_STEPS.map(s => {
+              {TICKET_STEPS.map((s, i) => {
                 const current = ticket.status === s;
                 const behind = TICKET_RANK[s] < TICKET_RANK[ticket.status];
                 const canPress = TICKET_RANK[s] > TICKET_RANK[ticket.status];
@@ -7542,16 +9837,20 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
                     title={behind ? "A ticket's status only moves forward and can't be undone" : undefined}
                     onClick={() => (s === "resolved" ? setConfirmingResolve(true) : handleStatusChange(s))}
                     style={{
-                      ...body, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, textAlign: "left", cursor: canPress ? "pointer" : "not-allowed",
+                      ...body, display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, textAlign: "left", cursor: canPress ? "pointer" : "not-allowed",
                       border: current ? `2px solid ${C.signal}` : behind ? `1px dashed ${C.line}` : `1px solid ${C.line}`,
-                      background: current ? "#FDF1EB" : behind ? "#F1F3F5" : "#fff",
-                      color: behind ? C.muted : C.ink, opacity: behind ? 0.7 : 1,
+                      background: current ? C.goldTint : behind ? "#F1F3F5" : "#fff",
+                      color: behind ? C.muted : C.ink, opacity: behind ? 0.75 : 1,
                     }}
-                  >{s === "open" ? "Open" : s === "in_progress" ? "In progress" : "Resolved"}</button>
+                  >
+                    <span aria-hidden="true" style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 900, background: behind ? C.navy : current ? C.signal : C.canvas, color: behind ? "#fff" : current ? C.onSignal : C.muted }}>{behind ? "✓" : i + 1}</span>
+                    {s === "open" ? "Open" : s === "in_progress" ? "In progress" : "Resolved"}
+                    {canPress && <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: C.torque }}>Move here →</span>}
+                  </button>
                 );
               })}
               {confirmingResolve && (
-                <div data-testid="ticket-resolve-confirm" role="alertdialog" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, background: C.redBg }}>
+                <div data-testid="ticket-resolve-confirm" role="alertdialog" style={{ ...body, border: `1px solid #EBC2BD`, borderRadius: 10, padding: 10, background: C.redBg }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>Resolved can't be undone.</div>
                   <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Mark this ticket as resolved?</div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -7561,8 +9860,8 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
                 </div>
               )}
             </div>
-            <div style={{ ...body, fontSize: 11.5, color: C.muted, padding: "0 12px 10px" }}>Status only moves forward and can't be undone.</div>
-          </Card>
+            <div style={{ ...body, fontSize: 11.5, color: C.muted, padding: "0 12px 12px" }}>Status only moves forward and can't be undone.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -7580,10 +9879,41 @@ function getReturnStatusMeta(status) {
   return RETURN_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
 }
 
+// Returns (patch-returns-flow, migration 146): the list with what needs the admin, and the case page where the admin approves with the refund
+// and says where the part goes; then the part is received (back to stock) and the money goes back.
+// Who wrote a message, by colour, everywhere (patch-message-colors): Leap golden yellow, supplier navy blue, hub red, buyer green.
+const MSG_COLORS = {
+  admin: { bg: "#F9B317", fg: "#0B3146", sub: "rgba(11,49,70,0.72)" },
+  supplier: { bg: "#0B3146", fg: "#FFFFFF", sub: "rgba(255,255,255,0.78)" },
+  hub: { bg: "#C0362C", fg: "#FFFFFF", sub: "rgba(255,255,255,0.8)" },
+  buyer: { bg: "#1E9D6B", fg: "#FFFFFF", sub: "rgba(255,255,255,0.8)" },
+  other: { bg: "#F5F6F8", fg: "#14171C", sub: "#636B78" },
+};
+const msgColor = (role) => MSG_COLORS[role] || MSG_COLORS.other;
+const RETURN_REASON_LABELS = { wrong_part: "Wrong part", damaged: "Arrived damaged", doesnt_fit: "Doesn't fit the car", not_as_described: "Not as described", other: "Other" };
+const RETURN_REFUND_META = {
+  waiting_part: { label: "Refund when the part arrives", color: C.amber, bg: C.amberBg },
+  pending: { label: "To refund", color: C.red, bg: C.redBg },
+  failed: { label: "Refund failed", color: C.red, bg: C.redBg },
+  auto_done: { label: "Refunded", color: C.gauge, bg: C.gaugeBg },
+  manual_done: { label: "Refunded by hand", color: C.gauge, bg: C.gaugeBg },
+};
+const returnReasonText = (c) => (c.reasonCode && c.reasonCode !== "other" ? RETURN_REASON_LABELS[c.reasonCode] : c.reason);
+const returnMoney = (n) => `$${Number(n || 0).toFixed(2)}`;
+const returnWaitingPart = (c) => c.status === "approved" && c.sendBack === true && !c.receivedAt;
+const returnRefundOpen = (c) => ["pending", "failed"].includes(c.refundStatus) && !c.refundedAt;
+const RETURN_FILTERS = {
+  needs: (c) => ["awaiting", "in_progress"].includes(c.status) || returnRefundOpen(c) || c.unreadSupplier > 0 || c.unreadBuyer > 0 || c.unreadHub > 0,
+  part: returnWaitingPart,
+  done: (c) => ["completed", "rejected"].includes(c.status),
+  all: () => true,
+};
+
 function ReturnsPage({ onOpenCase, onSessionExpired }) {
   const [cases, setCases] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  const [filter, setFilter] = useState("needs");
 
   useEffect(() => {
     fetchReturnCases(getStoredToken())
@@ -7596,12 +9926,20 @@ function ReturnsPage({ onOpenCase, onSessionExpired }) {
   }, [onSessionExpired]);
   useAutoRefresh(() => fetchReturnCases(getStoredToken()).then(setIfChanged(setCases)), { enabled: loadState === "ready" });
 
+  const overdue = cases.filter((c) => c.overdue);
+  const shown = cases.filter(RETURN_FILTERS[filter]).sort((a, b) => Number(Boolean(b.overdue)) - Number(Boolean(a.overdue)));
+  const count = (k) => cases.filter(RETURN_FILTERS[k]).length;
+
   return (
     <div>
-      <TopBar title="Returns & disputes" subtitle={loadState === "ready" ? `${cases.length} cases` : "Loading…"} />
-      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
-        {/* Real export (new) -- same reusable exportToExcel() util already
-            used for Orders/Payouts/Audit Log, just never added here. */}
+      <TopBar title="Returns & disputes" subtitle={loadState === "ready" ? `${cases.length} cases · ${count("needs")} need you` : "Loading…"} />
+      <div style={{ padding: "18px 24px 0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <FilterButtons label="Filter returns" activeId={filter} onSelect={setFilter} items={[
+          { id: "needs", label: "Needs you", count: count("needs"), alert: overdue.length > 0 },
+          { id: "part", label: "Waiting for the part", count: count("part"), tone: "amber" },
+          { id: "done", label: "Done", count: count("done"), tone: "green" },
+          { id: "all", label: "All", count: cases.length },
+        ]} />
         <button
           disabled={cases.length === 0}
           onClick={() => exportToExcel({
@@ -7611,42 +9949,70 @@ function ReturnsPage({ onOpenCase, onSessionExpired }) {
               { header: "Case", key: "id", width: 14 },
               { header: "Order", key: "orderId", width: 16 },
               { header: "Buyer", key: "buyer", width: 30 },
+              { header: "Supplier", key: "supplier", width: 24 },
+              { header: "Parts", key: "items", width: 34 },
               { header: "Reason", key: "reason", width: 30 },
               { header: "Status", key: "status", width: 16 },
+              { header: "Refund", key: "refund", width: 22 },
               { header: "Updated", key: "updatedAt", width: 16 },
             ],
             rows: cases.map((c) => ({
-              id: c.id, orderId: c.orderId, buyer: c.buyerId || c.guestEmail || "—",
-              reason: c.reason, status: getReturnStatusMeta(c.status).label,
+              id: c.id, orderId: c.orderId, buyer: c.buyerEmail || c.guestEmail || "—", supplier: c.supplierName || "", items: c.items || "",
+              reason: returnReasonText(c), status: getReturnStatusMeta(c.status).label,
+              refund: c.refundAmount ? `${returnMoney(c.refundAmount)} · ${(RETURN_REFUND_META[c.refundStatus] || { label: "" }).label}` : "",
               updatedAt: new Date(c.updatedAt).toLocaleDateString(),
             })),
           })}
-          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: cases.length === 0 ? "default" : "pointer", opacity: cases.length === 0 ? 0.5 : 1 }}
+          style={{ ...toolbarButtonStyle(cases.length === 0), marginLeft: "auto" }}
         >
           <Download size={13} /> Export
         </button>
       </div>
-      <div style={{ padding: 24 }}>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+        {overdue.length > 0 && (
+          <div role="alert" style={{ ...body, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, background: C.redBg, border: `1px solid ${C.red}`, color: C.redInk, fontSize: 13 }}>
+            <Clock size={16} />
+            <span style={{ flex: 1 }}><b>{overdue.length} {overdue.length === 1 ? "return has" : "returns have"} waited more than 48 hours</b> for your answer.</span>
+            {overdue.length === 1 && <button type="button" onClick={() => onOpenCase(overdue[0].id)} style={{ ...body, height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.red}`, background: "#fff", color: C.redInk, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Open {overdue[0].id}</button>}
+          </div>
+        )}
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading return cases…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load return cases: {errorMessage}</div></Card>}
         {loadState === "ready" && (
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><Th>Case</Th><Th>Order</Th><Th>Buyer</Th><Th>Reason</Th><Th>Status</Th><Th>Updated</Th></tr></thead>
+              <thead><tr><Th>Case</Th><Th>Order</Th><Th>Buyer</Th><Th>Part</Th><Th>Reason</Th><Th>Status</Th><Th>Refund</Th><Th>Updated</Th></tr></thead>
               <tbody>
-                {cases.length === 0 && (
-                  <tr><td colSpan={6} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No return cases.</td></tr>
+                {shown.length === 0 && (
+                  <tr><td colSpan={8} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{filter === "needs" ? "Nothing waits for you." : "No return cases here."}</td></tr>
                 )}
-                {cases.map(c => {
+                {shown.map((c) => {
                   const meta = getReturnStatusMeta(c.status);
+                  const refund = RETURN_REFUND_META[c.refundStatus];
                   return (
                     <tr key={c.id} onClick={() => onOpenCase(c.id)} style={{ cursor: "pointer" }}>
-                      <Td><PlateChip small>{c.id}</PlateChip></Td>
+                      <Td>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <PlateChip small>{c.id}</PlateChip>
+                          {(c.unreadSupplier > 0 || c.unreadBuyer > 0 || c.unreadHub > 0) && (() => {
+                            const who = [c.unreadHub ? "hub" : "", c.unreadSupplier ? "supplier" : "", c.unreadBuyer ? "buyer" : ""].filter(Boolean);
+                            return <span title={`${c.unreadHub + c.unreadSupplier + c.unreadBuyer} new`} style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.onSignal, background: C.signal, borderRadius: 999, padding: "2px 7px", whiteSpace: "nowrap" }}>New message{who.length > 1 ? "s" : ""} · {who.join(" + ")}</span>;
+                          })()}
+                          {c.source === "hub" && <span title="The hub found this problem at inspection" style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.torqueInk, background: C.torqueBg, borderRadius: 999, padding: "2px 7px", whiteSpace: "nowrap" }}>From the hub</span>}
+                          {c.overdue && <span title="Waiting more than 48 hours" style={{ ...body, fontSize: 10.5, fontWeight: 800, color: "#fff", background: C.red, borderRadius: 999, padding: "2px 7px" }}>48h+</span>}
+                        </span>
+                      </Td>
                       <Td><PlateChip small>{c.orderId}</PlateChip></Td>
-                      <Td>{c.buyerId || c.guestEmail || "—"}</Td>
-                      <Td style={{ maxWidth: 260 }}>{c.reason}</Td>
-                      <Td><Badge label={meta.label} color={meta.color} bg={meta.bg} /></Td>
-                      <Td style={{ color: C.muted }}>{new Date(c.updatedAt).toLocaleString()}</Td>
+                      <Td>{c.buyerEmail || c.guestEmail || "—"}</Td>
+                      <Td style={{ maxWidth: 240 }}><div style={{ fontWeight: 600 }}>{c.items || "—"}</div><div style={{ fontSize: 12, color: C.muted }}>{c.supplierName}</div></Td>
+                      <Td style={{ maxWidth: 220 }}>{returnReasonText(c)}</Td>
+                      <Td>
+                        <Badge label={meta.label} color={meta.color} bg={meta.bg} />
+                        {returnWaitingPart(c) && <div style={{ ...body, fontSize: 11.5, color: C.amberInk, marginTop: 4 }}>Part on its way back</div>}
+                        {c.supplierAnswer && ["awaiting", "in_progress"].includes(c.status) && <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: c.supplierAnswer === "accept" ? C.gaugeInk : C.redInk, marginTop: 4 }}>{c.supplierAnswer === "accept" ? "Supplier accepts" : "Supplier does not accept"}</div>}
+                      </Td>
+                      <Td>{c.refundAmount > 0 && refund ? <><div style={{ ...mono, fontSize: 12.5, fontWeight: 700 }}>{returnMoney(c.refundAmount)}</div><Badge label={refund.label} color={refund.color} bg={refund.bg} /></> : <span style={{ color: C.muted }}>—</span>}</Td>
+                      <Td style={{ color: C.muted, whiteSpace: "nowrap" }}>{new Date(c.updatedAt).toLocaleString()}</Td>
                     </tr>
                   );
                 })}
@@ -7663,9 +10029,18 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
   const [returnCase, setReturnCase] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [buyerReply, setBuyerReply] = useState("");
   const [supplierReply, setSupplierReply] = useState("");
+  const [hubReply, setHubReply] = useState("");      // the conversation with the hub (migration 149)
+  const [askNote, setAskNote] = useState("");        // ask the supplier again after a refusal (migration 150)
   const [isSending, setIsSending] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [hubs, setHubs] = useState([]);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [form, setForm] = useState({ amount: "", sendBack: true, hubId: "", refundWhen: "on_receipt", note: "", costBearer: "supplier", overruleReason: "" });
+  const [reference, setReference] = useState("");
 
   const load = () => {
     fetchReturnCaseById(getStoredToken(), caseId)
@@ -7677,164 +10052,355 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
       });
   };
   useEffect(load, [caseId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useAutoRefresh(() => fetchReturnCaseById(getStoredToken(), caseId).then(setIfChanged(setReturnCase)), { enabled: loadState === "ready" });
+  useEffect(() => { fetchHubLocations().then(setHubs).catch(() => {}); }, []);
+  useAutoRefresh(() => fetchReturnCaseById(getStoredToken(), caseId).then(setIfChanged(setReturnCase)), { enabled: loadState === "ready" && !approveOpen });
+
+  const run = async (fn, done) => {
+    setBusy(true); setActionError(null); setNotice(null);
+    try { await fn(); if (done) setNotice(done); load(); return true; }
+    catch (err) { if (err instanceof SessionExpiredError) { onSessionExpired(); return false; } setActionError(err.message); load(); return false; }
+    finally { setBusy(false); }
+  };
 
   const sendBuyerReply = async () => {
     if (!buyerReply.trim()) return;
     setIsSending(true);
-    try {
-      await replyToReturnCaseBuyer(getStoredToken(), caseId, buyerReply.trim());
-      setBuyerReply("");
-      load();
-    } catch (err) {
-      if (err instanceof SessionExpiredError) return onSessionExpired();
-      setErrorMessage(err.message);
-    } finally {
-      setIsSending(false);
-    }
+    try { await replyToReturnCaseBuyer(getStoredToken(), caseId, buyerReply.trim()); setBuyerReply(""); load(); }
+    catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setActionError(err.message); }
+    finally { setIsSending(false); }
   };
-
+  const sendHubReply = async () => {
+    if (!hubReply.trim()) return;
+    setIsSending(true);
+    try { await replyToReturnCaseHub(getStoredToken(), caseId, hubReply.trim()); setHubReply(""); load(); }
+    catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setActionError(err.message); }
+    finally { setIsSending(false); }
+  };
   const sendSupplierReply = async () => {
     if (!supplierReply.trim()) return;
     setIsSending(true);
-    try {
-      await replyToReturnCaseSupplier(getStoredToken(), caseId, supplierReply.trim());
-      setSupplierReply("");
-      load();
-    } catch (err) {
-      if (err instanceof SessionExpiredError) return onSessionExpired();
-      setErrorMessage(err.message);
-    } finally {
-      setIsSending(false);
-    }
+    try { await replyToReturnCaseSupplier(getStoredToken(), caseId, supplierReply.trim()); setSupplierReply(""); load(); }
+    catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setActionError(err.message); }
+    finally { setIsSending(false); }
   };
 
-  const handleStatusChange = async (status) => {
-    try {
-      await updateReturnCaseStatus(getStoredToken(), caseId, status);
-      load();
-    } catch (err) {
-      if (err instanceof SessionExpiredError) return onSessionExpired();
-      setErrorMessage(err.message);
-    }
+  const header = (extra) => (
+    <div data-leap-header="" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "24px 32px", background: `linear-gradient(120deg, ${C.navyDeep} 0%, ${C.navy} 55%, ${C.navySoft} 130%)` }}>
+      <button onClick={onBack} aria-label="Back" title="Back" style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ChevronLeft size={18} color="#fff" /></button>
+      {extra || <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Return case</div>}
+    </div>
+  );
+  if (loadState === "loading") return <div>{header()}<div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></div>;
+  if (loadState === "error") return <div>{header()}<div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this case: {errorMessage}</div></div>;
+
+  const rc = returnCase;
+  const meta = getReturnStatusMeta(rc.status);
+  const refundMeta = RETURN_REFUND_META[rc.refundStatus];
+  const usableHubs = hubs.filter((h) => h.address && String(h.address).trim());
+  const openApprove = () => {
+    const preferred = usableHubs.find((h) => h.id === rc.orderHubId) || usableHubs[0];
+    setForm({ amount: Number(rc.partValue || 0).toFixed(2), sendBack: true, hubId: preferred ? preferred.id : "", refundWhen: "on_receipt", note: "", costBearer: "supplier", overruleReason: "" });
+    setActionError(null);
+    setApproveOpen(true);
   };
-
-  if (loadState === "loading") {
-    return (
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Return case</div>
-        </div>
-        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div>
+  const steps = [
+    { label: "Filed", done: true, at: rc.createdAt },
+    { label: "Approved", done: ["approved", "completed"].includes(rc.status) && Boolean(rc.decidedAt), at: rc.decidedAt, off: rc.status === "rejected" },
+    ...(rc.sendBack !== false ? [{ label: "Part received", done: Boolean(rc.receivedAt), at: rc.receivedAt, off: rc.status === "rejected" }] : []),
+    { label: "Refunded", done: Boolean(rc.refundedAt) || (rc.decidedAt && !(rc.refundAmount > 0)), at: rc.refundedAt, off: rc.status === "rejected" },
+    { label: rc.status === "rejected" ? "Rejected" : "Completed", done: ["completed", "rejected"].includes(rc.status), at: null, bad: rc.status === "rejected" },
+  ];
+  const btn = (tone) => ({
+    ...body, height: 40, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.6 : 1,
+    ...(tone === "gold" ? { border: `1px solid ${C.signalDark}`, background: C.signal, color: C.onSignal, boxShadow: SHADOW.goldRaised }
+      : tone === "red" ? { border: `1px solid ${C.red}`, background: C.redBg, color: C.redInk }
+      : tone === "green" ? { border: `1px solid ${C.gauge}`, background: C.gaugeBg, color: C.gaugeInk }
+      : { border: `1px solid ${C.lineStrong}`, background: "#fff", color: C.ink }),
+  });
+  const label = { ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" };
+  const thread = (title, messages, other, value, setValue, send, placeholder) => (
+    <Card title={title}>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflowY: "auto" }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ ...body, fontSize: 12.5, lineHeight: 1.5, padding: "9px 12px", borderRadius: 10, whiteSpace: "pre-line", maxWidth: "88%", alignSelf: m.senderRole === "admin" ? "flex-end" : "flex-start", background: msgColor(m.senderRole).bg, color: msgColor(m.senderRole).fg }}>
+            <div style={{ fontWeight: 800, fontSize: 10.5, color: msgColor(m.senderRole).sub, marginBottom: 2 }}>{({ admin: "Leap (sent by us)", buyer: "Buyer (customer)", supplier: "Supplier", hub: "Hub" })[m.senderRole] || other} · {new Date(m.createdAt).toLocaleString()}</div>
+            {m.message}
+          </div>
+        ))}
+        {messages.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, textAlign: "center", padding: 12 }}>No messages yet.</div>}
       </div>
-    );
-  }
-  if (loadState === "error") {
-    return (
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Return case</div>
-        </div>
-        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this case: {errorMessage}</div>
+      <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
+        <input value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={placeholder} style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
+        <button disabled={isSending} onClick={send} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
       </div>
-    );
-  }
-
-  const meta = getReturnStatusMeta(returnCase.status);
-  const statusOptions = ["awaiting", "in_progress", "approved", "rejected", "completed"];
+    </Card>
+  );
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
-        <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>{returnCase.reason}</div>
-        <PlateChip>{returnCase.id}</PlateChip>
+      {header(<>
+        <div style={{ ...disp, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{returnReasonText(rc)}</div>
+        <PlateChip>{rc.id}</PlateChip>
         <Badge label={meta.label} color={meta.color} bg={meta.bg} />
+        {rc.overdue && <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color: "#fff", background: C.red, borderRadius: 999, padding: "4px 10px" }}>Waiting more than 48 hours</span>}
+      </>)}
+      <div style={{ padding: "20px 24px 0" }}>
+        <Card>
+          <div style={{ display: "flex", padding: "16px 20px", gap: 0 }}>
+            {steps.map((s, i) => (
+              <div key={s.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "flex-start", position: "relative", minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+                  <span style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, ...body,
+                    background: s.bad ? C.red : s.done ? C.gauge : s.off ? C.canvas : "#fff", color: s.done || s.bad ? "#fff" : C.muted, border: s.done || s.bad ? "none" : `1.5px solid ${C.lineStrong}` }}>{s.bad ? <X size={14} /> : s.done ? <Check size={14} /> : i + 1}</span>
+                  {i < steps.length - 1 && <span style={{ flex: 1, height: 2, margin: "0 8px", background: steps[i + 1].done ? C.gauge : C.line }} />}
+                </div>
+                <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: s.done ? C.ink : C.muted, marginTop: 8 }}>{s.label}</div>
+                <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{s.at ? new Date(s.at).toLocaleDateString() : " "}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
-      <div style={{ padding: 24, display: "flex", gap: 16 }}>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Buyer thread">
-            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, maxHeight: 260, overflowY: "auto" }}>
-              {returnCase.buyerMessages.map((m, i) => (
-                <div key={i} style={{ ...body, fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: m.senderRole === "admin" ? C.torqueBg : C.canvas }}>
-                  <div style={{ fontWeight: 700, fontSize: 10.5, color: C.muted, marginBottom: 2 }}>{m.senderRole === "admin" ? "Platform" : "Buyer"}</div>
-                  {m.message}
-                </div>
-              ))}
-            </div>
-            <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
-              <input value={buyerReply} onChange={(e) => setBuyerReply(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendBuyerReply()} placeholder="Reply to buyer…" style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
-              <button disabled={isSending} onClick={sendBuyerReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
-            </div>
-          </Card>
-          <Card title="Supplier thread">
-            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, maxHeight: 260, overflowY: "auto" }}>
-              {returnCase.supplierMessages.map((m, i) => (
-                <div key={i} style={{ ...body, fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: m.senderRole === "admin" ? C.torqueBg : C.canvas }}>
-                  <div style={{ fontWeight: 700, fontSize: 10.5, color: C.muted, marginBottom: 2 }}>{m.senderRole === "admin" ? "Platform" : "Supplier"}</div>
-                  {m.message}
-                </div>
-              ))}
-              {returnCase.supplierMessages.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, textAlign: "center", padding: 12 }}>No messages yet.</div>}
-            </div>
-            <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
-              <input value={supplierReply} onChange={(e) => setSupplierReply(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSupplierReply()} placeholder="Message supplier…" style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
-              <button disabled={isSending} onClick={sendSupplierReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
-            </div>
-          </Card>
-          <div style={{ ...body, fontSize: 11, color: C.muted, padding: "0 4px" }}>
-            These two threads are structurally separate — the buyer never sees supplier messages, and the supplier never sees buyer messages or identity. No direct buyer↔supplier contact, per policy.
+      {(notice || actionError) && (
+        <div style={{ padding: "14px 24px 0" }}>
+          <div role={actionError ? "alert" : "status"} style={{ ...body, fontSize: 13, borderRadius: 10, padding: "10px 14px", background: actionError ? C.redBg : C.gaugeBg, color: actionError ? C.redInk : C.gaugeInk }}>{actionError || notice}</div>
+        </div>
+      )}
+      <div style={{ padding: 24, display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 420px", display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          {thread(`Conversation with the buyer (the customer)${rc.unreadBuyer ? ` · ${rc.unreadBuyer} new` : ""}`, rc.buyerMessages, "Buyer (customer)", buyerReply, setBuyerReply, sendBuyerReply, "Reply to the buyer…")}
+          {rc.source === "hub" && thread(`Conversation with the hub${rc.unreadHub ? ` · ${rc.unreadHub} new` : ""}`, rc.hubMessages || [], "Hub", hubReply, setHubReply, sendHubReply, "Message the hub…")}
+          {thread(`Conversation with the supplier${rc.unreadSupplier ? ` · ${rc.unreadSupplier} new` : ""}`, rc.supplierMessages, "Supplier", supplierReply, setSupplierReply, sendSupplierReply, "Message the supplier…")}
+          <div style={{ ...body, fontSize: 11.5, color: C.muted, padding: "0 4px" }}>
+            {rc.source === "hub"
+              ? "The hub's report opened the hub and supplier conversations at the same time. The supplier's replies and the hub's replies reach Leap only. The buyer sees only their own conversation."
+              : "The buyer's first request opened the supplier conversation too (without who they are). After that, the buyer's messages and the supplier's replies reach Leap only."}
           </div>
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Case details">
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ ...body, fontSize: 12, color: C.muted }}>Buyer</div>
-              <div style={{ ...body, fontSize: 13, fontWeight: 600 }}>{returnCase.buyerId || returnCase.guestEmail}</div>
-              <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Related order</div>
-              <PlateChip small>{returnCase.orderId}</PlateChip>
-              {/* Real evidence photos (migration 043) -- this field was
-                  already returned by GET /returns/:id, just never
-                  rendered here until now. Deliberately shown in this
-                  admin-only card, not the buyer/supplier threads --
-                  matches the backend's own isolation (never exposed via
-                  GET /returns/supplier/me/:id at all). */}
-              {returnCase.photos && returnCase.photos.length > 0 && (
+        <div style={{ flex: "1 1 340px", display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <Card title="Supplier's answer">
+            <div style={{ padding: 16, ...body, fontSize: 13, lineHeight: 1.5 }}>
+              {rc.supplierAnswer ? (
                 <>
-                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Evidence photos</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {returnCase.photos.map((url, i) => (
-                      <a key={i} href={`${API_BASE_URL}${url}`} target="_blank" rel="noreferrer">
-                        <img src={`${API_BASE_URL}${url}`} alt="" style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}` }} />
-                      </a>
-                    ))}
-                  </div>
+                  <Badge label={rc.supplierAnswer === "accept" ? "Accepts the return" : "Does not accept"} color={rc.supplierAnswer === "accept" ? C.gauge : C.red} bg={rc.supplierAnswer === "accept" ? C.gaugeBg : C.redBg} />
+                  {rc.supplierAnswerNote && <div style={{ marginTop: 8, color: C.ink }}>“{rc.supplierAnswerNote}”</div>}
+                  <div style={{ marginTop: 6, fontSize: 11.5, color: C.muted }}>{new Date(rc.supplierAnsweredAt).toLocaleString()} · after seeing the part, the reason and the buyer's photos{rc.supplierAskCount > 1 ? ` · request ${rc.supplierAskCount}` : ""}</div>
+                  {rc.supplierAnswer === "decline" && ["awaiting", "in_progress"].includes(rc.status) && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: C.ink }}>Ask the supplier again</div>
+                      <textarea value={askNote} onChange={(e) => setAskNote(e.target.value)} rows={2} maxLength={1000} placeholder="What they should look at again, e.g. “see photo 2: the crack is at the factory weld”" style={{ ...body, padding: "8px 10px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, fontSize: 13, resize: "vertical" }} />
+                      <button type="button" disabled={busy || askNote.trim().length < 3} onClick={async () => { if (await run(() => askSupplierAgain(getStoredToken(), caseId, askNote.trim()), "Sent. The supplier can answer again.")) setAskNote(""); }} style={{ ...btn(), opacity: busy || askNote.trim().length < 3 ? 0.5 : 1 }}><RotateCcw size={14} />Ask again</button>
+                    </div>
+                  )}
                 </>
-              )}
+              ) : <span style={{ color: C.muted }}>{["awaiting", "in_progress"].includes(rc.status)
+                  ? <>Not answered yet{rc.supplierAskCount > 1 ? ` (request ${rc.supplierAskCount}, sent ${new Date(rc.supplierAskedAt).toLocaleDateString()})` : ""}. The supplier sees the part, the reason and the photos in the supplier portal, and can accept or not.{rc.supplierRemindedAt ? ` A reminder went out on ${new Date(rc.supplierRemindedAt).toLocaleString()} (48 hours without an answer).` : " If they do not answer in 48 hours, they get a reminder and you are told."}</>
+                  : "The supplier did not answer."}</span>}
             </div>
           </Card>
-          <Card title="Status">
-            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              {statusOptions.map(s => {
-                const m = getReturnStatusMeta(s);
-                return (
-                  <button
-                    key={s}
-                    onClick={() => handleStatusChange(s)}
-                    style={{
-                      ...body, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left",
-                      border: returnCase.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
-                      background: returnCase.status === s ? "#FDF1EB" : "#fff",
-                    }}
-                  >{m.label}</button>
-                );
-              })}
+          {rc.canApprove && (
+            <Card title="Your decision">
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ ...body, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>Approve to refund the buyer and tell them where to send the part (or that they can keep it). The supplier is told; you choose who pays (the supplier, or Leap).</div>
+                <button type="button" disabled={busy} onClick={openApprove} style={btn("gold")}><Check size={15} />Approve and refund…</button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {rc.status === "awaiting" && <button type="button" disabled={busy} onClick={() => run(() => updateReturnCaseStatus(getStoredToken(), caseId, "in_progress"), "Marked as in progress.")} style={{ ...btn(), flex: 1 }}>Mark in progress</button>}
+                  <button type="button" disabled={busy} onClick={() => run(() => updateReturnCaseStatus(getStoredToken(), caseId, "rejected"), "Rejected. The buyer was told.")} style={{ ...btn("red"), flex: 1 }}><X size={15} />Reject</button>
+                </div>
+              </div>
+            </Card>
+          )}
+          {rc.faultCase && ["awaiting", "in_progress"].includes(rc.status) && (
+            <Card title="Your decision">
+              <div style={{ padding: 16, ...body, fontSize: 12.5, color: C.ink, lineHeight: 1.5 }}>This return comes from a fault the hub found. Decide it in <b>Flagged shipments</b>: the refund or the free replacement is chosen there, and this case follows by itself.</div>
+            </Card>
+          )}
+          {rc.decidedAt && rc.sendBack !== null && (
+            <Card title="The part">
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                {rc.sendBack ? (
+                  <>
+                    <div style={label}>The buyer sends it to</div>
+                    <div style={{ ...body, fontSize: 13.5, fontWeight: 800, color: C.ink }}>{rc.returnHub?.name || rc.returnHub?.id}</div>
+                    <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: -6 }}>{rc.returnHub?.address}</div>
+                    <div style={{ ...body, fontSize: 12.5 }}>Return code on the parcel: <PlateChip small>{rc.id}</PlateChip></div>
+                    {rc.receivedAt ? (
+                      <Badge label={`Received ${new Date(rc.receivedAt).toLocaleDateString()} · ${rc.receivedCondition === "good" ? `back to stock (${rc.restockedQty || 0})` : "damaged, not restocked"}`} color={rc.receivedCondition === "good" ? C.gauge : C.amber} bg={rc.receivedCondition === "good" ? C.gaugeBg : C.amberBg} />
+                    ) : rc.status === "approved" ? (
+                      <>
+                        <div style={{ ...body, fontSize: 12, color: C.muted }}>Not received yet. The hub marks it received in the hub portal; you can also do it here.</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button type="button" disabled={busy} onClick={() => run(() => markReturnReceived(getStoredToken(), caseId, "good"), "Received. The part is back in stock.")} style={{ ...btn("green"), flex: 1 }}><Package size={15} />Received · back to stock</button>
+                          <button type="button" disabled={busy} onClick={() => run(() => markReturnReceived(getStoredToken(), caseId, "damaged"), "Received as damaged. Not put back in stock.")} style={{ ...btn(), flex: 1 }}>Received · damaged</button>
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <div style={{ ...body, fontSize: 13, color: C.ink }}>The buyer keeps the part; nothing comes back.</div>
+                )}
+              </div>
+            </Card>
+          )}
+          {rc.refundAmount > 0 && (
+            <Card title="Refund">
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <b style={{ ...mono, fontSize: 20, color: C.ink }}>{returnMoney(rc.refundAmount)}</b>
+                  {refundMeta && <Badge label={refundMeta.label} color={refundMeta.color} bg={refundMeta.bg} />}
+                </div>
+                <div style={{ ...body, fontSize: 12, color: C.muted }}>The buyer gets this part's share of what they paid (its shipping included), through the way they paid.</div>
+                {rc.refundError && <div style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 8, padding: "8px 10px" }}>{rc.refundError}</div>}
+                {rc.refundReference && <div style={{ ...body, fontSize: 12.5 }}>Reference: <span style={mono}>{rc.refundReference}</span>{rc.refundedAt && <> · {new Date(rc.refundedAt).toLocaleString()}</>}</div>}
+                {["pending", "failed"].includes(rc.refundStatus) && !rc.refundedAt && (
+                  <>
+                    <button type="button" disabled={busy} onClick={() => run(() => retryReturnRefund(getStoredToken(), caseId), "Refunded automatically.")} style={btn()}><RotateCcw size={14} />{rc.refundStatus === "failed" ? "Try again" : "Refund automatically now"}</button>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Payment reference (Stripe / PayPal)" style={{ ...body, flex: 1, minWidth: 0, height: 40, border: `1px solid ${C.lineStrong}`, borderRadius: 10, padding: "0 10px", fontSize: 12.5 }} />
+                      <button type="button" disabled={busy || reference.trim().length < 3} onClick={async () => { if (await run(() => markReturnRefunded(getStoredToken(), caseId, reference.trim()), "Marked as refunded. The buyer was told.")) setReference(""); }} style={btn("gold")}>Mark refunded</button>
+                    </div>
+                  </>
+                )}
+                {rc.refundStatus === "waiting_part" && <div style={{ ...body, fontSize: 12.5, color: C.amberInk }}>Goes out by itself as soon as the part is received.</div>}
+              </div>
+            </Card>
+          )}
+          <Card title="Case details">
+            <div style={{ padding: 16, display: "grid", gridTemplateColumns: "110px 1fr", rowGap: 10, columnGap: 12, alignItems: "center" }}>
+              <span style={label}>Buyer</span><span style={{ ...body, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>{rc.buyerEmail || rc.guestEmail || "—"}</span>
+              <span style={label}>Order</span><span><PlateChip small>{rc.orderId}</PlateChip></span>
+              <span style={label}>Supplier</span><span style={{ ...body, fontSize: 13 }}>{rc.supplierName || "—"}</span>
+              <span style={label}>Part</span><span style={{ ...body, fontSize: 13 }}>{rc.items || "—"}</span>
+              <span style={label}>Value</span><span style={{ ...mono, fontSize: 13 }}>{returnMoney(rc.partValue)}</span>
+              {rc.costBearer && <><span style={label}>Who pays</span><span style={{ ...body, fontSize: 13 }}>{rc.costBearer === "leap" ? "Leap (the supplier is paid as usual)" : "The supplier (not paid for this part)"}</span></>}
+              {rc.overruleReason && <><span style={label}>Our reason</span><span style={{ ...body, fontSize: 13 }}>{rc.overruleReason}</span></>}
+              <span style={label}>Reason</span><span style={{ ...body, fontSize: 13 }}>{returnReasonText(rc)}</span>
+              <span style={label}>Filed</span><span style={{ ...body, fontSize: 13 }}>{new Date(rc.createdAt).toLocaleString()}</span>
             </div>
+            {rc.photos && rc.photos.length > 0 && (
+              <div style={{ padding: "0 16px 16px" }}>
+                <div style={{ ...label, marginBottom: 8 }}>Buyer's photos</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {rc.photos.map((url, i) => {
+                    const src = /^(https?:|data:|blob:)/.test(url) ? url : `${API_BASE_URL}${url}`;
+                    return <a key={i} href={src} target="_blank" rel="noreferrer"><img src={src} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover", border: `1px solid ${C.line}` }} /></a>;
+                  })}
+                </div>
+              </div>
+            )}
           </Card>
+          {!rc.canApprove && !["completed"].includes(rc.status) && (
+            <Card title="Change the status by hand">
+              <div style={{ padding: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(rc.refundedAt || rc.receivedAt ? ["completed"] : rc.status === "approved" ? ["rejected", "completed"] : ["awaiting", "in_progress", "rejected", "completed"]).filter((s) => s !== rc.status).map((s) => (
+                  <button key={s} type="button" disabled={busy} onClick={() => run(() => updateReturnCaseStatus(getStoredToken(), caseId, s), `Now ${getReturnStatusMeta(s).label.toLowerCase()}.`)} style={{ ...btn(), height: 34, fontSize: 12.5 }}>{getReturnStatusMeta(s).label}</button>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
+
+      {approveOpen && (() => {
+        const max = Number(rc.partValue || 0);
+        const amount = Number(form.amount);
+        const amountBad = form.amount === "" || !Number.isFinite(amount) || amount < 0 || amount > max + 0.001;
+        const hub = usableHubs.find((h) => h.id === form.hubId);
+        const hubBad = form.sendBack && !hub;
+        const reasonBad = rc.supplierAnswer === "decline" && form.overruleReason.trim().length < 3;
+        const choice = (on, onClick, title, sub) => (
+          <button type="button" aria-pressed={on} onClick={onClick} style={{ ...body, flex: 1, textAlign: "left", padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: `1.5px solid ${on ? C.signalDark : C.line}`, background: on ? C.goldTint : "#fff" }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>{title}</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2, lineHeight: 1.4 }}>{sub}</div>
+          </button>
+        );
+        const submit = async () => {
+          const ok = await run(() => approveReturnCase(getStoredToken(), caseId, { amount, sendBack: form.sendBack, hubId: form.sendBack ? form.hubId : null, refundWhen: form.sendBack ? form.refundWhen : "now", note: form.note, costBearer: form.costBearer, overruleReason: form.overruleReason }),
+            form.sendBack ? `Approved. The buyer was sent ${hub?.name}'s address and the return code ${rc.id}.` : "Approved. The buyer was told they can keep the part.");
+          if (ok) setApproveOpen(false);
+        };
+        return (
+          <div onClick={() => !busy && setApproveOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(7,32,47,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+            <div role="dialog" aria-modal="true" aria-label={`Approve return ${rc.id}`} onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 560, maxWidth: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}>
+              <div style={{ padding: "20px 24px 14px", borderBottom: `1px solid ${C.line}` }}>
+                <div style={{ ...disp, fontSize: 19, fontWeight: 800, color: C.ink }}>Approve return {rc.id}</div>
+                <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 4 }}>{rc.items} · {rc.supplierName}</div>
+              </div>
+              <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink }}>Refund (up to {returnMoney(max)})</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ ...mono, fontSize: 15, color: C.muted }}>$</span>
+                    <input type="number" min="0" step="0.01" max={max} value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} style={{ ...mono, width: 140, height: 40, padding: "0 10px", borderRadius: 10, border: `1px solid ${amountBad ? C.red : C.lineStrong}`, fontSize: 14 }} />
+                    <span style={{ ...body, fontSize: 12, color: C.muted }}>{max === 0 ? "A free replacement: nothing to refund." : "0 = approve without money back."}</span>
+                  </div>
+                </label>
+                <div>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 8 }}>The part</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {choice(form.sendBack, () => setForm((f) => ({ ...f, sendBack: true })), "The buyer sends it back", "To a hub, with the return code on the parcel. In good condition it goes back to stock.")}
+                    {choice(!form.sendBack, () => setForm((f) => ({ ...f, sendBack: false })), "The buyer keeps it", "Not worth shipping back (cheap, or broken).")}
+                  </div>
+                </div>
+                {form.sendBack && (
+                  <>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink }}>Send it to</span>
+                      <select value={form.hubId} onChange={(e) => setForm((f) => ({ ...f, hubId: e.target.value }))} style={{ ...body, height: 40, padding: "0 10px", borderRadius: 10, border: `1px solid ${hubBad ? C.red : C.lineStrong}`, fontSize: 13 }}>
+                        {!hub && <option value="">Choose a hub…</option>}
+                        {usableHubs.map((h) => <option key={h.id} value={h.id}>{h.name} · {h.region}</option>)}
+                      </select>
+                      {hub && <span style={{ ...body, fontSize: 12, color: C.muted }}>{hub.address}</span>}
+                      {usableHubs.length === 0 && <span style={{ ...body, fontSize: 12, color: C.redInk }}>No hub has an address yet. Add one in Hubs.</span>}
+                    </label>
+                    {amount > 0 && (
+                      <div>
+                        <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 8 }}>When the money goes back</div>
+                        <div style={{ display: "flex", gap: 10 }}>
+                          {choice(form.refundWhen === "on_receipt", () => setForm((f) => ({ ...f, refundWhen: "on_receipt" })), "When the part arrives", "Safer: only once the hub has it.")}
+                          {choice(form.refundWhen === "now", () => setForm((f) => ({ ...f, refundWhen: "now" })), "Now", "Before the part comes back.")}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Who pays for this return</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {choice(form.costBearer === "supplier", () => setForm((f) => ({ ...f, costBearer: "supplier" })), "The supplier", "The supplier is not paid for this part.")}
+                    {choice(form.costBearer === "leap", () => setForm((f) => ({ ...f, costBearer: "leap" })), "Leap", "The supplier is paid as usual; Leap bears the cost.")}
+                  </div>
+                </div>
+                {rc.supplierAnswer === "decline" && (
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink }}>Why you approve although the supplier did not accept <span style={{ color: C.red }}>*</span></span>
+                    <span style={{ ...body, fontSize: 12, color: C.muted }}>The supplier said: “{rc.supplierAnswerNote}”. Your reason is sent to them.</span>
+                    <textarea value={form.overruleReason} onChange={(e) => setForm((f) => ({ ...f, overruleReason: e.target.value }))} rows={2} maxLength={1000} style={{ ...body, padding: "8px 10px", borderRadius: 10, border: `1px solid ${reasonBad ? C.red : C.lineStrong}`, fontSize: 13, resize: "vertical" }} />
+                  </label>
+                )}
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ ...body, fontSize: 12.5, fontWeight: 800, color: C.ink }}>A note to the buyer (optional)</span>
+                  <textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} rows={2} maxLength={2000} placeholder="Sent after the instructions" style={{ ...body, padding: "8px 10px", borderRadius: 10, border: `1px solid ${C.lineStrong}`, fontSize: 13, resize: "vertical" }} />
+                </label>
+                <div style={{ ...body, fontSize: 12.5, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 14px", lineHeight: 1.55 }}>
+                  <b>The buyer will be told:</b>{" "}
+                  {form.sendBack
+                    ? <>send the part to {hub ? `${hub.name}, ${hub.address}` : "…"}, with the return code <b>{rc.id}</b> on the parcel.{amount > 0 && !amountBad ? (form.refundWhen === "now" ? ` ${returnMoney(amount)} is refunded now.` : ` ${returnMoney(amount)} is refunded when it arrives.`) : ""}</>
+                    : <>they can keep the part.{amount > 0 && !amountBad ? ` ${returnMoney(amount)} is refunded now.` : ""}</>}
+                  {" "}The supplier is told too{form.costBearer === "leap" ? ", and is paid for this part as usual (Leap pays)" : ", and is not paid for this part"}{rc.supplierAnswer === "decline" ? ", with your reason" : ""}. The refund follows Orders › Rules (step 5): automatic, or by you.
+                </div>
+                {actionError && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.redInk, background: C.redBg, borderRadius: 10, padding: "8px 12px" }}>{actionError}</div>}
+              </div>
+              <div style={{ padding: "14px 24px 20px", display: "flex", justifyContent: "flex-end", gap: 10, borderTop: `1px solid ${C.line}` }}>
+                <button type="button" disabled={busy} onClick={() => setApproveOpen(false)} style={btn()}>Back</button>
+                <button type="button" disabled={busy || amountBad || hubBad || reasonBad} onClick={submit} style={{ ...btn("gold"), opacity: busy || amountBad || hubBad || reasonBad ? 0.5 : 1 }}>
+                  <Check size={15} />{amount > 0 && !amountBad ? `Approve and refund ${returnMoney(amount)}` : "Approve"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -7935,82 +10501,91 @@ function TeamPermissionsSection({ currentUser, onSessionExpired }) {
     }
   };
 
+  // patch-settings-redesign: each admin is a card (initials, name, how many pages), the pages are pill switches; "Add admin" opens a gold card
+  const initials = (a) => String(a.name || a.email || "?").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const pagePill = (n, checked, onChange) => (
+    <label key={n.id} style={{ ...body, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: "5px 11px 5px 8px", borderRadius: 999,
+      border: `1px solid ${checked ? C.navy : C.line}`, background: checked ? C.navy : "#fff", color: checked ? "#fff" : C.ink }}>
+      <input type="checkbox" checked={checked} onChange={onChange} data-leap-plain="" style={{ margin: 0, accentColor: C.signal, width: 13, height: 13 }} />
+      {n.label}
+    </label>
+  );
+  const team = loadState === "ready" ? admins : [];
+  const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
   return (
     <Card title="Team & permissions" style={{ flex: 1 }}>
-      <div style={{ padding: 12 }}>
-        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
-
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
-        {loadState === "ready" && admins.map((a, i) => (
-          <div key={a.id} style={{ padding: "12px 6px", borderBottom: `1px solid ${C.line}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: a.isOwner ? 0 : 8 }}>
-              <div>
-                <div style={{ ...body, fontWeight: 700, fontSize: 13 }}>{a.name || a.email}</div>
-                <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{a.email}</div>
+        {loadState === "ready" && (
+          <div style={{ ...body, fontSize: 12.5, color: C.muted }}>
+            <b style={{ color: C.ink }}>{team.length}</b> {team.length === 1 ? "admin" : "admins"} · the owner sees every page; every other admin sees only the pages switched on below.
+          </div>
+        )}
+        {team.map((a) => {
+          const chosen = editingPages[a.id] || new Set();
+          const changed = !a.isOwner && !sameSet(chosen, new Set(a.allowedPages || []));
+          return (
+            <div key={a.id} style={{ border: `1px solid ${a.isOwner ? C.signal : C.line}`, background: a.isOwner ? C.goldTint : "#fff", borderRadius: 12, padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ width: 40, height: 40, borderRadius: "50%", background: a.isOwner ? C.signal : C.navy, color: a.isOwner ? C.onSignal : "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{initials(a)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...body, fontWeight: 800, fontSize: 14, color: C.ink }}>{a.name || a.email}</div>
+                  <div style={{ ...body, fontSize: 12, color: C.muted }}>{a.email}</div>
+                </div>
+                {a.isOwner ? (
+                  <PlateChip small>Owner — full access</PlateChip>
+                ) : (
+                  <>
+                    <span style={{ ...body, fontSize: 11.5, fontWeight: 800, color: chosen.size ? C.ink : C.red, background: chosen.size ? C.surfaceHigh : C.redBg, border: `1px solid ${C.line}`, borderRadius: 999, padding: "3px 10px" }}>{chosen.size} of {NAV.length} pages</span>
+                    <button onClick={() => handleDelete(a.id)} style={{ width: 30, height: 30, borderRadius: 8, background: "#fff", border: `1px solid ${C.line}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Remove admin">
+                      <X size={15} color={C.red} />
+                    </button>
+                  </>
+                )}
               </div>
-              {a.isOwner ? (
-                <PlateChip small>Owner — full access</PlateChip>
-              ) : (
-                <button onClick={() => handleDelete(a.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} title="Remove admin">
-                  <X size={15} color={C.red} />
-                </button>
+              {!a.isOwner && (
+                <>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${C.line}` }}>
+                    {NAV.map((n) => pagePill(n, chosen.has(n.id), () => togglePageForUser(a.id, n.id)))}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+                    <button onClick={() => handleSavePermissions(a.id)} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: changed ? C.signal : C.surfaceHigh, color: changed ? C.onSignal : C.muted, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                      Save permissions
+                    </button>
+                    {changed && <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.amberInk }}>Not saved yet</span>}
+                  </div>
+                </>
               )}
             </div>
-            {!a.isOwner && (
-              <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 6 }}>
-                  {NAV.map((n) => (
-                    <label key={n.id} style={{ ...body, display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                      <input
-                        type="checkbox"
-                        checked={(editingPages[a.id] || new Set()).has(n.id)}
-                        onChange={() => togglePageForUser(a.id, n.id)}
-                      />
-                      {n.label}
-                    </label>
-                  ))}
-                </div>
-                <button onClick={() => handleSavePermissions(a.id)} style={{ ...body, marginTop: 8, padding: "6px 12px", borderRadius: 7, border: "none", background: C.signal, color: C.onSignal, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
-                  Save permissions
-                </button>
-              </>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {!showCreateForm ? (
-          <button onClick={() => setShowCreateForm(true)} style={{ ...body, marginTop: 12, display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1.5px dashed ${C.line}`, background: "none", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-            <Plus size={14} /> Add admin
+          <button onClick={() => setShowCreateForm(true)} style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px", borderRadius: 12, border: `1.5px dashed ${C.signal}`, background: C.goldTint, color: C.ink, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+            <Plus size={15} /> Add admin
           </button>
         ) : (
-          <div style={{ marginTop: 12, padding: 14, background: C.canvas, borderRadius: 8 }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-              <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
-              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="Password (min 8 chars)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name (optional)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+          <div style={{ padding: 16, background: C.goldTint, border: `1px solid ${C.signal}`, borderRadius: 12 }}>
+            <div style={{ ...disp, fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 10 }}>New admin</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginBottom: 12 }}>
+              <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5, background: "#fff" }} />
+              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="Password (min 8 chars)" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5, background: "#fff" }} />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name (optional)" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5, background: "#fff" }} />
             </div>
-            <div style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Pages this admin can access:</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginBottom: 10 }}>
-              {NAV.map((n) => (
-                <label key={n.id} style={{ ...body, display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={newPages.has(n.id)}
-                    onChange={() => setNewPages((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
-                      return next;
-                    })}
-                  />
-                  {n.label}
-                </label>
-              ))}
+            <div style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.muted, marginBottom: 8 }}>Pages this admin can access: <span style={{ color: C.ink }}>{newPages.size} of {NAV.length}</span></div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+              {NAV.map((n) => pagePill(n, newPages.has(n.id), () => setNewPages((prev) => {
+                const next = new Set(prev);
+                if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
+                return next;
+              })))}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.navy, color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: isSubmitting ? "default" : "pointer" }}>
                 Create admin
               </button>
-              <button onClick={() => setShowCreateForm(false)} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              <button onClick={() => setShowCreateForm(false)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
                 Cancel
               </button>
             </div>
@@ -8062,31 +10637,66 @@ function CommissionRulesSection({ onSessionExpired }) {
     }
   };
 
+  // patch-settings-redesign: one tile per category with its share as a big number and a bar; click a tile to change it
+  const ready = loadState === "ready" ? categories : [];
+  const rates = ready.map((c) => Number(c.commissionPercent) || 0);
+  const avg = rates.length ? rates.reduce((x, y) => x + y, 0) / rates.length : 0;
+  const top = Math.max(30, ...rates);
+  const fmtP = (v) => `${Number.isInteger(v) ? v : v.toFixed(1)}%`;
   return (
     <Card title="Commission rules" style={{ flex: 1 }}>
-      <div style={{ padding: 6 }}>
-        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, margin: "0 6px 8px" }}>{errorMessage}</div>}
+      <div style={{ padding: 16 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
         {loadState === "loading" && <div style={{ padding: 20, ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
-        {loadState === "ready" && categories.map((c, i) => (
-          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none" }}>
-            <span style={{ ...body, fontSize: 13, fontWeight: 600 }}>{c.nameEn}</span>
-            {editingId === c.id ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                  style={{ ...body, width: 60, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", fontSize: 12.5 }}
-                  autoFocus
-                />
-                <button disabled={isSaving} onClick={() => handleSave(c.id)} style={{ ...body, padding: "5px 10px", borderRadius: 6, border: "none", background: C.gauge, color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Save</button>
-                <button onClick={() => setEditingId(null)} style={{ ...body, padding: "5px 10px", borderRadius: 6, border: `1px solid ${C.line}`, background: "none", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+        {loadState === "ready" && ready.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            {[["Categories", ready.length], ["Average", fmtP(avg)], ["Lowest", fmtP(Math.min(...rates))], ["Highest", fmtP(Math.max(...rates))]].map(([k, v]) => (
+              <div key={k} style={{ flex: "1 1 120px", background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 12, padding: "10px 14px" }}>
+                <div style={{ ...mono, fontSize: 20, fontWeight: 800, color: C.ink }}>{v}</div>
+                <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>{k}</div>
               </div>
-            ) : (
-              <button onClick={() => startEditing(c)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                <PlateChip small>{c.commissionPercent}%</PlateChip>
-              </button>
-            )}
+            ))}
           </div>
-        ))}
+        )}
+        {loadState === "ready" && ready.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>There are no categories yet (Categories page).</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+          {ready.map((c) => {
+            const v = Number(c.commissionPercent) || 0;
+            const editing = editingId === c.id;
+            return (
+              <div key={c.id} style={{ border: `1px solid ${editing ? C.signal : C.line}`, background: editing ? C.goldTint : "#fff", borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <span style={{ ...body, fontSize: 13, fontWeight: 800, color: C.ink }}>{c.nameEn}</span>
+                  {!editing && (
+                    <button onClick={() => startEditing(c)} title={`Change the commission of ${c.nameEn}`} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 7, cursor: "pointer", padding: 5, display: "flex" }}><Pencil size={12} color={C.muted} /></button>
+                  )}
+                </div>
+                {editing ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
+                    <input
+                      type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleSave(c.id); if (e.key === "Escape") setEditingId(null); }}
+                      min={0} max={100} step={0.5}
+                      style={{ ...mono, width: 70, border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 8px", fontSize: 14, fontWeight: 800, background: "#fff" }}
+                      autoFocus
+                    />
+                    <span style={{ ...body, fontSize: 13, fontWeight: 800 }}>%</span>
+                    <button disabled={isSaving} onClick={() => handleSave(c.id)} style={{ ...body, padding: "6px 12px", borderRadius: 7, border: "none", background: C.navy, color: "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>Save</button>
+                    <button onClick={() => setEditingId(null)} style={{ ...body, padding: "6px 10px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                ) : (
+                  <button onClick={() => startEditing(c)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "block", width: "100%", textAlign: "left", marginTop: 6 }}>
+                    <div style={{ ...mono, fontSize: 26, fontWeight: 800, color: C.ink }}>{c.commissionPercent}%</div>
+                    <div style={{ height: 6, borderRadius: 3, background: "#E8EBEF", marginTop: 6, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.min(100, (v / top) * 100)}%`, height: "100%", borderRadius: 3, background: v > avg + 0.001 ? C.signal : C.navySoft }} />
+                    </div>
+                    <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 6 }}>On a 100 sale: Leap keeps {fmtP(v).replace("%", "")}, the supplier gets {(100 - v).toFixed(Number.isInteger(v) ? 0 : 1)}</div>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </Card>
   );
@@ -8125,6 +10735,7 @@ function ReturnWindowSection({ onSessionExpired }) {
     }
   };
 
+  // patch-settings-redesign: the days as chips, and a line showing what happens on which day
   return (
     <Card title="Return window" style={{ flex: 1 }}>
       <div style={{ padding: 20 }}>
@@ -8134,18 +10745,32 @@ function ReturnWindowSection({ onSessionExpired }) {
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
         {loadState === "ready" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <select
-              value={days}
-              onChange={(e) => handleChange(Number(e.target.value))}
-              disabled={isSaving}
-              style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}
-            >
-              {[3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d} days</option>)}
-            </select>
-            {isSaving && <span style={{ ...body, fontSize: 12, color: C.muted }}>Saving…</span>}
-            {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, color: C.gauge }}>{savedMessage}</span>}
-          </div>
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }} role="radiogroup" aria-label="Return window">
+              {[3, 4, 5, 6, 7].map((d) => {
+                const on = d === days;
+                return (
+                  <button key={d} type="button" role="radio" aria-checked={on} disabled={isSaving} onClick={() => !on && handleChange(d)}
+                    style={{ ...body, minWidth: 76, padding: "10px 14px", borderRadius: 12, border: `1px solid ${on ? C.navy : C.line}`, background: on ? C.navy : "#fff", color: on ? "#fff" : C.ink, cursor: isSaving ? "default" : "pointer", textAlign: "center" }}>
+                    <div style={{ ...mono, fontSize: 20, fontWeight: 800, color: on ? C.signal : C.ink }}>{d}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: on ? C.onNavyMuted : C.muted }}>days</div>
+                  </button>
+                );
+              })}
+              {isSaving && <span style={{ ...body, fontSize: 12, color: C.muted }}>Saving…</span>}
+              {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.gauge }}>✓ {savedMessage}</span>}
+            </div>
+            <div style={{ marginTop: 22, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 18px" }}>
+              <div style={{ position: "relative", height: 4, background: "#DDE2E7", borderRadius: 2, margin: "8px 6px 0" }}>
+                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "100%", background: `linear-gradient(90deg, ${C.gauge}, ${C.signal})`, borderRadius: 2 }} />
+                {[["0%", C.gauge], ["100%", C.signal]].map(([x, c]) => <span key={x} style={{ position: "absolute", left: x, top: -5, width: 14, height: 14, marginLeft: -7, borderRadius: "50%", background: c, border: "2px solid #fff", boxShadow: "0 0 0 1px rgba(11,49,70,0.15)" }} />)}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 12, ...body, fontSize: 12 }}>
+                <div><b style={{ color: C.ink }}>Day 0 · Delivered</b><div style={{ color: C.muted }}>The buyer can ask for a return</div></div>
+                <div style={{ textAlign: "right" }}><b style={{ color: C.ink }}>Day {days} · Window closes</b><div style={{ color: C.muted }}>No more returns; the supplier's money can be paid out</div></div>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </Card>
@@ -8186,6 +10811,26 @@ function ReceiptFooterSection() {
     }
   };
 
+  // patch-settings-redesign: English and Arabic side by side with a length bar, and a small receipt that shows the note where it prints
+  const bar = (n) => (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ height: 5, borderRadius: 3, background: "#E8EBEF", overflow: "hidden" }}><div style={{ width: `${Math.min(100, (n / 500) * 100)}%`, height: "100%", background: n > 450 ? C.amber : C.gauge, transition: "width 0.15s" }} /></div>
+      <div style={{ ...body, display: "flex", justifyContent: "space-between", fontSize: 10.5, marginTop: 3, color: C.muted }}><span style={{ fontWeight: 700, color: n > 450 ? C.amberInk : C.gaugeInk }}>{500 - n} characters left</span><span style={mono}>{n}/500</span></div>
+    </div>
+  );
+  const receipt = (lang, note) => (
+    <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+      <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, marginBottom: 6 }}>{lang === "ar" ? "Arabic receipt" : "English receipt"}</div>
+      <div dir={lang === "ar" ? "rtl" : "ltr"} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, boxShadow: "0 6px 18px rgba(11,49,70,0.08)", ...body, fontSize: 11, color: C.ink }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 12 }}><span>LEAP</span><span dir="ltr" style={{ ...mono, color: C.muted, fontWeight: 600, unicodeBidi: "isolate" }}>#LP-10482</span></div>
+        {[0, 1, 2].map((i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 8 }}><span style={{ height: 6, width: `${60 - i * 12}%`, background: "#E8EBEF", borderRadius: 3 }} /><span style={{ height: 6, width: 34, background: "#E8EBEF", borderRadius: 3 }} /></div>)}
+        <div style={{ borderTop: `1px dashed ${C.line}`, marginTop: 12, paddingTop: 10, textAlign: "center", color: note.trim() ? C.ink : C.muted, fontStyle: note.trim() ? "normal" : "italic", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+          {note.trim() || (lang === "ar" ? "لا توجد ملاحظة" : "No footer note")}
+        </div>
+      </div>
+    </div>
+  );
+  const box = { ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 13, resize: "vertical", background: "#fff" };
   return (
     <Card title="Receipt footer" style={{ flex: 1 }}>
       <div style={{ padding: 20 }}>
@@ -8196,38 +10841,31 @@ function ReceiptFooterSection() {
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
         {loadState === "ready" && (
           <div>
-            <label style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, display: "block", marginBottom: 4 }}>English</label>
-            <textarea
-              value={footerNoteEn}
-              onChange={(e) => setFooterNoteEn(e.target.value)}
-              maxLength={500}
-              rows={2}
-              placeholder="e.g. Thank you for shopping with Leap Auto Parts."
-              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical", marginBottom: 4 }}
-            />
-            <div style={{ ...body, fontSize: 11, color: C.muted, textAlign: "right", marginBottom: 14 }}>{footerNoteEn.length}/500</div>
-
-            <label style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, display: "block", marginBottom: 4 }}>Arabic</label>
-            <textarea
-              value={footerNoteAr}
-              onChange={(e) => setFooterNoteAr(e.target.value)}
-              maxLength={500}
-              rows={2}
-              dir="rtl"
-              placeholder="مثال: شكرا لتسوقكم مع ليب لقطع السيارات"
-              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical", marginBottom: 4 }}
-            />
-            <div style={{ ...body, fontSize: 11, color: C.muted, textAlign: "right", marginBottom: 14 }}>{footerNoteAr.length}/500</div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+              <div>
+                <label style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.ink, display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><PlateChip small>EN</PlateChip>English</label>
+                <textarea value={footerNoteEn} onChange={(e) => setFooterNoteEn(e.target.value)} maxLength={500} rows={3} placeholder="e.g. Thank you for shopping with Leap Auto Parts." style={box} />
+                {bar(footerNoteEn.length)}
+              </div>
+              <div>
+                <label style={{ ...body, fontSize: 11.5, fontWeight: 800, color: C.ink, display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><PlateChip small>AR</PlateChip>Arabic</label>
+                <textarea value={footerNoteAr} onChange={(e) => setFooterNoteAr(e.target.value)} maxLength={500} rows={3} dir="rtl" placeholder="مثال: شكرا لتسوقكم مع ليب لقطع السيارات" style={box} />
+                {bar(footerNoteAr.length)}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 18, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16 }}>
+              {receipt("en", footerNoteEn)}
+              {receipt("ar", footerNoteAr)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
               <button
                 disabled={isSaving}
                 onClick={handleSave}
-                style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+                style={{ ...body, padding: "9px 18px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 800, cursor: isSaving ? "default" : "pointer" }}
               >
                 {isSaving ? "Saving…" : "Save"}
               </button>
-              {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, color: C.gauge }}>{savedMessage}</span>}
+              {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.gauge }}>✓ {savedMessage}</span>}
             </div>
           </div>
         )}
@@ -8457,26 +11095,29 @@ function AuditLogSection({ currentUser, onSessionExpired }) {
         <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 12 }}>
           A real record of sensitive admin actions — supplier verification, review moderation, payouts, promo codes, admin account changes, and pricing/settings changes.
         </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center", background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 12, padding: 10 }}>
+          <FilterIcon size={14} color={C.muted} />
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
-            style={{ ...body, fontSize: 12, padding: "6px 8px", borderRadius: 6, border: `1px solid ${C.line}`, background: "#fff" }}
+            style={{ ...body, fontSize: 12, padding: "7px 9px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff" }}
           >
             <option value="">All actions</option>
             {AUDIT_ACTION_TYPES.map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
           </select>
+          <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>From</span>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            style={{ ...body, fontSize: 12, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.line}` }}
+            style={{ ...body, fontSize: 12, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff" }}
           />
+          <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>to</span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            style={{ ...body, fontSize: 12, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.line}` }}
+            style={{ ...body, fontSize: 12, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff" }}
           />
           {(actionFilter || startDate || endDate) && (
             <button
@@ -8484,30 +11125,49 @@ function AuditLogSection({ currentUser, onSessionExpired }) {
               style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted, background: "none", border: "none", cursor: "pointer" }}
             >Clear</button>
           )}
+          {loadState === "ready" && <span style={{ ...body, marginLeft: "auto", fontSize: 11.5, fontWeight: 800, color: C.ink }}>{entries.length} {entries.length === 1 ? "action" : "actions"}</span>}
         </div>
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
         {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>Couldn't load the audit log: {errorMessage}</div>}
         {loadState === "ready" && entries.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No actions recorded{(actionFilter || startDate || endDate) ? " matching these filters" : " yet"}.</div>}
-        {loadState === "ready" && entries.length > 0 && (
-          <div style={{ maxHeight: 360, overflowY: "auto" }}>
-            {entries.map((e) => (
-              <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.line}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ ...body, fontSize: 12.5, fontWeight: 700 }}>{e.action.replace(/_/g, " ")}</span>
-                  <span style={{ ...body, fontSize: 11, color: C.muted }}>{new Date(e.createdAt).toLocaleString()}</span>
-                </div>
-                <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                  {e.adminEmail} · {e.targetType}{e.targetId ? ` #${e.targetId}` : ""}
-                </div>
-                {e.details && (
-                  <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 2, fontFamily: "monospace" }}>
-                    {Object.entries(e.details).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}
+        {loadState === "ready" && entries.length > 0 && (() => {
+          // patch-settings-redesign: grouped by day, each action with a coloured mark by kind (red = removed/deleted, gold = money, navy = the rest)
+          const tone = (a) => /removed|deleted|reject|suspend/.test(a) ? [C.red, C.redBg] : /payout|commission|fx_|promo|price|refund/.test(a) ? [C.amberInk, C.amberBg] : [C.navy, C.surfaceHigh];
+          const dayOf = (d) => new Date(d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+          let lastDay = null;
+          return (
+            <div style={{ maxHeight: 520, overflowY: "auto", paddingRight: 4 }}>
+              {entries.map((e) => {
+                const day = dayOf(e.createdAt); const showDay = day !== lastDay; lastDay = day;
+                const [fg, bg] = tone(e.action);
+                return (
+                  <div key={e.id}>
+                    {showDay && <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, margin: "12px 0 6px" }}>{day}</div>}
+                    <div style={{ display: "flex", gap: 12, padding: "10px 12px", border: `1px solid ${C.line}`, borderRadius: 10, marginBottom: 6, background: "#fff" }}>
+                      <span style={{ width: 4, borderRadius: 2, background: fg, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                          <span style={{ ...body, fontSize: 12, fontWeight: 800, color: fg, background: bg, borderRadius: 999, padding: "2px 10px", textTransform: "capitalize" }}>{e.action.replace(/_/g, " ")}</span>
+                          <span style={{ ...mono, fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div style={{ ...body, fontSize: 12, color: C.ink, marginTop: 5 }}>
+                          <b>{e.adminEmail}</b> <span style={{ color: C.muted }}>· {e.targetType}{e.targetId ? ` #${e.targetId}` : ""}</span>
+                        </div>
+                        {e.details && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                            {Object.entries(e.details).map(([k, v]) => (
+                              <span key={k} style={{ ...mono, fontSize: 10.5, color: C.ink, background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 6, padding: "2px 7px", maxWidth: "100%", overflowWrap: "anywhere" }}><span style={{ color: C.muted }}>{k}:</span> {JSON.stringify(v)}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </Card>
   );
@@ -8534,24 +11194,30 @@ function EmailTestSection() {
     }
   };
 
+  // patch-settings-redesign: one clear card: what it does, the button, and the answer in a coloured box
   return (
     <Card title="Email delivery" style={{ flex: 1 }}>
-      <div style={{ padding: 20 }}>
-        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
-          Sends a real test email to your own account's email address — the fastest way to confirm real SMTP credentials are actually working, without waiting for a real order or shipment to trigger one.
-        </div>
-        <button
-          onClick={handleSend}
-          disabled={isSending}
-          style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: isSending ? "#F3F4F6" : "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}
-        >
-          {isSending ? "Sending…" : "Send test email"}
-        </button>
-        {result && (
-          <div style={{ ...body, fontSize: 12, marginTop: 12, padding: 10, borderRadius: 8, color: result.success ? C.gauge : C.red, background: result.success ? C.gaugeBg : C.redBg }}>
-            {result.message}
+      <div style={{ padding: 20, display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <span style={{ width: 56, height: 56, borderRadius: 14, background: C.goldTint, border: `1px solid ${C.signal}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Send size={24} color={C.signalDark} /></span>
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+          <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+            Sends a real test email to your own account's email address — the fastest way to confirm real SMTP credentials are actually working, without waiting for a real order or shipment to trigger one.
           </div>
-        )}
+          <button
+            onClick={handleSend}
+            disabled={isSending}
+            style={{ ...body, display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 18px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.navy, color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: isSending ? "default" : "pointer" }}
+          >
+            <Send size={14} color={isSending ? "#fff" : C.signal} />{isSending ? "Sending…" : "Send test email"}
+          </button>
+          {result && (
+            <div style={{ ...body, display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, marginTop: 14, padding: "10px 12px", borderRadius: 10, color: result.success ? C.gaugeInk : C.red, background: result.success ? C.gaugeBg : C.redBg }}>
+              {result.success ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+              <span>{result.message}</span>
+            </div>
+          )}
+          {result && !result.success && <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 8 }}>Check the email settings on the server (SMTP host, port, user and password), restart the API, then try again.</div>}
+        </div>
       </div>
     </Card>
   );
@@ -8576,15 +11242,84 @@ const SETTINGS_TABS = [
   { id: "emailTest", label: "Email test", render: () => <EmailTestSection /> },
 ];
 
+// patch-settings-redesign: the Settings sections grouped in a menu on the left (with a search), and the chosen section on the right under its
+// own title card. Every section is still its own tab (role "tab", named by its label), so a link or a test can open it directly.
+const SETTINGS_GROUPS = [
+  ["People & safety", ["team", "audit"]],
+  ["Money rules", ["commission", "returnWindow", "freeShipping"]],
+  ["Website & app content", ["announcements", "homeBanner", "homePictures", "homeText", "tierPhotos", "footerText", "socialLinks", "legalPages"]],
+  ["Documents & checks", ["receiptFooter", "emailTest"]],
+];
+const SETTINGS_META = {
+  team: [Users, "Who can use the admin, and which pages each person sees"],
+  audit: [Clock, "Every change an admin made: who, what and when"],
+  commission: [Calculator, "Leap's share of each sale, by category"],
+  returnWindow: [RotateCcw, "How many days a buyer has to ask for a return"],
+  freeShipping: [Truck, "When an order ships for free"],
+  receiptFooter: [CreditCard, "The text printed at the bottom of every receipt"],
+  announcements: [Bell, "The news bar at the top of the website and the app"],
+  homePictures: [ImagePlus, "The photos on the home page"],
+  tierPhotos: [Star, "The pictures of the loyalty tiers"],
+  homeText: [Pencil, "The words on the home page"],
+  homeBanner: [LayoutGrid, "The big banner at the top of the home page"],
+  footerText: [Layers, "The text at the bottom of the website"],
+  socialLinks: [Globe, "Leap's social media links"],
+  legalPages: [CheckCircle2, "Terms, privacy and the other legal pages"],
+  emailTest: [Send, "Send a test email to check that sending works"],
+};
 function SettingsPage({ currentUser, onSessionExpired }) {
   const [tab, setTab] = useState("team");
+  const [query, setQuery] = useState("");
   const current = SETTINGS_TABS.find((t) => t.id === tab) || SETTINGS_TABS[0];
+  const byId = Object.fromEntries(SETTINGS_TABS.map((t) => [t.id, t]));
+  const q = query.trim().toLowerCase();
+  const matches = (id) => !q || byId[id].label.toLowerCase().includes(q) || (SETTINGS_META[id] || [null, ""])[1].toLowerCase().includes(q);
+  const grouped = SETTINGS_GROUPS.map(([g, ids]) => [g, ids.filter((id) => byId[id] && matches(id))]).filter(([, ids]) => ids.length);
+  const leftOver = SETTINGS_TABS.filter((t) => !SETTINGS_GROUPS.some(([, ids]) => ids.includes(t.id)) && matches(t.id)).map((t) => t.id);      // a section added later still shows
+  if (leftOver.length) grouped.push(["More", leftOver]);
+  const [CurIcon, curDesc] = SETTINGS_META[current.id] || [Settings, ""];
+  const groupOf = (SETTINGS_GROUPS.find(([, ids]) => ids.includes(current.id)) || ["More"])[0];
   return (
     <div>
-      <TopBar title="Settings" subtitle="Team permissions, money rules, storefront content and system checks"
-        tabs={{ label: "Settings sections", tabs: SETTINGS_TABS.map(({ id, label }) => ({ id, label })), activeId: current.id, onSelect: setTab, maxVisible: 7 }} />
-      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16, maxWidth: 1100 }}>
-        <div key={current.id} style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>{current.render({ currentUser, onSessionExpired })}</div>
+      <TopBar title="Settings" subtitle="Team permissions, money rules, storefront content and system checks" />
+      <div style={{ padding: 24, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+        <nav style={{ position: "sticky", top: 12, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.05)", padding: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, boxSizing: "border-box", background: C.surfaceHigh, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 10px", marginBottom: 8 }}>
+            <Search size={14} color={C.muted} />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a setting…" aria-label="Find a setting" data-leap-plain="" style={{ ...body, fontSize: 12.5, border: "none", outline: "none", background: "none", width: "100%", color: C.ink }} />
+          </div>
+          <div role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+            {grouped.map(([g, ids]) => (
+              <div key={g} style={{ marginBottom: 6 }}>
+                <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, padding: "6px 8px 3px" }}>{g}</div>
+                {ids.map((id) => {
+                  const on = id === current.id;
+                  const [Icon] = SETTINGS_META[id] || [Settings];
+                  return (
+                    <button key={id} type="button" role="tab" aria-selected={on} aria-label={byId[id].label} onClick={() => setTab(id)}
+                      style={{ ...body, display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "5px 8px", borderRadius: 9, border: "none", cursor: "pointer", marginBottom: 1,
+                        background: on ? C.goldTint : "transparent", boxShadow: on ? `inset 3px 0 0 ${C.signal}` : "none", color: C.ink }}>
+                      <span style={{ width: 24, height: 24, borderRadius: 7, background: on ? C.navy : C.surfaceHigh, border: on ? "none" : `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={14} color={on ? C.signal : C.muted} /></span>
+                      <span style={{ fontSize: 13, fontWeight: on ? 800 : 600 }}>{byId[id].label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {grouped.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 10 }}>No setting matches “{query}”.</div>}
+          </div>
+        </nav>
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 16, maxWidth: 1100 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, background: `linear-gradient(120deg, ${C.navyDeep}, ${C.navy} 60%, ${C.navySoft} 140%)`, borderRadius: 14, padding: "14px 18px" }}>
+            <span style={{ width: 44, height: 44, borderRadius: 12, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><CurIcon size={21} color={C.onSignal} /></span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: C.signal }}>{groupOf}</div>
+              <div style={{ ...disp, fontSize: 20, fontWeight: 800, color: "#fff" }}>{current.label}</div>
+              {curDesc && <div style={{ ...body, fontSize: 12.5, color: C.onNavyMuted }}>{curDesc}</div>}
+            </div>
+          </div>
+          <div key={current.id} role="tabpanel" aria-label={current.label} style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>{current.render({ currentUser, onSessionExpired })}</div>
+        </div>
       </div>
     </div>
   );
@@ -8596,6 +11331,8 @@ function SettingsPage({ currentUser, onSessionExpired }) {
 const NAV = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "orders", label: "Orders", icon: ShoppingBag },
+  { id: "returns", label: "Returns", icon: RotateCcw },
+  { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
   { id: "allProducts", label: "All Products", icon: Package },
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
@@ -8604,17 +11341,15 @@ const NAV = [
   { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "deliveryRules", label: "Delivery Rules", icon: Globe },
-  { id: "returns", label: "Returns", icon: RotateCcw },
-  { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
-  { id: "tickets", label: "Support", icon: LifeBuoy },
-  { id: "reviews", label: "Reviews", icon: Star },
-  { id: "promoCodes", label: "Promo Codes", icon: Tag },
   { id: "paymentMethods", label: "Payment Methods", icon: CreditCard },
   { id: "paymentProviders", label: "Payment Providers", icon: Key },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "profits", label: "Profits", icon: TrendingUp },
   { id: "shippingCosts", label: "Shipping costs", icon: Truck },
   { id: "pricing", label: "Pricing", icon: Calculator },
+  { id: "tickets", label: "Support", icon: LifeBuoy },
+  { id: "reviews", label: "Reviews", icon: Star },
+  { id: "promoCodes", label: "Promo Codes", icon: Tag },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -8624,21 +11359,78 @@ const GROUP_ICONS = { "group:suppliers": Store, "group:products": Package, "grou
 // The side menu (design 3, "Gold menu"): the brand gold, the chosen item a tab in the page's color whose curved corners make it flow into the page.
 // Collapsible to icons only (the name shows on hover).
 const MENU = {
-  bg: C.signal, text: "#3D2C06", strong: C.onSignal, soft: "#5C4407", line: "#D9940F", badge: C.ink,
-  activeBg: "#E9ECF0", activeText: C.ink, activeIcon: "#8A5A00", expanded: 240, collapsed: 76,
+  bg: C.navy, text: C.onNavyMuted, strong: "#fff", soft: C.onNavyMuted, line: "rgba(255,255,255,0.12)", badge: C.signal, badgeText: C.onSignal,
+  activeBg: C.navyDeep, activeText: "#fff", activeIcon: C.signal, expanded: 240, collapsed: 76,
 };
+// The menu's sections (a heading over each run of entries; a thin line when the menu is folded to icons).
+const MENU_SECTIONS = {
+  overview: "Operate", orders: "Operate", returns: "Operate", flagged: "Operate",
+  "group:products": "Catalog", vehicleData: "Catalog", categories: "Catalog",
+  "group:suppliers": "Network", hubs: "Network", deliveryRules: "Network",
+  "group:financial": "Money & care", "group:support": "Money & care",
+  settings: "System",
+};
+const entryId = (entry) => (entry.type === "group" ? entry.group.id : entry.page.id);
 // The page: a light panel filling the space beside the menu (the chosen item flows into it), and everything in the page, the title too,
 // in one rounded container inside the panel, with space around it.
-const PANEL = { bg: MENU.activeBg, inset: 16, boxRadius: 16 };
+const PANEL = { bg: C.canvas, inset: 0, boxRadius: 0 };
 const MENU_CSS = `
 .leap-menu-item:hover:not([aria-current="page"]) { background: rgba(255, 255, 255, 0.22) !important; }
-.leap-menu-item:focus-visible { outline: 2px solid ${C.ink}; outline-offset: -2px; }
-.leap-menu-curve { position: absolute; right: 0; width: 20px; height: 20px; pointer-events: none; clip-path: inset(0); }
+.leap-menu-item:focus-visible { outline: 2px solid ${C.signal}; outline-offset: -2px; }
+.leap-menu-item:hover:not([aria-current="page"]) { color: #fff !important; }
+.leap-menu-box::-webkit-scrollbar { display: none; }
+.leap-menu-curve { display: none; position: absolute; right: 0; width: 20px; height: 20px; pointer-events: none; clip-path: inset(0); }
 .leap-menu-curve.top { bottom: 100%; border-bottom-right-radius: 20px; box-shadow: 10px 10px 0 10px ${MENU.activeBg}; }
 .leap-menu-curve.bottom { top: 100%; border-top-right-radius: 20px; box-shadow: 10px -10px 0 10px ${MENU.activeBg}; }
 .leap-menu-tip { display: none; position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); height: 30px; padding: 0 10px; border-radius: 8px;
   background: ${C.ink}; color: #fff; font-size: 12px; font-weight: 700; align-items: center; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.18); z-index: 50; }
 .leap-menu-item:hover .leap-menu-tip, .leap-menu-item:focus-visible .leap-menu-tip { display: flex; }
+`;
+// Every page: focus rings, tick boxes and selection in the LEAP colours (patch-admin-all-pages).
+const PAGE_CSS = `
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):focus, select:focus, textarea:focus { outline: none; border-color: ${C.torque} !important; box-shadow: 0 0 0 3px ${C.torqueBg}; }
+button:focus-visible, a:focus-visible { outline: 2px solid ${C.torque}; outline-offset: 2px; }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: ${C.navy}; }
+::selection { background: ${C.goldTint}; color: ${C.ink}; }
+table th { background: ${C.surfaceHigh}; }
+[data-leap-header] input::placeholder { color: ${C.onNavyMuted}; }
+[data-leap-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([data-leap-plain]), [data-leap-page] select, [data-leap-page] textarea {
+  border-radius: 10px !important; border-color: ${C.lineStrong} !important; font-family: 'Manrope', sans-serif; color: ${C.ink}; background-color: #fff;
+}
+[data-leap-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([data-leap-plain]), [data-leap-page] select { min-height: 38px; box-sizing: border-box; }
+[data-leap-page] input::placeholder, [data-leap-page] textarea::placeholder { color: #8A93A0; }
+[data-leap-page] select { cursor: pointer; }
+[data-leap-page] button { font-family: 'Manrope', sans-serif; transition: background-color 150ms ease, box-shadow 150ms ease, transform 60ms ease, border-color 150ms ease; }
+[data-leap-page] button:not(:disabled):active { transform: translateY(1px); }
+[data-leap-page] button:disabled { cursor: not-allowed !important; }
+[data-leap-page] tbody tr { transition: background-color 120ms ease; }
+[data-leap-page] tbody tr:hover > td { background: #FDF8EA; }
+[data-leap-page] table td { font-variant-numeric: tabular-nums; }
+[data-leap-page] h1, [data-leap-page] h2, [data-leap-page] h3 { font-family: 'Manrope', sans-serif; letter-spacing: -0.01em; }
+[data-leap-page] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-leap-page] ::-webkit-scrollbar-thumb { background: #C9D1DA; border-radius: 999px; border: 2px solid ${C.canvas}; }
+/* every table (patch-admin-tables): light header band, roomy rows, soft stripes, gold hover, a clear empty state */
+[data-leap-page] table { border-collapse: separate !important; border-spacing: 0 !important; font-family: 'Manrope', sans-serif; }
+[data-leap-page] th { background: #F6F8FA !important; color: #5B6472 !important; font-family: 'Manrope', sans-serif !important; font-size: 11px !important; font-weight: 800 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; padding: 13px 18px !important; border-bottom: 1px solid ${C.line} !important; white-space: nowrap; vertical-align: middle; }
+[data-leap-page] thead tr:first-child th:first-child { border-top-left-radius: 0; }
+[data-leap-page] tbody td { padding: 15px 18px !important; border-bottom: 1px solid #EEF0F3 !important; vertical-align: middle !important; line-height: 1.45; }
+[data-leap-page] tbody tr:last-child > td { border-bottom: none !important; }
+[data-leap-page] tbody tr:nth-child(even):not([style*="background"]) > td { background: #FBFCFD; }
+[data-leap-page] tbody tr[style*="background"] > td { background: transparent; }
+[data-leap-page] tbody tr:hover > td { background: #FDF6E3 !important; }
+[data-leap-page] tbody tr[aria-selected="true"] > td { background: ${C.goldTint} !important; }
+[data-leap-page] tbody tr > td:first-child { font-weight: 700; }
+[data-leap-page] tbody tr > td:first-child:has(> input[type=checkbox]) { width: 44px; }
+[data-leap-page] tbody td[colspan]:only-child:not(:has(*)) { padding: 48px 18px 44px !important; text-align: center !important; color: ${C.muted} !important; font-size: 13.5px !important; font-weight: 600 !important; background: #fff !important; }
+[data-leap-page] tbody td[colspan]:only-child:not(:has(*))::before { content: ""; display: block; width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 12px; background: #F1F4F7 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23636B78' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / 20px no-repeat; }
+[data-leap-page] tbody td[style*="text-align: right"], [data-leap-page] th[style*="text-align: right"] { white-space: nowrap; }
+/* tabs and switches inside a page (patch-admin-page-tabs): a grey track, the chosen one a raised white segment */
+[data-leap-page] [data-leap-segments] { display: inline-flex !important; flex-wrap: wrap; align-items: center; gap: 2px !important; padding: 4px !important; background: #EEF1F4 !important; border: 1px solid ${C.line} !important; border-radius: 12px !important; box-shadow: inset 0 1px 2px rgba(11,49,70,0.05) !important; width: fit-content; max-width: 100%; }
+[data-leap-page] [data-leap-segments] > button { display: inline-flex !important; align-items: center; gap: 6px; height: 34px !important; border: none !important; background: transparent !important; padding: 0 16px !important; margin: 0 !important; border-radius: 9px !important; font-family: 'Manrope', sans-serif !important; font-size: 13px !important; font-weight: 700 !important; box-shadow: none !important; cursor: pointer; white-space: nowrap; }
+[data-leap-page] [data-leap-segments] > button:not([aria-selected="true"]):not([aria-pressed="true"]) { color: #5B6472; }
+[data-leap-page] [data-leap-segments] > button:hover:not([aria-selected="true"]):not([aria-pressed="true"]) { background: rgba(255,255,255,0.65) !important; color: ${C.ink}; }
+[data-leap-page] [data-leap-segments] > button[aria-selected="true"], [data-leap-page] [data-leap-segments] > button[aria-pressed="true"] { background: #fff !important; color: ${C.navy} !important; box-shadow: 0 1px 2px rgba(11,49,70,0.14), 0 3px 8px rgba(11,49,70,0.08) !important; }
+[data-leap-page] tbody td button svg, [data-leap-page] tbody td a svg { vertical-align: middle; }
 `;
 const menuInitials = (user) => (user.name || user.email || "A").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "A";
 
@@ -8780,7 +11572,8 @@ function AdminDashboardShell({ currentUser, onLogout }) {
     }}>
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: MENU.bg, ...body }}>
       <style>{FONT_IMPORT}</style>
-      <style>{`tbody tr:hover { background: ${C.canvas}; }`}</style>
+      <style>{`tbody tr:hover { background: ${C.surfaceHigh}; }`}</style>
+      <style>{PAGE_CSS}</style>
       <style>{MENU_CSS}</style>
       {/* the menu stays in view while a long page scrolls, so the name and Log out at its bottom are always there */}
       <nav aria-label="Main menu" style={{ width: menuCollapsed ? MENU.collapsed : MENU.expanded, transition: "width 160ms ease", background: MENU.bg, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", minHeight: 600, alignSelf: "flex-start", zIndex: 5 }}>
@@ -8792,7 +11585,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
                 <BrandLogo size={36} />
                 <div style={{ minWidth: 0, lineHeight: 1.15 }}>
                   <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: MENU.strong, whiteSpace: "nowrap" }}>Leap Auto Parts</div>
-                  <div style={{ ...body, fontSize: 11, fontWeight: 600, color: MENU.soft, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{"Admin portal"}</div>
+                  <div style={{ ...body, fontSize: 10.5, fontWeight: 800, color: C.signal, marginTop: 3, letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{"Admin portal"}</div>
                 </div>
               </div>}
           <button type="button" onClick={toggleMenu} aria-label={menuCollapsed ? "Expand the menu" : "Collapse the menu"} aria-expanded={!menuCollapsed} title={menuCollapsed ? "Expand the menu" : "Collapse the menu"}
@@ -8800,18 +11593,18 @@ function AdminDashboardShell({ currentUser, onLogout }) {
             {menuCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
-        <div ref={menuBoxRef} style={{ flex: 1, padding: "6px 0 6px 12px", position: "relative" }}>
+        <div ref={menuBoxRef} className="leap-menu-box" style={{ flex: 1, padding: "6px 12px", position: "relative", overflowY: "auto", overflowX: "hidden", scrollbarWidth: "none", msOverflowStyle: "none" }}>
           {/* the chosen item's background (with its curved corners): one shape that slides to the item clicked (drawn first, so the items sit on it) */}
           {menuMark && (
             <span aria-hidden="true" data-testid="menu-highlight" style={{
-              position: "absolute", left: menuMark.x, right: 0, top: 0, height: menuMark.h, transform: `translateY(${menuMark.y}px)`, pointerEvents: "none",
-              background: MENU.activeBg, borderRadius: "20px 0 0 20px", transition: menuMark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
+              position: "absolute", left: menuMark.x, right: 12, top: 0, height: menuMark.h, transform: `translateY(${menuMark.y}px)`, pointerEvents: "none",
+              background: MENU.activeBg, borderRadius: 8, boxShadow: `inset 4px 0 0 ${C.signal}`, transition: menuMark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
             }}>
               <span className="leap-menu-curve top" />
               <span className="leap-menu-curve bottom" />
             </span>
           )}
-          {sidebarEntries(NAV, hasAccess).map((entry) => {
+          {sidebarEntries(NAV, hasAccess).map((entry, entryIndex, allEntries) => {
             // A group (Suppliers, Products, Support, Financial) is ONE sidebar entry; everything else is a page, as before.
             const isGroup = entry.type === "group";
             const n = isGroup ? { id: entry.group.id, label: entry.group.label, icon: GROUP_ICONS[entry.group.id] } : entry.page;
@@ -8823,34 +11616,39 @@ function AdminDashboardShell({ currentUser, onLogout }) {
             };
             // the number: what is waiting on this page, or (a group) on its pages this admin may open; red when it holds something up
             const badge = menuBadge(navCounts, isGroup ? accessibleChildren(entry.group, hasAccess) : [n.id], { flaggedCount });
+            const section = MENU_SECTIONS[n.id];
+            const newSection = section && (entryIndex === 0 || MENU_SECTIONS[entryId(allEntries[entryIndex - 1])] !== section);
+            const sectionHead = !newSection ? null : menuCollapsed
+              ? (entryIndex > 0 ? <div key={`section:${section}`} aria-hidden="true" style={{ height: 1, background: MENU.line, margin: "8px 10px" }} /> : null)
+              : <div key={`section:${section}`} style={{ ...body, padding: entryIndex === 0 ? "4px 10px 6px" : "14px 10px 6px", fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: MENU.soft }}>{section}</div>;
             const count = badge.count;
-            return (
+            return [sectionHead, (
               <button key={n.id} onClick={open} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? n.label : undefined} style={{
                 position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: menuCollapsed ? "center" : "flex-start", gap: 12, height: 40,
-                padding: menuCollapsed ? 0 : "0 14px 0 18px", margin: "1px 0", borderRadius: "20px 0 0 20px", border: "none", cursor: "pointer", textAlign: "left",
-                background: active && !menuSlides ? MENU.activeBg : "transparent", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
+                padding: menuCollapsed ? 0 : "0 10px", margin: "1px 0", borderRadius: 8, border: "none", cursor: "pointer", textAlign: "left",
+                background: active && !menuSlides ? MENU.activeBg : "transparent", boxShadow: active && !menuSlides ? `inset 4px 0 0 ${C.signal}` : "none", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
               }}>
                 {/* the curved corners above and below the chosen item: it flows into the page (drawn by the sliding shape once it is in place) */}
                 {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve top" />}
                 {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve bottom" />}
                 <span style={{ display: "inline-flex", color: active ? MENU.activeIcon : "inherit", position: "relative" }}>
                   <Icon size={18} />
-                  {menuCollapsed && count > 0 && <span style={{ position: "absolute", top: -7, right: -10, minWidth: 16, height: 16, borderRadius: 999, background: badge.red ? C.red : MENU.badge, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", boxSizing: "border-box" }}>{count}</span>}
+                  {menuCollapsed && count > 0 && <span style={{ position: "absolute", top: -7, right: -10, minWidth: 16, height: 16, borderRadius: 999, background: badge.red ? C.red : MENU.badge, color: badge.red ? "#fff" : MENU.badgeText, fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", boxSizing: "border-box" }}>{count}</span>}
                 </span>
                 {!menuCollapsed && <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500, flex: 1, whiteSpace: "nowrap" }}>{n.label}</span>}
                 {!menuCollapsed && count > 0 && (
-                  <span title={badge.tip} aria-label={badge.tip} style={{ ...body, fontSize: 10.5, fontWeight: 800, color: "#fff", background: badge.red ? C.red : MENU.badge, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
+                  <span title={badge.tip} aria-label={badge.tip} style={{ ...body, fontSize: 10.5, fontWeight: 800, color: badge.red ? "#fff" : MENU.badgeText, background: badge.red ? C.red : MENU.badge, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
                     {count}
                   </span>
                 )}
                 {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{badge.tip ? `${n.label} · ${badge.tip}` : n.label}</span>}
               </button>
-            );
+            )];
           })}
         </div>
         {menuCollapsed ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "14px 0", borderTop: `1px solid ${MENU.line}` }}>
-            <span title={currentUser.name || currentUser.email} style={{ width: 36, height: 36, borderRadius: "50%", background: MENU.activeBg, color: MENU.activeText, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontSize: 12, fontWeight: 800 }}>{menuInitials(currentUser)}</span>
+            <span title={currentUser.name || currentUser.email} style={{ width: 36, height: 36, borderRadius: "50%", background: MENU.activeBg, color: C.signal, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontSize: 12, fontWeight: 800 }}>{menuInitials(currentUser)}</span>
             <button type="button" onClick={onLogout} aria-label="Log out" title="Log out" style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
               <LogOut size={16} />
             </button>
@@ -8870,7 +11668,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
       </nav>
       <main style={{ flex: 1, minWidth: 0, display: "flex", background: PANEL.bg }}>
         <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: PANEL.inset }}>
-          <div ref={pageBoxRef} style={{ minHeight: "100%", boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: PANEL.boxRadius, overflow: "hidden", boxShadow: "0 1px 2px rgba(20, 23, 28, 0.05)" }}>
+          <div ref={pageBoxRef} data-leap-page="" style={{ minHeight: "100%", boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: PANEL.boxRadius, overflow: "hidden", borderWidth: PANEL.inset ? 1 : 0 }}>
             {/* the group's tabs go to the page's header, which shows them UNDER the title (the common page design) */}
             <PageTabsContext.Provider value={pageTabs}>
               {content}

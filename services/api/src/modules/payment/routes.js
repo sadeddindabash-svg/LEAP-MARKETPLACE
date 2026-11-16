@@ -73,7 +73,15 @@ router.get('/methods', (req, res) => {
 // Stripe / Google Pay:            { provider, amount, currencyCode }
 // Amazon Payment Services:        { provider, amount, currencyCode, customerEmail, returnUrl, merchantReference? }
 // PayPal:                         { provider, amount, currencyCode, returnUrl?, cancelUrl?, referenceId? }
-router.post('/intent', async (req, res) => {
+// Security (patch-security-hardening): online payment is not built into the checkout yet, and these routes take the amount from the
+// browser and are not tied to an order: open, they could start payments of any amount (card testing through your Stripe account).
+// Off unless PAYMENTS_ONLINE=on in .env; when online payment is built, the amount will come from the order on the server.
+function requirePaymentsOnline(req, res, next) {
+  if (process.env.PAYMENTS_ONLINE === 'on' || process.env.NODE_ENV === 'test' || process.env.NODE_TEST_CONTEXT) return next();
+  return res.status(404).json({ error: 'Online payment is not switched on.', code: 'payments_off' });
+}
+
+router.post('/intent', requirePaymentsOnline, async (req, res) => {
   const { provider, amount, currencyCode, customerEmail, returnUrl, cancelUrl, merchantReference, referenceId } = req.body || {};
   if (!PROVIDERS.includes(provider)) {
     return res.status(400).json({ error: `Unsupported provider. Use one of: ${PROVIDERS.join(', ')}` });
@@ -164,7 +172,7 @@ router.post('/intent', async (req, res) => {
 
 // POST /payment/paypal/capture/:orderId — step 2 of PayPal's flow, called
 // after the buyer approves the order at the approveUrl from /intent.
-router.post('/paypal/capture/:orderId', async (req, res) => {
+router.post('/paypal/capture/:orderId', requirePaymentsOnline, async (req, res) => {
   if (!(await paypal.isConfigured())) {
     return res.status(503).json({ error: 'PayPal is not configured.' });
   }

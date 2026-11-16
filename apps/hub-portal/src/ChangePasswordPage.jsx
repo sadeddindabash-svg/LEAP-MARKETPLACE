@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+// LEAP portals design, the same as the admin portal (patch-portals-redesign)
 import { KeyRound } from "lucide-react";
 import { changeMyPassword, getStoredToken } from "./auth";
 import { useLang } from "./langContext";
@@ -7,9 +8,9 @@ import { useLang } from "./langContext";
 // own. The server clears the flag when the change is saved (migration 099); this screen is what makes them do it.
 const C = {
   ink: "#14171C", canvas: "#F5F6F8", card: "#FFFFFF", line: "#E4E6EA",
-  signal: "#E8622C", muted: "#6B7280", redBg: "#FBE7E5", red: "#C0362C",
+  signal: "#F9B317", muted: "#636B78", redBg: "#FAE6E4", red: "#C0362C",
 };
-const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
+const disp = { fontFamily: "'Manrope', 'Noto Sans SC', sans-serif" };
 const body = { fontFamily: "'Inter', sans-serif" };
 const inputStyle = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 8, border: `1px solid ${C.line}`, marginBottom: 16, fontSize: 14, fontFamily: "inherit" };
 const labelStyle = { fontSize: 12, fontWeight: 700, color: C.muted, display: "block", marginBottom: 6 };
@@ -45,7 +46,7 @@ export default function ChangePasswordPage({ onDone, onLogout }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: 9, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <KeyRound size={18} color="#fff" />
+              <KeyRound size={18} color="#0B3146" />
             </div>
             <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: C.ink }}>{p.title}</div>
           </div>
@@ -68,7 +69,7 @@ export default function ChangePasswordPage({ onDone, onLogout }) {
           <div role="alert" style={{ background: C.redBg, color: C.red, fontSize: 12.5, padding: "9px 11px", borderRadius: 8, marginBottom: 12 }}>{error}</div>
         )}
 
-        <button type="submit" disabled={isSaving} style={{ width: "100%", padding: 13, borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontWeight: 700, fontSize: 14, cursor: isSaving ? "default" : "pointer", opacity: isSaving ? 0.7 : 1, marginTop: 8 }}>
+        <button type="submit" disabled={isSaving} style={{ width: "100%", padding: 13, borderRadius: 8, border: "none", background: C.signal, color: "#0B3146", fontWeight: 700, fontSize: 14, cursor: isSaving ? "default" : "pointer", opacity: isSaving ? 0.7 : 1, marginTop: 8 }}>
           {isSaving ? p.saving : p.submit}
         </button>
         <button type="button" onClick={onLogout} style={{ width: "100%", marginTop: 10, padding: 10, border: "none", background: "none", color: C.muted, fontSize: 12.5, cursor: "pointer" }}>{t.logout}</button>

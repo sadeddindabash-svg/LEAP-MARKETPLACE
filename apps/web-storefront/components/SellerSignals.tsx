@@ -7,7 +7,7 @@ export default function SellerSignals({ isVerifiedSeller, shipsFromCountry, ship
   if (!isVerifiedSeller && !shipsFromCountry) return null;
   const flag = flagCodeFor(shipsFromCountry, shipsFromCountryAr);
   return (
-    <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
+    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
       {isVerifiedSeller && (
         <li className="flex items-center gap-1.5">
           <svg aria-hidden="true" data-testid="verified-icon" viewBox="0 0 24 24" width="17" height="17" fill="#e39f0c" stroke="#e39f0c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 2.1 3.2-.2.9 3.1 2.7 1.8-1.1 3 1.1 3-2.7 1.8-.9 3.1-3.2-.2L12 22l-2.4-2.1-3.2.2-.9-3.1-2.7-1.8 1.1-3-1.1-3 2.7-1.8.9-3.1 3.2.2z" /><path d="m8.6 12.2 2.3 2.3 4.5-4.7" fill="none" stroke="#fff" strokeWidth="2.2" /></svg>

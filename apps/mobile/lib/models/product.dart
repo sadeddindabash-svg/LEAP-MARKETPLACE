@@ -20,6 +20,8 @@ class Product {
   final String category;
   final String? part;
   final String? oemNumber;
+  /// The title in parts (patch-name-car-part): name · car · version · part number; null from an older server.
+  final Map<String, dynamic>? fitTitle;
   final double price;
   final String currencyCode;
   // Real, previously-internal-only price snapshot (#59) -- from the
@@ -32,6 +34,8 @@ class Product {
   // own automatic price-drop signal above. Null means no discount is
   // currently active on this product at all.
   final double? originalPrice;
+  // When the discount ends, sent only while the product screen should show the countdown (migration 133).
+  final DateTime? discountEndsAt;
   // Real, anonymous supplier signals (#73, #74) -- never the
   // supplier's own name or identity, matching this platform's own
   // deliberate anonymization design.
@@ -42,6 +46,9 @@ class Product {
   final int reviewCount;
   final int stockQuantity;
   final int estimatedDeliveryDays;
+  // Delivery Rules > How it works: ± days when shown as a range; deliveryHidden when no rule fits and the date is hidden.
+  final int? estimatedDeliveryRange;
+  final bool deliveryHidden;
   final List<String> images;
   final String? brand;
   // Real, new -- the same real vehicle brand's own logo (e.g. BMW,
@@ -78,9 +85,11 @@ class Product {
     required this.category,
     this.part,
     this.oemNumber,
+    this.fitTitle,
     required this.price,
     this.lastKnownPrice,
     this.originalPrice,
+    this.discountEndsAt,
     this.isVerifiedSeller = false,
     this.shipsFromCountry,
     this.shipsFromCountryAr,
@@ -89,6 +98,8 @@ class Product {
     required this.reviewCount,
     required this.stockQuantity,
     required this.estimatedDeliveryDays,
+    this.estimatedDeliveryRange,
+    this.deliveryHidden = false,
     this.images = const [],
     this.brand,
     this.brandLogoUrl,
@@ -116,9 +127,11 @@ class Product {
         category: json['category'] as String,
         part: json['part'] as String?,
         oemNumber: json['oemNumber'] as String?,
+        fitTitle: json['fitTitle'] is Map ? Map<String, dynamic>.from(json['fitTitle'] as Map) : null,
         price: (json['price'] as num).toDouble(),
         lastKnownPrice: json['lastKnownPrice'] == null ? null : (json['lastKnownPrice'] as num).toDouble(),
         originalPrice: json['originalPrice'] == null ? null : (json['originalPrice'] as num).toDouble(),
+        discountEndsAt: json['discountEndsAt'] is String ? DateTime.tryParse(json['discountEndsAt'] as String)?.toLocal() : null,
         isVerifiedSeller: json['isVerifiedSeller'] as bool? ?? false,
         shipsFromCountry: json['shipsFromCountry'] as String?,
         shipsFromCountryAr: json['shipsFromCountryAr'] as String?,
@@ -127,6 +140,8 @@ class Product {
         reviewCount: json['reviewCount'] as int? ?? 0,
         stockQuantity: json['stockQuantity'] as int? ?? 0,
         estimatedDeliveryDays: json['estimatedDeliveryDays'] as int? ?? 7,
+        estimatedDeliveryRange: json['estimatedDeliveryRange'] as int?,
+        deliveryHidden: json.containsKey('estimatedDeliveryDays') && json['estimatedDeliveryDays'] == null,
         images: (json['images'] as List?)?.cast<String>() ?? const [],
         brand: json['brand'] as String?,
         brandLogoUrl: json['brandLogoUrl'] as String?,
@@ -160,9 +175,15 @@ class Product {
   static const _monthNamesAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
   String deliveryDateLabel(bool isAr) {
-    final date = DateTime.now().add(Duration(days: estimatedDeliveryDays));
-    if (isAr) return '${date.day} ${_monthNamesAr[date.month - 1]}';
-    return '${_monthNamesEn[date.month - 1]} ${date.day}';
+    if (deliveryHidden) return isAr ? 'يُحدد لاحقًا' : 'to be confirmed';
+    String one(int days) {
+      final date = DateTime.now().add(Duration(days: days));
+      if (isAr) return '${date.day} ${_monthNamesAr[date.month - 1]}';
+      return '${_monthNamesEn[date.month - 1]} ${date.day}';
+    }
+    final range = estimatedDeliveryRange;
+    if (range != null && range > 0) return '${one(estimatedDeliveryDays - range < 0 ? 0 : estimatedDeliveryDays - range)} – ${one(estimatedDeliveryDays + range)}';
+    return one(estimatedDeliveryDays);
   }
 }
 

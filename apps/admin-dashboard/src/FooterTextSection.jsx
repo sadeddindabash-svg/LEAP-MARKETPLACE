@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+// LEAP portals design on every admin page (patch-admin-all-pages)
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
 import { fetchFooter, saveFooterText, PAGE_KEYS, PAGE_NAMES } from "./footerApi";
@@ -11,7 +12,7 @@ const MAX = { tagline: 160, copyright: 160, title: 40, link: 40 };
 const AR_HINT = "Leave empty to use the website's own Arabic wording";
 const field = { ...body, width: "100%", boxSizing: "border-box", fontSize: 13, padding: "8px 10px", borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: C.line, color: C.ink, background: "#fff" };
 const button = { ...body, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", borderRadius: 8, cursor: "pointer", borderWidth: 1, borderStyle: "solid", borderColor: C.line, background: "#fff", color: C.ink };
-const primary = { ...button, background: C.ink, color: "#fff", borderColor: C.ink };
+const primary = { ...button, background: C.navy, color: "#fff", borderColor: C.navy };
 const pair = (p) => ({ en: p?.en || "", ar: p?.ar || "" });
 const toDraft = (t) => ({ tagline: pair(t?.tagline), copyright: pair(t?.copyright), titles: Object.fromEntries(Object.keys(TITLES).map((k) => [k, pair(t?.titles?.[k])])), links: Object.fromEntries(PAGE_KEYS.map((k) => [k, { ...pair(t?.links?.[k]), shown: t?.links?.[k]?.shown !== false }])) });
 const clean = (d) => ({ tagline: { en: d.tagline.en.trim(), ar: d.tagline.ar.trim() }, copyright: { en: d.copyright.en.trim(), ar: d.copyright.ar.trim() }, titles: Object.fromEntries(Object.keys(TITLES).map((k) => [k, { en: d.titles[k].en.trim(), ar: d.titles[k].ar.trim() }])), links: Object.fromEntries(PAGE_KEYS.map((k) => [k, { en: d.links[k].en.trim(), ar: d.links[k].ar.trim(), shown: d.links[k].shown }])) });
@@ -34,7 +35,7 @@ export default function FooterTextSection({ onSessionExpired }) {
   );
   const group = (title, children) => <fieldset style={{ borderWidth: 1, borderStyle: "solid", borderColor: C.line, borderRadius: 10, padding: "8px 14px 14px", margin: "0 0 12px" }}><legend style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, padding: "0 6px" }}>{title}</legend>{children}</fieldset>;
   return (
-    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+    <div style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, boxShadow: "0 1px 2px rgba(11,49,70,0.06), 0 4px 12px rgba(11,49,70,0.06)", padding: 18 }}>
       <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Footer text</h2>
       <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "6px 0 14px", lineHeight: 1.5 }}>The words at the bottom of every page of the website. An empty text means the website uses its own wording.</p>
       {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}

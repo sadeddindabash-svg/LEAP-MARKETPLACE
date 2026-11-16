@@ -7,6 +7,7 @@ import Link from "@/components/LocLink";
 import EnglishAddressCard from "@/components/EnglishAddressCard";
 import ReturnRequestForm from "@/components/ReturnRequestForm";
 import StatusTimeline from "@/components/StatusTimeline";
+import FaultOutcomeBox from "@/components/FaultOutcome";      // patch-buyer-fault-tracking
 import DeliveryCodeBox from "@/components/DeliveryCodeBox";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useCart } from "@/components/CartProvider";
@@ -45,6 +46,7 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
         {so.trackingNumber && <p className="text-sm text-muted">{t("tracking_label")} <span className="font-plate font-bold text-navy" dir="ltr">{so.trackingNumber}</span></p>}
       </div>
       <StatusTimeline status={subOrderStage(so)} lang={lang} />
+      <FaultOutcomeBox outcome={so.faultOutcome} query={who.guestEmail ? `?guestEmail=${encodeURIComponent(who.guestEmail)}` : ""} />
       <ul className="mt-4 grid gap-3 border-t border-[#eef0f3] pt-4">
         {so.items.map((i) => (
           <li key={`${i.productId}`} className="flex items-center gap-3">
@@ -180,6 +182,14 @@ function OrderView({ orderId }: { orderId: string }) {
         <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${cancelled ? "bg-white text-[#a12a21]" : order.displayStatus === "delivered" ? "bg-signal text-navy" : "bg-white/15 text-white"}`}>{order.displayStatus === "delivered" && !cancelled ? "✓ " : ""}{statusLabel(lang, cancelled ? "cancelled" : order.displayStatus || order.status)}</span>
       </div>
 
+      {/* the quotations this order came from (migration 141) */}
+      {(order.quotations ?? []).map((q) => (
+        <Link key={q.id} href={`/quotations/${encodeURIComponent(q.id)}`} className="mb-4 flex items-center gap-3 rounded-[12px] bg-gradient-to-br from-navy to-[#215a78] px-4 py-3 text-sm font-bold text-white">
+          <span aria-hidden="true">📄</span>
+          <span className="min-w-0 flex-1">{t("order_from_quotation")} <span dir="ltr">{q.id}</span>{q.partyName ? <> · <bdi>{q.partyName}</bdi></> : null}</span>
+          <span aria-hidden="true" className="text-[#f9d77a] rtl:rotate-180">›</span>
+        </Link>
+      ))}
       <p aria-live="polite" role={notice?.kind === "error" ? "alert" : "status"} className={`mb-4 text-sm font-semibold ${notice?.kind === "error" ? "text-[#a12a21]" : "text-[#0f6b49]"}`}>{notice?.text}</p>
 
       {needsEnglishAddressCheck(order) && order.addressEnglish && <div className="mb-6"><EnglishAddressCard orderId={order.id} english={order.addressEnglish} who={who} onConfirmed={reload} /></div>}
